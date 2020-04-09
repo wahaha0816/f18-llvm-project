@@ -16,8 +16,6 @@ if (POLICY CMP0077)
   cmake_policy(SET CMP0077 NEW)
 endif()
 
-option(LINK_WITH_FIR "Link driver with FIR and LLVM" ON)
-
 # Flang requires C++17.
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
@@ -37,7 +35,13 @@ endif()
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 include(AddFlang)
 
-option(FLANG_ENABLE_WERROR "Fail and stop building flang if a warning is triggered." OFF)
+if (MSVC)
+  set(_FLANG_ENABLE_WERROR_DEFAULT OFF)
+else ()
+  set(_FLANG_ENABLE_WERROR_DEFAULT "${LLVM_ENABLE_WERROR}")
+endif()
+option(FLANG_ENABLE_WERROR "Fail and stop building flang if a warning is triggered."
+       "${_FLANG_ENABLE_WERROR_DEFAULT}")
 
 # Check for a standalone build and configure as appropriate from
 # there.
@@ -54,9 +58,12 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     mark_as_advanced(LLVM_ENABLE_ASSERTIONS)
   endif()
 
-  # We need a pre-built/installed version of LLVM.
+  # We need a pre-built/installed version of LLVM and MLIR.
   find_package(LLVM REQUIRED HINTS "${LLVM_CMAKE_PATH}")
   list(APPEND CMAKE_MODULE_PATH ${LLVM_DIR})
+
+  find_package(MLIR REQUIRED HINTS "${MLIR_CMAKE_PATH}")
+  list(APPEND CMAKE_MODULE_PATH ${MLIR_DIR})
 
   # If LLVM links to zlib we need the imported targets so we can too.
   if(LLVM_ENABLE_ZLIB)
@@ -64,25 +71,17 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   endif()
   option(LLVM_ENABLE_WARNINGS "Enable compiler warnings." ON)
   option(LLVM_ENABLE_PEDANTIC "Compile with pedantic enabled." ON)
-  if(CMAKE_COMPILER_IS_GNUCXX)
-    set(USE_NO_MAYBE_UNINITIALIZED 1)
-  endif()
+
+  # They are used as destination of target generators.
+  set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/bin)
+  set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/lib${LLVM_LIBDIR_SUFFIX})
 
   include(CMakeParseArguments)
   include(AddLLVM)
   include(HandleLLVMOptions)
   include(VersionFromVCS)
-
-  if(LINK_WITH_FIR)
-    include(TableGen)
-    find_package(MLIR REQUIRED CONFIG)
-    # Use SYSTEM for the same reasons as for LLVM includes
-    include_directories(SYSTEM ${MLIR_INCLUDE_DIRS})
-    list(APPEND CMAKE_MODULE_PATH ${MLIR_DIR})
-    include(AddMLIR)
-    find_program(MLIR_TABLEGEN_EXE "mlir-tblgen" ${LLVM_TOOLS_BINARY_DIR}
-      NO_DEFAULT_PATH)
-  endif()
+  include(TableGen)
+  include(AddMLIR)
 
   option(LLVM_INSTALL_TOOLCHAIN_ONLY
     "Only include toolchain files in the 'install' target." OFF)
@@ -99,6 +98,8 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   # should not be suppressed).
   include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
   add_definitions(${LLVM_DEFINITIONS})
+  include_directories(SYSTEM ${MLIR_INCLUDE_DIRS})
+  add_definitions(${MLIR_DEFINITIONS})
 
   # LLVM's cmake configuration files currently sneak in a c++11 flag.
   # We look for it here and remove it from Flang's compile flags to
@@ -115,6 +116,10 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   endif()
 
   link_directories("${LLVM_LIBRARY_DIR}")
+
+  set(LLVM_TOOLS_BINARY_DIR ${TOOLS_BINARY_DIR} CACHE PATH "Path to llvm/bin")
+  find_program(MLIR_TABLEGEN_EXE "mlir-tblgen" ${LLVM_TOOLS_BINARY_DIR}
+    NO_DEFAULT_PATH)
 
   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
   set(CMAKE_LIBRARY_OUTPUT_DIRECTORY
@@ -183,34 +188,10 @@ else()
          ${LLVM_INCLUDE_TESTS})
   set(FLANG_GTEST_AVAIL 1)
 
-  if(FLANG_STANDALONE_BUILD)
-    set(FLANG_BINARY_DIR ${CMAKE_BINARY_DIR}/tools/flang)
-  else()
-    set(FLANG_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
-  endif()
-
+  set(FLANG_BINARY_DIR ${CMAKE_BINARY_DIR}/tools/flang)
   set(BACKEND_PACKAGE_STRING "${PACKAGE_STRING}")
-  if (LINK_WITH_FIR)
-    set(MLIR_MAIN_SRC_DIR ${LLVM_MAIN_SRC_DIR}/../mlir/include ) # --src-root
-    set(MLIR_INCLUDE_DIR ${LLVM_MAIN_SRC_DIR}/../mlir/include ) # --includedir
-    set(MLIR_TABLEGEN_OUTPUT_DIR ${CMAKE_BINARY_DIR}/tools/mlir/include)
-    set(MLIR_TABLEGEN_EXE $<TARGET_FILE:mlir-tblgen>)
-    include_directories(SYSTEM ${MLIR_INCLUDE_DIR})
-    include_directories(SYSTEM ${MLIR_TABLEGEN_OUTPUT_DIR})
-  endif()
-endif()
-
-if(LINK_WITH_FIR)
-  # tco tool and FIR lib output directories
-  if(FLANG_STANDALONE_BUILD)
-    set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/bin)
-    set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/lib)
-  endif()
-  # Always build tco tool
-  set(LLVM_BUILD_TOOLS ON)
-  message(STATUS "Linking driver with FIR and LLVM")
-  llvm_map_components_to_libnames(LLVM_COMMON_LIBS support)
-  message(STATUS "LLVM libraries: ${LLVM_COMMON_LIBS}")
+  set(MLIR_BINARY_DIR ${LLVM_BINARY_DIR}/tools/mlir)
+  set(MLIR_SOURCE_DIR ${LLVM_SOURCE_DIR}/../mlir)
 endif()
 
 # Add Flang-centric modules to cmake path.
@@ -218,6 +199,28 @@ include_directories(BEFORE
   ${FLANG_BINARY_DIR}/include
   ${FLANG_SOURCE_DIR}/include)
 
+if(MLIR_SOURCE_DIR)
+  include_directories(BEFORE
+    ${FLANG_BINARY_DIR}/include
+    ${FLANG_SOURCE_DIR}/include
+    ${MLIR_BINARY_DIR}/include
+    ${MLIR_SOURCE_DIR}/include
+    )
+  set(MLIR_MAIN_SRC_DIR ${MLIR_SOURCE_DIR})
+  set(MLIR_INCLUDE_DIR ${MLIR_SOURCE_DIR}/include)
+else()
+  include_directories(BEFORE
+    ${FLANG_BINARY_DIR}/include
+    ${FLANG_SOURCE_DIR}/include
+    ${MLIR_BINARY_DIR}/include
+    )
+  set(MLIR_MAIN_SRC_DIR ${MLIR_BINARY_DIR})
+  set(MLIR_INCLUDE_DIR ${MLIR_BINARY_DIR}/include)
+endif()
+
+set(MLIR_TABLEGEN_EXE mlir-tblgen)
+
+# Add Flang-centric modules to cmake path.
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 
 if (NOT DEFAULT_SYSROOT)
@@ -309,6 +312,9 @@ if (FLANG_ENABLE_WERROR)
     append("-Werror" CMAKE_C_FLAGS CMAKE_CXX_FLAGS)
     append("-Wno-error" CMAKE_REQUIRED_FLAGS)
   endif( LLVM_COMPILER_IS_GCC_COMPATIBLE )
+  if (NOT LLVM_ENABLE_WERROR)
+      message(WARNING "FLANG_ENABLE_WERROR setting is different from LLVM_ENABLE_WERROR.")
+  endif()
 endif()
 
 # Builtin check_cxx_compiler_flag doesn't seem to work correctly
@@ -344,6 +350,10 @@ if (LLVM_COMPILER_IS_GCC_COMPATIBLE)
   # Add to build type flags.
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUGF18")
   set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} -DCHECK=\"(void)\"")
+
+  if (GCC)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --gcc-toolchain=${GCC}")
+  endif()
 
   # Building shared libraries is bad for performance with GCC by default
   # due to the need to preserve the right to override external entry points
@@ -397,6 +407,11 @@ if (FLANG_INCLUDE_TESTS)
   endif ()
 endif()
 
+option(FLANG_INCLUDE_TESTS
+       "Generate build targets for the Flang unit tests."
+       ON)
+enable_testing()
+
 option(FLANG_INCLUDE_DOCS "Generate build targets for the Flang docs."
        ${LLVM_INCLUDE_DOCS})
 if (FLANG_INCLUDE_DOCS)
@@ -435,5 +450,6 @@ if (NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
     PATTERN "*.td"
     PATTERN "config.h" EXCLUDE
     PATTERN ".git"     EXCLUDE
-    PATTERN "CMakeFiles" EXCLUDE)
+    PATTERN "CMakeFiles" EXCLUDE
+    PATTERN "*")
 endif()
