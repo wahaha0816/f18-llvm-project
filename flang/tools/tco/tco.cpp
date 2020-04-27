@@ -98,7 +98,7 @@ compileFIR(const mlir::PassPipelineCLParser &passPipeline) {
     pm.addPass(fir::createPromoteToAffinePass());
     // convert fir dialect to loop
     pm.addPass(fir::createLowerToLoopPass());
-    pm.addPass(fir::createFIRToStdPass(kindMap));
+    pm.addPass(fir::createControlFlowLoweringPass());
     // convert loop dialect to standard
     pm.addPass(mlir::createLowerToCFGPass());
     //pm.addPass(fir::createMemToRegPass());
