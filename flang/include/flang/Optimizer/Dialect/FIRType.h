@@ -140,7 +140,7 @@ public:
   static fir::ComplexType get(mlir::MLIRContext *ctxt, KindTy kind);
 
   /// Get the corresponding fir.real<k> type.
-  mlir::Type getElementType() const;
+  mlir::Type getEleTy() const;
 
   KindTy getFKind() const;
 };
