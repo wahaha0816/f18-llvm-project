@@ -17,6 +17,7 @@
 #include "flang/Optimizer/Support/KindMapping.h"
 #include "flang/Optimizer/Transforms/Passes.h"
 #include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"
+#include "mlir/IR/AsmState.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Parser.h"
@@ -93,7 +94,7 @@ compileFIR(const mlir::PassPipelineCLParser &passPipeline) {
   } else {
     // add all the passes
     // the user can disable them individually
-    pm.addPass(mlir::createCanonicalizerPass());
+    // pm.addPass(mlir::createCanonicalizerPass());
     // convert fir dialect to affine
     pm.addPass(fir::createPromoteToAffinePass());
     // convert fir dialect to loop
@@ -101,7 +102,7 @@ compileFIR(const mlir::PassPipelineCLParser &passPipeline) {
     pm.addPass(fir::createControlFlowLoweringPass());
     // convert loop dialect to standard
     pm.addPass(mlir::createLowerToCFGPass());
-    //pm.addPass(fir::createMemToRegPass());
+    // pm.addPass(fir::createMemToRegPass());
     pm.addPass(fir::createCSEPass());
     pm.addPass(fir::createFIRToLLVMPass(uniquer));
     pm.addPass(fir::createLLVMDialectToLLVMPass(out.os()));
@@ -125,6 +126,8 @@ compileFIR(const mlir::PassPipelineCLParser &passPipeline) {
 int main(int argc, char **argv) {
   fir::registerFIRPasses();
   [[maybe_unused]] InitLLVM y(argc, argv);
+  mlir::registerAsmPrinterCLOptions();
+  mlir::registerMLIRContextCLOptions();
   mlir::registerPassManagerCLOptions();
   mlir::PassPipelineCLParser passPipe("", "Compiler passes to run");
   cl::ParseCommandLineOptions(argc, argv, "Tilikum Crossing Optimizer\n");
