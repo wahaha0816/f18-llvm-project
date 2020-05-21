@@ -94,7 +94,6 @@ compileFIR(const mlir::PassPipelineCLParser &passPipeline) {
   } else {
     // add all the passes
     // the user can disable them individually
-    // pm.addPass(mlir::createCanonicalizerPass());
     // convert fir dialect to affine
     pm.addPass(fir::createPromoteToAffinePass());
     // convert fir dialect to loop
@@ -103,6 +102,7 @@ compileFIR(const mlir::PassPipelineCLParser &passPipeline) {
     // convert loop dialect to standard
     pm.addPass(mlir::createLowerToCFGPass());
     // pm.addPass(fir::createMemToRegPass());
+    pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(fir::createCSEPass());
     pm.addPass(fir::createFIRToLLVMPass(uniquer));
     pm.addPass(fir::createLLVMDialectToLLVMPass(out.os()));
