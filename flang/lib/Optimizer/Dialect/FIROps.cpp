@@ -1416,9 +1416,11 @@ static mlir::ParseResult parseWhereOp(OpAsmParser &parser,
       parser.resolveOperand(cond, i1Type, result.operands))
     return mlir::failure();
 
-  if (parser.parseRegion(*thenRegion, {}, {}))
+  if (parser.parseOptionalArrowTypeList(result.types))
     return mlir::failure();
 
+  if (parser.parseRegion(*thenRegion, {}, {}))
+    return mlir::failure();
   WhereOp::ensureTerminator(*thenRegion, parser.getBuilder(), result.location);
 
   if (!parser.parseOptionalKeyword("else")) {
@@ -1431,7 +1433,6 @@ static mlir::ParseResult parseWhereOp(OpAsmParser &parser,
   // Parse the optional attribute list.
   if (parser.parseOptionalAttrDict(result.attributes))
     return mlir::failure();
-
   return mlir::success();
 }
 
