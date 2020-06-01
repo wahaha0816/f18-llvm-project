@@ -99,7 +99,7 @@ compileFIR(const mlir::PassPipelineCLParser &passPipeline) {
       pm.addPass(fir::createInlinerPass());
     pm.addPass(fir::createPromoteToAffinePass());
     // convert fir dialect to scf
-    pm.addPass(fir::createLowerToScfPass());
+    pm.addPass(fir::createFirToCfgPass());
     pm.addPass(fir::createControlFlowLoweringPass());
     // convert scf dialect to standard
     pm.addPass(mlir::createLowerToCFGPass());
