@@ -42,6 +42,7 @@ struct SpecificCall {
       : specificIntrinsic{std::move(si)}, arguments{std::move(as)} {}
   SpecificIntrinsic specificIntrinsic;
   ActualArguments arguments;
+  std::optional<DynamicType> convertResult;
 };
 
 struct SpecificIntrinsicFunctionInterface : public characteristics::Procedure {

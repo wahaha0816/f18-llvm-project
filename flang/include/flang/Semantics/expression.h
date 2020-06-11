@@ -334,6 +334,7 @@ private:
     // will appear here.
     std::variant<ProcedureDesignator, SymbolRef> u;
     ActualArguments arguments;
+    std::optional<DynamicType> convertResult;
   };
 
   std::optional<CalleeAndArguments> AnalyzeProcedureComponentRef(

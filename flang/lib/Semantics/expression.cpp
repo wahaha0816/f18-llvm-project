@@ -1874,7 +1874,8 @@ auto ExpressionAnalyzer::GetCalleeAndArguments(const parser::Name &name,
             arguments, GetFoldingContext())}) {
       return CalleeAndArguments{
           ProcedureDesignator{std::move(specificCall->specificIntrinsic)},
-          std::move(specificCall->arguments)};
+          std::move(specificCall->arguments),
+          std::move(specificCall->convertResult)};
     }
   } else {
     CheckForBadRecursion(name.source, ultimate);
@@ -1901,7 +1902,8 @@ auto ExpressionAnalyzer::GetCalleeAndArguments(const parser::Name &name,
       // Generics can extend intrinsics
       return CalleeAndArguments{
           ProcedureDesignator{std::move(specificCall->specificIntrinsic)},
-          std::move(specificCall->arguments)};
+          std::move(specificCall->arguments),
+          std::move(specificCall->convertResult)};
     } else {
       EmitGenericResolutionError(*name.symbol);
     }
@@ -1962,8 +1964,12 @@ MaybeExpr ExpressionAnalyzer::Analyze(const parser::FunctionReference &funcRef,
               analyzer.GetActuals(), false /* not subroutine */,
               true /* might be structure constructor */)}) {
     if (auto *proc{std::get_if<ProcedureDesignator>(&callee->u)}) {
-      return MakeFunctionRef(
-          call.source, std::move(*proc), std::move(callee->arguments));
+      auto funcRef{MakeFunctionRef(
+          call.source, std::move(*proc), std::move(callee->arguments))};
+      if (funcRef && callee->convertResult) {
+        return ConvertToType(*callee->convertResult, std::move(*funcRef));
+      }
+      return funcRef;
     } else if (structureConstructor) {
       // Structure constructor misparsed as function reference?
       CHECK(std::holds_alternative<semantics::SymbolRef>(callee->u));

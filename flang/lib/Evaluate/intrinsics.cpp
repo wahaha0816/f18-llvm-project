@@ -1939,25 +1939,10 @@ std::optional<SpecificCall> IntrinsicProcTable::Implementation::Probe(
     }
   }
 
+  // FIXME: do not blindly re-order this.
   // Probe the specific intrinsic function table next.
   parser::Messages specificBuffer;
   auto specificRange{specificFuncs_.equal_range(call.name)};
-  for (auto specIter{specificRange.first}; specIter != specificRange.second;
-       ++specIter) {
-    // We only need to check the cases with distinct generic names.
-    if (const char *genericName{specIter->second->generic}) {
-      if (auto specificCall{
-              matchOrBufferMessages(*specIter->second, specificBuffer)}) {
-        specificCall->specificIntrinsic.name = genericName;
-        specificCall->specificIntrinsic.isRestrictedSpecific =
-            specIter->second->isRestrictedSpecific;
-        // TODO test feature AdditionalIntrinsics, warn on nonstandard
-        // specifics with DoublePrecisionComplex arguments.
-        return specificCall;
-      }
-    }
-  }
-
   // If there was no exact match with a specific, try to match the related
   // generic and convert the result to the specific required type.
   for (auto specIter{specificRange.first}; specIter != specificRange.second;
@@ -1977,12 +1962,26 @@ std::optional<SpecificCall> IntrinsicProcTable::Implementation::Probe(
                 "requirements; using '%s' generic instead and converting the "
                 "result to %s if needed"_en_US,
                 call.name, genericName, newType.AsFortran());
-            specificCall->specificIntrinsic.characteristics.value()
-                .functionResult.value()
-                .SetType(newType);
+            specificCall->convertResult = newType;
             return specificCall;
           }
         }
+      }
+    }
+  }
+
+  for (auto specIter{specificRange.first}; specIter != specificRange.second;
+       ++specIter) {
+    // We only need to check the cases with distinct generic names.
+    if (const char *genericName{specIter->second->generic}) {
+      if (auto specificCall{
+              matchOrBufferMessages(*specIter->second, specificBuffer)}) {
+        specificCall->specificIntrinsic.name = genericName;
+        specificCall->specificIntrinsic.isRestrictedSpecific =
+            specIter->second->isRestrictedSpecific;
+        // TODO test feature AdditionalIntrinsics, warn on nonstandard
+        // specifics with DoublePrecisionComplex arguments.
+        return specificCall;
       }
     }
   }
