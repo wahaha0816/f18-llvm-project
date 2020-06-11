@@ -423,6 +423,22 @@ Expr<Type<TypeCategory::Integer, KIND>> FoldIntrinsicFunction(
         }));
   } else if (name == "max") {
     return FoldMINorMAX(context, std::move(funcRef), Ordering::Greater);
+  } else if (name == "max1" || name == "min1") {
+    // Rewrite MAX1(args) to INT(MAX(args)) and fold. Same logic for MIN1.
+    intrinsic->name = name == "max1" ? "max"s : "min"s;
+    // Start from current functionResult to keep the shape, use the type of the
+    // first argument of max1 for the max result type.
+    const auto &firstArgExpr{DEREF(UnwrapExpr<Expr<SomeReal>>(args[0]))};
+    intrinsic->characteristics.value().functionResult.value().SetType(
+        firstArgExpr.GetType().value());
+    return std::visit(
+        [&](const auto &x) -> Expr<T> {
+          using TR = ResultType<decltype(x)>;
+          FunctionRef<TR> maxRef{std::move(funcRef.proc()), std::move(args)};
+          return Fold(
+              context, ConvertToType<T>(AsCategoryExpr(std::move(maxRef))));
+        },
+        firstArgExpr.u);
   } else if (name == "maxexponent") {
     if (auto *sx{UnwrapExpr<Expr<SomeReal>>(args[0])}) {
       return std::visit(

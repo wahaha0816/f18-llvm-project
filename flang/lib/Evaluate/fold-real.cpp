@@ -37,6 +37,22 @@ Expr<Type<TypeCategory::Real, KIND>> FoldIntrinsicFunction(
       context.messages().Say(
           "%s(real(kind=%d)) cannot be folded on host"_en_US, name, KIND);
     }
+  } else if (name == "amax0" || name == "amin0") {
+    // Rewrite AMAX0(args) to REAL(MAX(args)) and fold. Same logic for AMIN0.
+    intrinsic->name = name == "amax0" ? "max"s : "min"s;
+    // Start from current functionResult to keep the shape, use the type of the
+    // first argument of amax0 for the max result type.
+    const auto &firstArgExpr{DEREF(UnwrapExpr<Expr<SomeInteger>>(args[0]))};
+    intrinsic->characteristics.value().functionResult.value().SetType(
+        firstArgExpr.GetType().value());
+    return std::visit(
+        [&](const auto &x) -> Expr<T> {
+          using TR = ResultType<decltype(x)>;
+          FunctionRef<TR> maxRef{std::move(funcRef.proc()), std::move(args)};
+          return Fold(
+              context, ConvertToType<T>(AsCategoryExpr(std::move(maxRef))));
+        },
+        firstArgExpr.u);
   } else if (name == "atan" || name == "atan2" || name == "hypot" ||
       name == "mod") {
     std::string localName{name == "atan" ? "atan2" : name};
