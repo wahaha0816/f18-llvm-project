@@ -19,6 +19,7 @@ add_flang_library(FortranLower
   Runtime.cpp
 
   DEPENDS
+  FIROpsIncGen
   MLIROpAsmInterfacesIncGen
   MLIRControlFlowInterfaces
   MLIRLinalgStructuredOpsInterfaceIncGen
