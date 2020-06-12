@@ -180,6 +180,7 @@ SequenceType parseSequence(mlir::DialectAsmParser &parser, mlir::Location) {
 
 /// Is `ty` a standard or FIR integer type?
 static bool isaIntegerType(mlir::Type ty) {
+  // TODO: why aren't we using isa_integer? investigatation required.
   return ty.isa<mlir::IntegerType>() || ty.isa<fir::IntType>();
 }
 
