@@ -5,12 +5,12 @@ add_flang_library(FortranLower
   CallInterface.cpp
   CharacterExpr.cpp
   CharacterRuntime.cpp
+  Coarray.cpp
   ComplexExpr.cpp
   ConvertExpr.cpp
   ConvertType.cpp
   DoLoopHelper.cpp
   FIRBuilder.cpp
-  Image.cpp
   IntrinsicCall.cpp
   IO.cpp
   Mangler.cpp
