@@ -13,6 +13,7 @@ add_flang_library(FIROptimizer
   Analysis/IteratedDominanceFrontier.cpp
 
   CodeGen/CodeGen.cpp
+  CodeGen/PreCGRewrite.cpp
 
   Transforms/ControlFlowConverter.cpp
   Transforms/CSE.cpp
@@ -23,6 +24,7 @@ add_flang_library(FIROptimizer
 
   DEPENDS
   FIROpsIncGen
+  FIROptCodeGenPassIncGen
   FIROptTransformsPassIncGen
   ${dialect_libs}
 
