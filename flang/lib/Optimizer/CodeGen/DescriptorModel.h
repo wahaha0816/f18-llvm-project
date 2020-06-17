@@ -65,15 +65,21 @@ TypeBuilderFunc getModel<void *>() {
   };
 }
 template <>
-TypeBuilderFunc getModel<size_t>() {
+TypeBuilderFunc getModel<uint32_t>() {
   return [](mlir::LLVM::LLVMDialect *dialect) {
-    return mlir::LLVM::LLVMType::getIntNTy(dialect, sizeof(size_t) * 8);
+    return mlir::LLVM::LLVMType::getIntNTy(dialect, sizeof(uint32_t) * 8);
   };
 }
 template <>
 TypeBuilderFunc getModel<int>() {
   return [](mlir::LLVM::LLVMDialect *dialect) {
     return mlir::LLVM::LLVMType::getIntNTy(dialect, sizeof(int) * 8);
+  };
+}
+template <>
+TypeBuilderFunc getModel<uint64_t>() {
+  return [](mlir::LLVM::LLVMDialect *dialect) {
+    return mlir::LLVM::LLVMType::getIntNTy(dialect, sizeof(uint64_t) * 8);
   };
 }
 template <>
