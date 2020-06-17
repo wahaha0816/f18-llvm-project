@@ -54,7 +54,7 @@ findInterfaceIfSeperateMP(const Fortran::semantics::Symbol &symbol) {
     // FIXME symbol from MpSubprogramStmt do not seem to have
     // Attr::MODULE set.
     const auto *iface = scope.parent().FindSymbol(symbol.name());
-    assert(iface && "Separate module proc must be declared");
+    assert(iface && "Separate module procedure must be declared");
     return iface;
   }
   return nullptr;
