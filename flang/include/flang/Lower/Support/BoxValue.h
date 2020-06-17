@@ -57,6 +57,8 @@ struct CharBoxValue : public AbstractBox {
   CharBoxValue(mlir::Value addr, mlir::Value len)
       : AbstractBox{addr}, len{len} {}
 
+  CharBoxValue clone(mlir::Value newBase) const { return {newBase, len}; }
+
   mlir::Value getLen() const { return len; }
   mlir::Value getBuffer() const { return getAddr(); }
 
@@ -102,6 +104,10 @@ struct ArrayBoxValue : public AbstractBox, public AbstractArrayBox {
                 llvm::ArrayRef<mlir::Value> lbounds = {})
       : AbstractBox{addr}, AbstractArrayBox{extents, lbounds} {}
 
+  ArrayBoxValue clone(mlir::Value newBase) const {
+    return {newBase, extents, lbounds};
+  }
+
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &,
                                        const ArrayBoxValue &);
   void dump() const { operator<<(llvm::errs(), *this); }
@@ -114,6 +120,10 @@ struct CharArrayBoxValue : public CharBoxValue, public AbstractArrayBox {
                     llvm::ArrayRef<mlir::Value> lbounds = {})
       : CharBoxValue{addr, len}, AbstractArrayBox{extents, lbounds} {}
 
+  CharArrayBoxValue clone(mlir::Value newBase) const {
+    return {newBase, len, extents, lbounds};
+  }
+
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &,
                                        const CharArrayBoxValue &);
   void dump() const { operator<<(llvm::errs(), *this); }
@@ -124,6 +134,10 @@ struct CharArrayBoxValue : public CharBoxValue, public AbstractArrayBox {
 struct ProcBoxValue : public AbstractBox {
   ProcBoxValue(mlir::Value addr, mlir::Value context)
       : AbstractBox{addr}, hostContext{context} {}
+
+  ProcBoxValue clone(mlir::Value newBase) const {
+    return {newBase, hostContext};
+  }
 
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &,
                                        const ProcBoxValue &);
@@ -148,6 +162,10 @@ struct BoxValue : public AbstractBox, public AbstractArrayBox {
       : AbstractBox{addr}, AbstractArrayBox{extents, lbounds}, len{len},
         params{params.begin(), params.end()} {}
 
+  BoxValue clone(mlir::Value newBase) const {
+    return {newBase, len, params, extents, lbounds};
+  }
+
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &, const BoxValue &);
   void dump() const { operator<<(llvm::errs(), *this); }
 
@@ -162,6 +180,7 @@ class ExtendedValue;
 
 mlir::Value getBase(const ExtendedValue &exv);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &, const ExtendedValue &);
+ExtendedValue substBase(const ExtendedValue &exv, mlir::Value base);
 
 /// An extended value is a box of values pertaining to a discrete entity. It is
 /// used in lowering to track all the runtime values related to an entity. For
@@ -187,6 +206,7 @@ public:
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &,
                                        const ExtendedValue &);
   friend mlir::Value getBase(const ExtendedValue &exv);
+  friend ExtendedValue substBase(const ExtendedValue &exv, mlir::Value base);
 
 private:
   std::variant<UnboxedValue, CharBoxValue, ArrayBoxValue, CharArrayBoxValue,
