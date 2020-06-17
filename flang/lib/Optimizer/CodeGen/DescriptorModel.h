@@ -77,12 +77,6 @@ TypeBuilderFunc getModel<int>() {
   };
 }
 template <>
-TypeBuilderFunc getModel<uint64_t>() {
-  return [](mlir::LLVM::LLVMDialect *dialect) {
-    return mlir::LLVM::LLVMType::getIntNTy(dialect, sizeof(uint64_t) * 8);
-  };
-}
-template <>
 TypeBuilderFunc getModel<Fortran::ISO::CFI_rank_t>() {
   return [](mlir::LLVM::LLVMDialect *dialect) {
     return mlir::LLVM::LLVMType::getIntNTy(
@@ -121,7 +115,7 @@ getModel<Fortran::ISO::cfi_internal::FlexibleArray<Fortran::ISO::CFI_dim_t>>() {
 /// Get the type model of the field number `Field` in an ISO descriptor.
 template <int Field>
 static constexpr TypeBuilderFunc getDescFieldTypeModel() {
-  Fortran::ISO::Fortran_2018::CFI_cdesc_t dummyDesc;
+  Fortran::ISO::Fortran_2018::CFI_cdesc_t dummyDesc{};
   // check that the descriptor is exactly 8 fields
   auto [a, b, c, d, e, f, g, h] = dummyDesc;
   auto tup = std::tie(a, b, c, d, e, f, g, h);
