@@ -126,15 +126,12 @@ struct SymbolBox {
   mlir::Value getLBound(unsigned dim) const {
     return std::visit(
         common::visitors{[&](const FullDim &box) {
-                           assert(dim < box.lbounds.size());
                            return box.lbounds[dim];
                          },
                          [&](const CharFullDim &box) {
-                           assert(dim < box.lbounds.size());
                            return box.lbounds[dim];
                          },
                          [&](const Derived &box) {
-                           assert(dim < box.lbounds.size());
                            return box.lbounds[dim];
                          },
                          [](const auto &) { return mlir::Value{}; }},
