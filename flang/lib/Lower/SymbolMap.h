@@ -239,4 +239,4 @@ private:
 
 } // namespace Fortran::lower
 
-#endif // FORTRAN_LOWER_FIRBUILDER_H
+#endif // FORTRAN_LOWER_SYMBOL_H
