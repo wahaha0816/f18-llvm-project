@@ -55,7 +55,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Get the mlir instance of a symbol.
-  virtual mlir::Value lookupSymbol(const Fortran::semantics::Symbol &sym) = 0;
+  virtual mlir::Value getSymbolAddress(SymbolRef sym) = 0;
 
   //===--------------------------------------------------------------------===//
   // Expressions
