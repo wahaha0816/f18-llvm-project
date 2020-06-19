@@ -22,6 +22,10 @@
 
 namespace Fortran::lower {
 
+//===----------------------------------------------------------------------===//
+// Symbol information
+//===----------------------------------------------------------------------===//
+
 /// A dictionary entry of ssa-values that together compose a variable referenced
 /// by a Symbol. For example, the declaration
 ///
@@ -68,6 +72,7 @@ struct SymbolBox {
   // Accessors
   //===--------------------------------------------------------------------===//
 
+  /// Get address of the boxed value. For a scalar, this is the address of the scalar. For an array, this is the address of the first element in the array, etc.
   mlir::Value getAddr() const {
     return std::visit(common::visitors{
                           [](const None &) { return mlir::Value{}; },
@@ -76,6 +81,7 @@ struct SymbolBox {
                       box);
   }
 
+  /// Get the LEN type parameter of a CHARACTER boxed value.
   llvm::Optional<mlir::Value> getCharLen() const {
     using T = llvm::Optional<mlir::Value>;
     return std::visit(common::visitors{
@@ -86,6 +92,7 @@ struct SymbolBox {
                       box);
   }
 
+  /// Does the boxed value have an intrinsic type?
   bool isIntrinsic() const {
     return std::visit(common::visitors{
                           [](const Intrinsic &) { return true; },
@@ -95,6 +102,7 @@ struct SymbolBox {
                       box);
   }
 
+  /// Does the boxed value have a rank greater than zero?
   bool hasRank() const {
     return std::visit(common::visitors{
                           [](const Intrinsic &) { return false; },
@@ -105,6 +113,7 @@ struct SymbolBox {
                       box);
   }
 
+  /// Does the boxed value have trivial lower bounds (== 1)?
   bool hasSimpleLBounds() const {
     if (auto *arr = std::get_if<FullDim>(&box))
       return arr->lbounds.empty();
@@ -115,6 +124,7 @@ struct SymbolBox {
     return false;
   }
 
+  /// Does the boxed value have a constant shape?
   bool hasConstantShape() const {
     if (auto eleTy = fir::dyn_cast_ptrEleTy(getAddr().getType()))
       if (auto arrTy = eleTy.dyn_cast<fir::SequenceType>())
@@ -125,19 +135,15 @@ struct SymbolBox {
   /// Get the lbound if the box explicitly contains it.
   mlir::Value getLBound(unsigned dim) const {
     return std::visit(
-        common::visitors{[&](const FullDim &box) {
-                           return box.lbounds[dim];
-                         },
-                         [&](const CharFullDim &box) {
-                           return box.lbounds[dim];
-                         },
-                         [&](const Derived &box) {
-                           return box.lbounds[dim];
-                         },
-                         [](const auto &) { return mlir::Value{}; }},
+        common::visitors{
+            [&](const FullDim &box) { return box.lbounds[dim]; },
+            [&](const CharFullDim &box) { return box.lbounds[dim]; },
+            [&](const Derived &box) { return box.lbounds[dim]; },
+            [](const auto &) { return mlir::Value{}; }},
         box);
   }
 
+  /// Apply the lambda `func` to this box value.
   template <typename ON, typename RT>
   constexpr RT apply(RT(&&func)(const ON &)) const {
     if (auto *x = std::get_if<ON>(&box))
@@ -147,6 +153,10 @@ struct SymbolBox {
 
   std::variant<Intrinsic, FullDim, Char, CharFullDim, Derived, None> box;
 };
+
+//===----------------------------------------------------------------------===//
+// Map of symbol information
+//===----------------------------------------------------------------------===//
 
 /// Helper class to map front-end symbols to their MLIR representation. This
 /// provides a way to lookup the ssa-values that comprise a Fortran symbol's
@@ -215,10 +225,13 @@ public:
     return (iter == symbolMap.end()) ? SymbolBox() : iter->second;
   }
 
+  /// Remove `sym` from the map.
   void erase(semantics::SymbolRef sym) { symbolMap.erase(&*sym); }
 
+  /// Remove all symbols from the map.
   void clear() { symbolMap.clear(); }
 
+  /// Dump the map. For debugging.
   void dump() const;
 
 private:
