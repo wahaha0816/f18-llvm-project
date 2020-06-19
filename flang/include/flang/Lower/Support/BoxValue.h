@@ -215,10 +215,4 @@ private:
 };
 } // namespace fir
 
-namespace Fortran::lower {
-
-using ExValue = fir::ExtendedValue;
-
-} // namespace Fortran::lower
-
 #endif // LOWER_SUPPORT_BOXVALUE_H
