@@ -66,13 +66,18 @@ struct SymbolBox {
   SymbolBox(const A &x) : box{x} {}
 
   operator bool() const { return !std::holds_alternative<None>(box); }
+
+  // This operator returns the address of the boxed value. TODO: consider
+  // eliminating this in favor of explicit conversion.
   operator mlir::Value() const { return getAddr(); }
 
   //===--------------------------------------------------------------------===//
   // Accessors
   //===--------------------------------------------------------------------===//
 
-  /// Get address of the boxed value. For a scalar, this is the address of the scalar. For an array, this is the address of the first element in the array, etc.
+  /// Get address of the boxed value. For a scalar, this is the address of the
+  /// scalar. For an array, this is the address of the first element in the
+  /// array, etc.
   mlir::Value getAddr() const {
     return std::visit(common::visitors{
                           [](const None &) { return mlir::Value{}; },
