@@ -59,6 +59,9 @@ public:
   /// Get the size in bits of !fir.logical<kind>
   Bitsize getLogicalBitsize(KindTy kind) const;
 
+  /// Get the size in bits of !fir.real<kind>
+  Bitsize getRealBitsize(KindTy kind) const;
+
   /// Get the LLVM Type::TypeID of !fir.real<kind>
   LLVMTypeID getRealTypeID(KindTy kind) const;
 
