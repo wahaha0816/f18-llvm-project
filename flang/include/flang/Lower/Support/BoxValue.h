@@ -16,11 +16,11 @@
 #include <variant>
 
 namespace fir {
-struct CharBoxValue;
-struct ArrayBoxValue;
-struct CharArrayBoxValue;
-struct BoxValue;
-struct ProcBoxValue;
+class CharBoxValue;
+class ArrayBoxValue;
+class CharArrayBoxValue;
+class BoxValue;
+class ProcBoxValue;
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &, const CharBoxValue &);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &, const ArrayBoxValue &);
@@ -32,7 +32,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &, const ProcBoxValue &);
 //
 // Boxed values
 //
-// Define a set of containers to use internal to the lowering bridge to keep
+// Define a set of containers used internally by the lowering bridge to keep
 // track of extended values associated with a Fortran subexpression. These
 // associations are maintained during the construction of FIR.
 //
@@ -43,17 +43,20 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &, const ProcBoxValue &);
 using UnboxedValue = mlir::Value;
 
 /// Abstract base class.
-struct AbstractBox {
+class AbstractBox {
+public:
   AbstractBox() = delete;
   AbstractBox(mlir::Value addr) : addr{addr} {}
   mlir::Value getAddr() const { return addr; }
 
+protected:
   mlir::Value addr;
 };
 
 /// Expressions of CHARACTER type have an associated, possibly dynamic LEN
 /// value.
-struct CharBoxValue : public AbstractBox {
+class CharBoxValue : public AbstractBox {
+public:
   CharBoxValue(mlir::Value addr, mlir::Value len)
       : AbstractBox{addr}, len{len} {}
 
@@ -66,6 +69,7 @@ struct CharBoxValue : public AbstractBox {
                                        const CharBoxValue &);
   void dump() const { llvm::errs() << *this; }
 
+protected:
   mlir::Value len;
 };
 
@@ -73,7 +77,8 @@ struct CharBoxValue : public AbstractBox {
 /// Expressions of type array have at minimum a shape. These expressions may
 /// have lbound attributes (dynamic values) that affect the interpretation of
 /// indexing expressions.
-struct AbstractArrayBox {
+class AbstractArrayBox {
+public:
   AbstractArrayBox() = default;
   AbstractArrayBox(llvm::ArrayRef<mlir::Value> extents,
                    llvm::ArrayRef<mlir::Value> lbounds)
@@ -93,13 +98,15 @@ struct AbstractArrayBox {
 
   bool lboundsAllOne() const { return lbounds.empty(); }
 
+protected:
   llvm::SmallVector<mlir::Value, 4> extents;
   llvm::SmallVector<mlir::Value, 4> lbounds;
 };
 
 /// Expressions with rank > 0 have extents. They may also have lbounds that are
 /// not 1.
-struct ArrayBoxValue : public AbstractBox, public AbstractArrayBox {
+class ArrayBoxValue : public AbstractBox, public AbstractArrayBox {
+public:
   ArrayBoxValue(mlir::Value addr, llvm::ArrayRef<mlir::Value> extents,
                 llvm::ArrayRef<mlir::Value> lbounds = {})
       : AbstractBox{addr}, AbstractArrayBox{extents, lbounds} {}
@@ -114,7 +121,8 @@ struct ArrayBoxValue : public AbstractBox, public AbstractArrayBox {
 };
 
 /// Expressions of type CHARACTER and with rank > 0.
-struct CharArrayBoxValue : public CharBoxValue, public AbstractArrayBox {
+class CharArrayBoxValue : public CharBoxValue, public AbstractArrayBox {
+public:
   CharArrayBoxValue(mlir::Value addr, mlir::Value len,
                     llvm::ArrayRef<mlir::Value> extents,
                     llvm::ArrayRef<mlir::Value> lbounds = {})
@@ -131,7 +139,8 @@ struct CharArrayBoxValue : public CharBoxValue, public AbstractArrayBox {
 
 /// Expressions that are procedure POINTERs may need a set of references to
 /// variables in the host scope.
-struct ProcBoxValue : public AbstractBox {
+class ProcBoxValue : public AbstractBox {
+public:
   ProcBoxValue(mlir::Value addr, mlir::Value context)
       : AbstractBox{addr}, hostContext{context} {}
 
@@ -139,16 +148,20 @@ struct ProcBoxValue : public AbstractBox {
     return {newBase, hostContext};
   }
 
+  mlir::Value getHostContext() const { return hostContext; }
+
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &,
                                        const ProcBoxValue &);
   void dump() const { operator<<(llvm::errs(), *this); }
 
+protected:
   mlir::Value hostContext;
 };
 
 /// In the generalized form, a boxed value can have a dynamic size, be an array
 /// with dynamic extents and lbounds, and take dynamic type parameters.
-struct BoxValue : public AbstractBox, public AbstractArrayBox {
+class BoxValue : public AbstractBox, public AbstractArrayBox {
+public:
   BoxValue(mlir::Value addr) : AbstractBox{addr}, AbstractArrayBox{} {}
   BoxValue(mlir::Value addr, mlir::Value len)
       : AbstractBox{addr}, AbstractArrayBox{}, len{len} {}
@@ -166,9 +179,15 @@ struct BoxValue : public AbstractBox, public AbstractArrayBox {
     return {newBase, len, params, extents, lbounds};
   }
 
+  mlir::Value getLen() const { return len; }
+  const llvm::SmallVectorImpl<mlir::Value> &getLenTypeParams() const {
+    return params;
+  }
+
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &, const BoxValue &);
   void dump() const { operator<<(llvm::errs(), *this); }
 
+protected:
   mlir::Value len;
   llvm::SmallVector<mlir::Value, 2> params;
 };
