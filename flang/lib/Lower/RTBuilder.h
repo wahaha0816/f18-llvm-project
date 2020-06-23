@@ -32,6 +32,10 @@ namespace Fortran::lower {
 using TypeBuilderFunc = mlir::Type (*)(mlir::MLIRContext *);
 using FuncTypeBuilderFunc = mlir::FunctionType (*)(mlir::MLIRContext *);
 
+//===----------------------------------------------------------------------===//
+// Type builder models
+//===----------------------------------------------------------------------===//
+
 /// Return a function that returns the type signature model for the type `T`
 /// when provided an MLIRContext*. This allows one to translate C(++) function
 /// signatures from runtime header files to MLIR signatures into a static table
@@ -203,6 +207,10 @@ struct RuntimeTableKey<RT(ATs...)> {
     };
   }
 };
+
+//===----------------------------------------------------------------------===//
+// Runtime table building (constexpr folded)
+//===----------------------------------------------------------------------===//
 
 #if defined(__clang__)
 #pragma clang diagnostic push
