@@ -211,8 +211,8 @@ void Fortran::lower::CharacterExprHelper::createAssign(
   // if needed.
   mlir::Value copyCount = lhs.getLen();
   if (!compileTimeSameLength)
-    copyCount = Fortran::lower::IntrinsicCallOpsHelper{builder, loc}.genMin(
-        {lhs.getLen(), rhs.getLen()});
+    copyCount =
+        Fortran::lower::genMin(builder, loc, {lhs.getLen(), rhs.getLen()});
 
   fir::CharBoxValue safeRhs = rhs;
   if (needToMaterialize(rhs)) {
