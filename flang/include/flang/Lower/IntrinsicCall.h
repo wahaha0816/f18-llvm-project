@@ -11,6 +11,10 @@
 
 #include "flang/Lower/FIRBuilder.h"
 
+namespace fir {
+class ExtendedValue;
+}
+
 namespace Fortran::lower {
 
 // TODO: Expose interface to get specific intrinsic function address.
@@ -32,8 +36,9 @@ public:
   /// Generate the FIR+MLIR operations for the generic intrinsic \p name
   /// with arguments \p args and expected result type \p resultType.
   /// Returned mlir::Value is the returned Fortran intrinsic value.
-  mlir::Value genIntrinsicCall(llvm::StringRef name, mlir::Type resultType,
-                               llvm::ArrayRef<mlir::Value> args);
+  fir::ExtendedValue genIntrinsicCall(llvm::StringRef name,
+                                      mlir::Type resultType,
+                                      llvm::ArrayRef<fir::ExtendedValue> args);
 
   //===--------------------------------------------------------------------===//
   // Direct access to intrinsics that may be used by lowering outside
