@@ -238,6 +238,12 @@ LLVMTypeID fir::KindMapping::getComplexTypeID(KindTy kind) const {
   return getFloatLikeTypeID<'c'>(kind, floatMap);
 }
 
+Bitsize fir::KindMapping::getRealBitsize(KindTy kind) const {
+  auto typeId = getFloatLikeTypeID<'r'>(kind, floatMap);
+  llvm::LLVMContext llCtxt; // FIXME
+  return llvm::Type::getPrimitiveType(llCtxt, typeId)->getPrimitiveSizeInBits();
+}
+
 const llvm::fltSemantics &
 fir::KindMapping::getFloatSemantics(KindTy kind) const {
   return getFloatSemanticsOfKind<'r'>(kind, floatMap);
