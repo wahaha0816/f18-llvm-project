@@ -1142,6 +1142,45 @@ private:
         return details->stmtFunction().has_value();
     return false;
   }
+  /// Generate Statement function calls
+  fir::ExtendedValue
+  genStmtFunctionRef(const Fortran::evaluate::ProcedureRef &procRef,
+                     mlir::ArrayRef<mlir::Type> resultType) {
+    const auto *symbol = procRef.proc().GetSymbol();
+    assert(symbol && "expected symbol in ProcedureRef of statement functions");
+    const auto &details = symbol->get<Fortran::semantics::SubprogramDetails>();
+
+    // Statement functions have their own scope, we just need to associate
+    // the dummy symbols to argument expressions. They are no
+    // optional/alternate return arguments. Statement functions cannot be
+    // recursive (directly or indirectly) so it is safe to add dummy symbols to
+    // the local map here.
+    for (const auto &pair :
+         llvm::zip(details.dummyArgs(), procRef.arguments())) {
+      assert(std::get<0>(pair) && "alternate return in statement function");
+      const auto &dummySymbol = *std::get<0>(pair);
+      assert(std::get<1>(pair) && "optional argument in statement function");
+      const auto *expr = std::get<1>(pair)->UnwrapExpr();
+      // TODO: assumed type in statement function, that surprisingly seems
+      // allowed, probably because nobody thought of restricting this usage.
+      // gfortran/ifort compiles this.
+      assert(expr && "assumed type used as statement function argument");
+      auto argVal = genval(*expr);
+      if (auto *charBox = argVal.getCharBox()) {
+        symMap.addCharSymbol(dummySymbol, charBox->getBuffer(),
+                             charBox->getLen());
+      } else {
+        // As per Fortran 2018 C1580, statement function arguments can only be
+        // scalars, so just pass the base address.
+        symMap.addSymbol(dummySymbol, fir::getBase(argVal));
+      }
+    }
+    auto result = genval(details.stmtFunction().value());
+    // Remove dummy local arguments from the map.
+    for (const auto *dummySymbol : details.dummyArgs())
+      symMap.erase(*dummySymbol);
+    return result;
+  }
 
   fir::ExtendedValue
   genProcedureRef(const Fortran::evaluate::ProcedureRef &procRef,
@@ -1149,14 +1188,8 @@ private:
     if (const auto *intrinsic = procRef.proc().GetSpecificIntrinsic())
       return genIntrinsicRef(procRef, *intrinsic, resultType[0]);
 
-    // TODO: Statement function: either directly inlined here,
-    // or as a normal call (the function would have to be generated,
-    // it may capture local variables in the expression).
-    if (isStatementFunctionCall(procRef)) {
-      mlir::emitError(getLoc(),
-                      "Statement function calls not yet handled in lowering");
-      exit(1);
-    }
+    if (isStatementFunctionCall(procRef))
+      return genStmtFunctionRef(procRef, resultType);
 
     // Implicit interface implementation only
     // TODO: Explicit interface, we need to use Characterize here,
@@ -1176,16 +1209,16 @@ private:
       mlir::Value argVal;
       if (const auto *argSymbol =
               Fortran::evaluate::UnwrapWholeSymbolDataRef(*expr)) {
-        argRef = symMap.lookupSymbol(*argSymbol);
+        argVal = symMap.lookupSymbol(*argSymbol);
       } else {
         auto exv = genval(*expr);
         // FIXME: should use the box values, etc.
         argVal = fir::getBase(exv);
-        auto type = argVal.getType();
-        if (fir::isa_passbyref_type(type) || type.isa<mlir::FunctionType>()) {
-          argRef = argVal;
-          argVal = {};
-        }
+      }
+      auto type = argVal.getType();
+      if (fir::isa_passbyref_type(type) || type.isa<mlir::FunctionType>()) {
+        argRef = argVal;
+        argVal = {};
       }
       assert((argVal || argRef) && "needs value or address");
 
