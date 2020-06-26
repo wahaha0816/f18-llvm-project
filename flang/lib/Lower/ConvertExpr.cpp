@@ -1145,6 +1145,43 @@ private:
         return details->stmtFunction().has_value();
     return false;
   }
+  /// Generate Statement function calls
+  fir::ExtendedValue
+  genStmtFunctionRef(const Fortran::evaluate::ProcedureRef &procRef,
+                     mlir::ArrayRef<mlir::Type> resultType) {
+    const auto *symbol = procRef.proc().GetSymbol();
+    assert(symbol && "expected symbol in ProcedureRef of statement functions");
+    const auto &details = symbol->get<Fortran::semantics::SubprogramDetails>();
+
+    // Statement functions have their own scope, we just need to associate
+    // the dummy symbols to argument expressions. They are no
+    // optional/alternate return arguments. Statement functions cannot be
+    // recursive (directly or indirectly) so it is safe to add dummy symbols to
+    // the local map here.
+    for (const auto &pair :
+         llvm::zip(details.dummyArgs(), procRef.arguments())) {
+      assert(std::get<0>(pair) && "alternate return in statement function");
+      const auto &dummySymbol = *std::get<0>(pair);
+      assert(std::get<1>(pair) && "optional argument in statement function");
+      const auto *expr = std::get<1>(pair)->UnwrapExpr();
+      // TODO: Are assumed type in statement function forbidden ?
+      assert(expr && "assumed type in statement function");
+      auto argVal = genval(*expr);
+      if (auto *unboxed = argVal.getUnboxed()) {
+        symMap.addSymbol(dummySymbol, *unboxed);
+      } else {
+        // TODO: add map.addSymbol from fir::ExtendedValue ?
+        mlir::emitError(getLoc(),
+                        "todo: unhandled argument type in statement function");
+        exit(1);
+      }
+    }
+    auto result = genval(details.stmtFunction().value());
+    // Remove dummy local arguments from the map.
+    for (const auto *dummySymbol : details.dummyArgs())
+      symMap.erase(*dummySymbol);
+    return result;
+  }
 
   fir::ExtendedValue
   genProcedureRef(const Fortran::evaluate::ProcedureRef &procRef,
@@ -1152,14 +1189,8 @@ private:
     if (const auto *intrinsic = procRef.proc().GetSpecificIntrinsic())
       return genIntrinsicRef(procRef, *intrinsic, resultType[0]);
 
-    // TODO: Statement function: either directly inlined here,
-    // or as a normal call (the function would have to be generated,
-    // it may capture local variables in the expression).
-    if (isStatementFunctionCall(procRef)) {
-      mlir::emitError(getLoc(),
-                      "Statement function calls not yet handled in lowering");
-      exit(1);
-    }
+    if (isStatementFunctionCall(procRef))
+      return genStmtFunctionRef(procRef, resultType);
 
     // Implicit interface implementation only
     // TODO: Explicit interface, we need to use Characterize here,
