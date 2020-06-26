@@ -739,17 +739,14 @@ private:
     // - derived type constant
     if (con.Rank() > 0)
       return genArrayLit(con);
-
-    using T = Fortran::evaluate::Type<TC, KIND>;
-    const std::optional<Fortran::evaluate::Scalar<T>> &opt =
-        con.GetScalarValue();
-    if (!opt.has_value())
-      llvm_unreachable("constant has no value");
-    if constexpr (TC == Fortran::common::TypeCategory::Character) {
-      return genCharLit<KIND>(opt.value(), con.LEN());
-    } else {
-      return genScalarLit<TC, KIND>(opt.value());
+    if (auto opt = con.GetScalarValue()) {
+      if constexpr (TC == Fortran::common::TypeCategory::Character) {
+        return genCharLit<KIND>(opt.value(), con.LEN());
+      } else {
+        return genScalarLit<TC, KIND>(opt.value());
+      }
     }
+    llvm_unreachable("constant has no value");
   }
 
   template <Fortran::common::TypeCategory TC>
