@@ -206,11 +206,15 @@ static mlir::FuncOp getOutputFunc(mlir::Location loc,
     return ty.getFKind() <= 4
                ? getIORuntimeFunc<mkIOKey(OutputComplex32)>(loc, builder)
                : getIORuntimeFunc<mkIOKey(OutputComplex64)>(loc, builder);
-  if (auto ty = type.dyn_cast<fir::LogicalType>())
+  if (type.isa<fir::LogicalType>())
     return getIORuntimeFunc<mkIOKey(OutputLogical)>(loc, builder);
-  if (auto ty = type.dyn_cast<fir::BoxType>())
+  if (type.isa<fir::BoxType>())
     return getIORuntimeFunc<mkIOKey(OutputDescriptor)>(loc, builder);
-  return getIORuntimeFunc<mkIOKey(OutputAscii)>(loc, builder);
+  if (Fortran::lower::CharacterExprHelper::isCharacter(type))
+    return getIORuntimeFunc<mkIOKey(OutputAscii)>(loc, builder);
+  // TODO: handle arrays
+  mlir::emitError(loc, "output for entity type ") << type << " not implemented";
+  return {};
 }
 
 /// Generate a sequence of output data transfer calls.
@@ -274,11 +278,15 @@ static mlir::FuncOp getInputFunc(mlir::Location loc,
     return ty.getFKind() <= 4
                ? getIORuntimeFunc<mkIOKey(InputReal32)>(loc, builder)
                : getIORuntimeFunc<mkIOKey(InputReal64)>(loc, builder);
-  if (auto ty = type.dyn_cast<fir::LogicalType>())
+  if (type.isa<fir::LogicalType>())
     return getIORuntimeFunc<mkIOKey(InputLogical)>(loc, builder);
-  if (auto ty = type.dyn_cast<fir::BoxType>())
+  if (type.isa<fir::BoxType>())
     return getIORuntimeFunc<mkIOKey(InputDescriptor)>(loc, builder);
-  return getIORuntimeFunc<mkIOKey(InputAscii)>(loc, builder);
+  if (Fortran::lower::CharacterExprHelper::isCharacter(type))
+    return getIORuntimeFunc<mkIOKey(InputAscii)>(loc, builder);
+  // TODO: handle arrays
+  mlir::emitError(loc, "input for entity type ") << type << " not implemented";
+  return {};
 }
 
 /// Generate a sequence of input data transfer calls.

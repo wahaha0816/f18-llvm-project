@@ -442,9 +442,8 @@ bool Fortran::lower::CharacterExprHelper::isCharacter(mlir::Type type) {
     return true;
   if (auto refType = type.dyn_cast<fir::ReferenceType>())
     type = refType.getEleTy();
-  if (auto seqType = type.dyn_cast<fir::SequenceType>()) {
+  if (auto seqType = type.dyn_cast<fir::SequenceType>())
     type = seqType.getEleTy();
-  }
   return type.isa<fir::CharacterType>();
 }
 
