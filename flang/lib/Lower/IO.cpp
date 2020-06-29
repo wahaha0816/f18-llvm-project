@@ -1401,6 +1401,6 @@ mlir::Value Fortran::lower::genInquireStatement(
   beginFunc = getIORuntimeFunc<mkIOKey(BeginInquireFile)>(loc, builder);
   // else
   beginFunc = getIORuntimeFunc<mkIOKey(BeginInquireIoLength)>(loc, builder);
-  TODO();
-  return {};
+  // TODO: implement this!
+  llvm::report_fatal_error("INQUIRE statement is not implemented");
 }
