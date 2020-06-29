@@ -65,38 +65,61 @@ fir::CharBoxValue Fortran::lower::CharacterExprHelper::materializeValue(
 
 fir::CharBoxValue
 Fortran::lower::CharacterExprHelper::toDataLengthPair(mlir::Value character) {
+  // TODO: get rid of toDataLengthPair when adding support for arrays
+  auto charBox = toExtendedValue(character).getCharBox();
+  assert(charBox && "Array unsupported in character lowering helper");
+  return *charBox;
+}
+
+fir::ExtendedValue
+Fortran::lower::CharacterExprHelper::toExtendedValue(mlir::Value character,
+                                                     mlir::Value len) {
   auto lenType = getLengthType();
   auto type = character.getType();
-  if (auto boxCharType = type.dyn_cast<fir::BoxCharType>()) {
+  auto base = character;
+  mlir::Value resultLen = len;
+  llvm::SmallVector<mlir::Value, 2> extents;
+
+  if (auto refType = type.dyn_cast<fir::ReferenceType>())
+    type = refType.getEleTy();
+
+  if (auto arrayType = type.dyn_cast<fir::SequenceType>()) {
+    type = arrayType.getEleTy();
+    auto shape = arrayType.getShape();
+    auto cstLen = shape[0];
+    if (!resultLen && cstLen != fir::SequenceType::getUnknownExtent())
+      resultLen = builder.createIntegerConstant(loc, lenType, cstLen);
+    // FIXME: only allow `?` in last dimension ?
+    auto typeExtents =
+        llvm::ArrayRef<fir::SequenceType::Extent>{shape}.drop_front();
+    for (auto extent : typeExtents) {
+      if (extent == fir::SequenceType::getUnknownExtent())
+        extents.emplace_back(mlir::Value{});
+      else
+        extents.emplace_back(
+            builder.createIntegerConstant(loc, builder.getIndexType(), extent));
+    }
+  } else if (type.isa<fir::CharacterType>()) {
+    if (!resultLen)
+      resultLen = builder.createIntegerConstant(loc, lenType, 1);
+  } else if (auto boxCharType = type.dyn_cast<fir::BoxCharType>()) {
     auto refType = builder.getRefType(boxCharType.getEleTy());
     auto unboxed =
         builder.create<fir::UnboxCharOp>(loc, refType, lenType, character);
-    return {unboxed.getResult(0), unboxed.getResult(1)};
+    base = unboxed.getResult(0);
+    if (!resultLen)
+      resultLen = unboxed.getResult(1);
+  } else if (type.isa<fir::BoxType>()) {
+    mlir::emitError(loc, "descriptor or derived type not yet handled");
+  } else {
+    llvm_unreachable("Cannot translate mlir::Value to character ExtendedValue");
   }
-  if (auto seqType = type.dyn_cast<fir::CharacterType>()) {
-    // Materialize length for usage into character manipulations.
-    auto len = builder.createIntegerConstant(loc, lenType, 1);
-    return {character, len};
-  }
-  if (auto refType = type.dyn_cast<fir::ReferenceType>())
-    type = refType.getEleTy();
-  if (auto seqType = type.dyn_cast<fir::SequenceType>()) {
-    assert(seqType.hasConstantShape() &&
-           "ssa array value must have constant length");
-    auto shape = seqType.getShape();
-    assert(shape.size() == 1 && "only scalar character supported");
-    // Materialize length for usage into character manipulations.
-    auto len = builder.createIntegerConstant(loc, lenType, shape[0]);
-    // FIXME: this seems to work for tests, but don't think it is correct
-    if (auto load = dyn_cast<fir::LoadOp>(character.getDefiningOp()))
-      return {load.memref(), len};
-    return {character, len};
-  }
-  if (auto charTy = type.dyn_cast<fir::CharacterType>()) {
-    auto len = builder.createIntegerConstant(loc, lenType, 1);
-    return {character, len};
-  }
-  llvm::report_fatal_error("unexpected character type");
+
+  if (!resultLen)
+    mlir::emitError(loc, "no dynamic length found for character");
+  if (!extents.empty())
+    return fir::CharArrayBoxValue{base, resultLen, extents};
+  return fir::CharBoxValue{base, resultLen};
 }
 
 /// Get fir.ref<fir.char<kind>> type.
