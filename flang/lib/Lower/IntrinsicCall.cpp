@@ -667,43 +667,30 @@ fir::ExtendedValue toExtendedValue(mlir::Value val,
   assert(val && "optional unhandled here");
   auto type = val.getType();
   auto base = val;
-  mlir::Value len;
   auto indexType = builder.getIndexType();
   llvm::SmallVector<mlir::Value, 2> extents;
+
+  Fortran::lower::CharacterExprHelper charHelper{builder, loc};
+  if (charHelper.isCharacter(type))
+    return charHelper.toExtendedValue(val);
 
   if (auto refType = type.dyn_cast<fir::ReferenceType>())
     type = refType.getEleTy();
 
   if (auto arrayType = type.dyn_cast<fir::SequenceType>()) {
     type = arrayType.getEleTy();
-    llvm::ArrayRef<fir::SequenceType::Extent> shape = arrayType.getShape();
-    if (auto charType = type.dyn_cast<fir::CharacterType>()) {
-      auto cstLen = arrayType.getShape()[0];
-      shape = shape.drop_front();
-      if (cstLen == fir::SequenceType::getUnknownExtent())
-        mlir::emitError(loc, "No runtime length for given mlir::Value");
-      len = builder.createIntegerConstant(loc, indexType, cstLen);
-    }
-    for (auto extent : shape) {
+    // FIXME: only allow `?` in last dimension ?
+    for (auto extent : arrayType.getShape()) {
       if (extent == fir::SequenceType::getUnknownExtent())
         extents.emplace_back(mlir::Value{});
       else
         extents.emplace_back(
             builder.createIntegerConstant(loc, indexType, extent));
     }
-  } else if (type.isa<fir::BoxCharType>()) {
-    std::tie(base, len) =
-        Fortran::lower::CharacterExprHelper{builder, loc}.createUnboxChar(val);
-  } else if (type.isa<fir::CharacterType>()) {
-    len = builder.createIntegerConstant(loc, indexType, 1);
   } else if (type.isa<fir::BoxType>() || type.isa<fir::RecordType>()) {
     mlir::emitError(loc, "descriptor or derived type not yet handled");
   }
 
-  if (len && !extents.empty())
-    return fir::CharArrayBoxValue{base, len, extents};
-  if (len)
-    return fir::CharBoxValue{base, len};
   if (!extents.empty())
     return fir::ArrayBoxValue{base, extents};
   return base;
