@@ -20,6 +20,7 @@
 #include "flang/Lower/ConvertType.h"
 #include "flang/Lower/FIRBuilder.h"
 #include "flang/Lower/Runtime.h"
+#include "flang/Optimizer/Support/InternalNames.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <algorithm>
@@ -167,10 +168,6 @@ private:
 };
 } // namespace
 
-// FIXME: consider merging IntrinsicLibrary class and the
-// InstrinsicCallOpsHelper class. They serve the same purpose and the methods
-// here can just be private to the helper.
-
 // TODO error handling -> return a code or directly emit messages ?
 struct IntrinsicLibrary {
 
@@ -197,6 +194,13 @@ struct IntrinsicLibrary {
   mlir::Value genRuntimeCall(llvm::StringRef name, mlir::Type,
                              llvm::ArrayRef<mlir::Value>);
 
+  using RuntimeCallGenerator =
+      std::function<mlir::Value(Fortran::lower::FirOpBuilder &, mlir::Location,
+                                llvm::ArrayRef<mlir::Value>)>;
+  RuntimeCallGenerator
+  getRuntimeCallGenerator(llvm::StringRef name,
+                          mlir::FunctionType soughtFuncType);
+
   mlir::Value genAbs(mlir::Type, llvm::ArrayRef<mlir::Value>);
   mlir::Value genAimag(mlir::Type, llvm::ArrayRef<mlir::Value>);
   mlir::Value genAint(mlir::Type, llvm::ArrayRef<mlir::Value>);
@@ -211,8 +215,8 @@ struct IntrinsicLibrary {
   mlir::Value genIchar(mlir::Type, llvm::ArrayRef<mlir::Value>);
   mlir::Value genIEOr(mlir::Type, llvm::ArrayRef<mlir::Value>);
   mlir::Value genIOr(mlir::Type, llvm::ArrayRef<mlir::Value>);
+  fir::ExtendedValue genLen(mlir::Type, llvm::ArrayRef<fir::ExtendedValue>);
   fir::ExtendedValue genLenTrim(mlir::Type, llvm::ArrayRef<fir::ExtendedValue>);
-  // mlir::Value genLenTrim(mlir::Type, llvm::ArrayRef<mlir::Value>);
   mlir::Value genMerge(mlir::Type, llvm::ArrayRef<mlir::Value>);
   mlir::Value genMod(mlir::Type, llvm::ArrayRef<mlir::Value>);
   mlir::Value genNint(mlir::Type, llvm::ArrayRef<mlir::Value>);
@@ -234,15 +238,40 @@ struct IntrinsicLibrary {
   /// This can be used to keep the FIR more readable. Only one function will
   /// be generated for all the similar calls in a program.
   /// If the Generator is nullptr, the wrapper uses genRuntimeCall.
-  mlir::Value outlineInWrapper(ElementalGenerator g, llvm::StringRef name,
+  template <typename GeneratorType>
+  mlir::Value outlineInWrapper(GeneratorType, llvm::StringRef name,
                                mlir::Type resultType,
                                llvm::ArrayRef<mlir::Value> args);
+  fir::ExtendedValue outlineInWrapper(ExtendedGenerator, llvm::StringRef name,
+                                      mlir::Type resultType,
+                                      llvm::ArrayRef<fir::ExtendedValue> args);
+
+  template <typename GeneratorType>
+  mlir::FuncOp getWrapper(GeneratorType, llvm::StringRef name,
+                          mlir::FunctionType, bool loadRefArguments = false);
 
   /// Generate calls to ElementalGenerator, handling the elemental aspects
-  fir::ExtendedValue genElementalCall(ElementalGenerator, llvm::StringRef name,
-                                      mlir::Type resultType,
-                                      llvm::ArrayRef<fir::ExtendedValue> args,
-                                      bool outline);
+  template <typename GeneratorType>
+  fir::ExtendedValue
+  genElementalCall(GeneratorType, llvm::StringRef name, mlir::Type resultType,
+                   llvm::ArrayRef<fir::ExtendedValue> args, bool outline);
+
+  /// Helper to invoke code generator for the intrinsics given arguments.
+  mlir::Value invokeGenerator(ElementalGenerator generator,
+                              mlir::Type resultType,
+                              llvm::ArrayRef<mlir::Value> args);
+  mlir::Value invokeGenerator(RuntimeCallGenerator generator,
+                              mlir::Type resultType,
+                              llvm::ArrayRef<mlir::Value> args);
+  mlir::Value invokeGenerator(ExtendedGenerator generator,
+                              mlir::Type resultType,
+                              llvm::ArrayRef<mlir::Value> args);
+
+  /// Get pointer to unrestricted intrinsic. Generate the related unrestricted
+  /// intrinsic if it is not defined yet.
+  mlir::SymbolRefAttr
+  getUnrestrictedIntrinsicSymbolRefAttr(llvm::StringRef name,
+                                        mlir::FunctionType signature);
 
   Fortran::lower::FirOpBuilder &builder;
   mlir::Location loc;
@@ -277,6 +306,7 @@ static constexpr IntrinsicHandler handlers[]{
     {"ichar", &I::genIchar},
     {"ieor", &I::genIEOr},
     {"ior", &I::genIOr},
+    {"len", &I::genLen},
     {"len_trim", &I::genLenTrim},
     {"max", &I::genExtremum<Extremum::Max, ExtremumBehavior::MinMaxss>},
     {"min", &I::genExtremum<Extremum::Min, ExtremumBehavior::MinMaxss>},
@@ -536,6 +566,8 @@ private:
   bool infinite{false}; // When forbidden conversion or wrong argument number
 };
 
+/// Build mlir::FuncOp from runtime symbol description and add
+/// fir.runtime attribute.
 static mlir::FuncOp getFuncOp(mlir::Location loc,
                               Fortran::lower::FirOpBuilder &builder,
                               const RuntimeFunction &runtime) {
@@ -548,12 +580,15 @@ static mlir::FuncOp getFuncOp(mlir::Location loc,
 /// Select runtime function that has the smallest distance to the intrinsic
 /// function type and that will not imply narrowing arguments or extending the
 /// result.
+/// If nothing is found, the mlir::FuncOp will contain a nullptr.
 template <std::size_t N>
-llvm::Optional<mlir::FuncOp> searchFunctionInLibrary(
-    mlir::Location loc, Fortran::lower::FirOpBuilder &builder,
-    const RuntimeFunction (&lib)[N], llvm::StringRef name,
-    mlir::FunctionType funcType, const RuntimeFunction **bestNearMatch,
-    FunctionDistance &bestMatchDistance) {
+mlir::FuncOp searchFunctionInLibrary(mlir::Location loc,
+                                     Fortran::lower::FirOpBuilder &builder,
+                                     const RuntimeFunction (&lib)[N],
+                                     llvm::StringRef name,
+                                     mlir::FunctionType funcType,
+                                     const RuntimeFunction **bestNearMatch,
+                                     FunctionDistance &bestMatchDistance) {
   auto map = StaticMultimapView(lib);
   auto range = map.equal_range(name);
   for (auto iter{range.first}; iter != range.second && iter; ++iter) {
@@ -575,12 +610,14 @@ llvm::Optional<mlir::FuncOp> searchFunctionInLibrary(
 /// Search runtime for the best runtime function given an intrinsic name
 /// and interface. The interface may not be a perfect match in which case
 /// the caller is responsible to insert argument and return value conversions.
-static llvm::Optional<mlir::FuncOp>
-getRuntimeFunction(mlir::Location loc, Fortran::lower::FirOpBuilder &builder,
-                   llvm::StringRef name, mlir::FunctionType funcType) {
+/// If nothing is found, the mlir::FuncOp will contain a nullptr.
+static mlir::FuncOp getRuntimeFunction(mlir::Location loc,
+                                       Fortran::lower::FirOpBuilder &builder,
+                                       llvm::StringRef name,
+                                       mlir::FunctionType funcType) {
   const RuntimeFunction *bestNearMatch = nullptr;
   FunctionDistance bestMatchDistance{};
-  llvm::Optional<mlir::FuncOp> match;
+  mlir::FuncOp match;
   if (mathRuntimeVersion == fastVersion) {
     match = searchFunctionInLibrary(loc, builder, pgmathFast, name, funcType,
                                     &bestNearMatch, bestMatchDistance);
@@ -616,60 +653,74 @@ static mlir::FunctionType
 getFunctionType(mlir::Type resultType, llvm::ArrayRef<mlir::Value> arguments,
                 Fortran::lower::FirOpBuilder &builder) {
   llvm::SmallVector<mlir::Type, 2> argumentTypes;
-  for (auto &arg : arguments) {
-    if (arg)
-      argumentTypes.push_back(arg.getType());
-  }
+  for (auto &arg : arguments)
+    argumentTypes.push_back(arg.getType());
   return mlir::FunctionType::get(argumentTypes, resultType,
                                  builder.getModule().getContext());
 }
 
-/// Helper to encode type into string for intrinsic wrapper name.
-// TODO find nicer type to string infra or move this in a mangling utility
-// mlir as Type::dump(ostream) methods but it may adds !
-static std::string typeToString(mlir::Type t) {
-  if (auto i{t.dyn_cast<mlir::IntegerType>()}) {
-    return "i" + std::to_string(i.getWidth());
+/// fir::ExtendedValue to mlir::Value translation layer
+
+fir::ExtendedValue toExtendedValue(mlir::Value val,
+                                   Fortran::lower::FirOpBuilder &builder,
+                                   mlir::Location loc) {
+  assert(val && "optional unhandled here");
+  auto type = val.getType();
+  auto base = val;
+  auto indexType = builder.getIndexType();
+  llvm::SmallVector<mlir::Value, 2> extents;
+
+  Fortran::lower::CharacterExprHelper charHelper{builder, loc};
+  if (charHelper.isCharacter(type))
+    return charHelper.toExtendedValue(val);
+
+  if (auto refType = type.dyn_cast<fir::ReferenceType>())
+    type = refType.getEleTy();
+
+  if (auto arrayType = type.dyn_cast<fir::SequenceType>()) {
+    type = arrayType.getEleTy();
+    for (auto extent : arrayType.getShape()) {
+      if (extent == fir::SequenceType::getUnknownExtent())
+        break;
+      extents.emplace_back(
+          builder.createIntegerConstant(loc, indexType, extent));
+    }
+    // Last extent might be missing in case of assumed-size. If more extents
+    // could not be deduced from type, that's an error (a fir.box should
+    // have been used in the interface).
+    if (extents.size() + 1 < arrayType.getShape().size())
+      mlir::emitError(loc, "cannot retrieve array extents from type");
+  } else if (type.isa<fir::BoxType>() || type.isa<fir::RecordType>()) {
+    mlir::emitError(loc, "descriptor or derived type not yet handled");
   }
-  if (auto cplx{t.dyn_cast<fir::CplxType>()}) {
-    return "z" + std::to_string(cplx.getFKind());
-  }
-  if (auto real{t.dyn_cast<fir::RealType>()}) {
-    return "r" + std::to_string(real.getFKind());
-  }
-  if (auto f{t.dyn_cast<mlir::FloatType>()}) {
-    return "f" + std::to_string(f.getWidth());
-  }
-  if (auto logical{t.dyn_cast<fir::LogicalType>()}) {
-    return "l" + std::to_string(logical.getFKind());
-  }
-  if (auto character{t.dyn_cast<fir::CharacterType>()}) {
-    return "c" + std::to_string(character.getFKind());
-  }
-  llvm_unreachable("no mangling for type");
+
+  if (!extents.empty())
+    return fir::ArrayBoxValue{base, extents};
+  return base;
 }
 
-/// Generate a function name for function where intrinsic implementation
-/// are outlined. It is not a legal Fortran name and could therefore
-/// safely be matched later if needed.
-static std::string getIntrinsicWrapperName(const llvm::StringRef &intrinsic,
-                                           mlir::FunctionType funTy) {
-  std::string name{"fir." + intrinsic.str() + "."};
-  assert(funTy.getNumResults() == 1 && "only function mangling supported");
-  name += typeToString(funTy.getResult(0));
-  auto e = funTy.getNumInputs();
-  for (decltype(e) i = 0; i < e; ++i) {
-    name += "." + typeToString(funTy.getInput(i));
+mlir::Value toValue(const fir::ExtendedValue &val,
+                    Fortran::lower::FirOpBuilder &builder, mlir::Location loc) {
+  if (auto charBox = val.getCharBox()) {
+    auto buffer = charBox->getBuffer();
+    if (buffer.getType().isa<fir::BoxCharType>())
+      return buffer;
+    return Fortran::lower::CharacterExprHelper{builder, loc}.createEmboxChar(
+        buffer, charBox->getLen());
   }
-  return name;
+
+  // FIXME: need to access other ExtendedValue variants and handle them
+  // properly.
+  return fir::getBase(val);
 }
 
 //===----------------------------------------------------------------------===//
 // IntrinsicLibrary
 //===----------------------------------------------------------------------===//
 
+template <typename GeneratorType>
 fir::ExtendedValue IntrinsicLibrary::genElementalCall(
-    ElementalGenerator generator, llvm::StringRef name, mlir::Type resultType,
+    GeneratorType generator, llvm::StringRef name, mlir::Type resultType,
     llvm::ArrayRef<fir::ExtendedValue> args, bool outline) {
   llvm::SmallVector<mlir::Value, 2> scalarArgs;
   for (const auto &arg : args) {
@@ -682,9 +733,28 @@ fir::ExtendedValue IntrinsicLibrary::genElementalCall(
       exit(1);
     }
   }
-  return outline || !generator
-             ? outlineInWrapper(generator, name, resultType, scalarArgs)
-             : std::invoke(generator, *this, resultType, scalarArgs);
+  if (outline)
+    return outlineInWrapper(generator, name, resultType, scalarArgs);
+  return invokeGenerator(generator, resultType, scalarArgs);
+}
+
+/// Some ExtendedGenerator operating on characters are also elemental
+/// (e.g LEN_TRIM).
+template <>
+fir::ExtendedValue
+IntrinsicLibrary::genElementalCall<IntrinsicLibrary::ExtendedGenerator>(
+    ExtendedGenerator generator, llvm::StringRef name, mlir::Type resultType,
+    llvm::ArrayRef<fir::ExtendedValue> args, bool outline) {
+  for (const auto &arg : args)
+    if (!arg.getUnboxed() && !arg.getCharBox()) {
+      // TODO: get the result shape and create the loop...
+      mlir::emitError(loc, "array or descriptor not yet handled in elemental "
+                           "intrinsic lowering");
+      exit(1);
+    }
+  if (outline)
+    return outlineInWrapper(generator, name, resultType, args);
+  return std::invoke(generator, *this, resultType, args);
 }
 
 fir::ExtendedValue
@@ -697,23 +767,63 @@ IntrinsicLibrary::genIntrinsicCall(llvm::StringRef name, mlir::Type resultType,
               std::get_if<ElementalGenerator>(&handler.generator))
         return genElementalCall(*elementalGenerator, name, resultType, args,
                                 outline);
-      // Some extended generator are also elemental
       const auto &generator = std::get<ExtendedGenerator>(handler.generator);
-      // TODO: Handle wrappers for calls with ExtendedValue
+      if (handler.isElemental)
+        return genElementalCall(generator, name, resultType, args, outline);
+      if (outline)
+        return outlineInWrapper(generator, name, resultType, args);
       return std::invoke(generator, *this, resultType, args);
     }
 
   // Try the runtime if no special handler was defined for the
   // intrinsic being called. Maths runtime only has numerical elemental.
-  return genElementalCall(nullptr, name, resultType, args, true);
+
+  // FIXME: using toValue to get the type won't work with array arguments.
+  llvm::SmallVector<mlir::Value, 2> mlirArgs;
+  for (const auto &extendedVal : args)
+    mlirArgs.emplace_back(toValue(extendedVal, builder, loc));
+  mlir::FunctionType soughtFuncType =
+      getFunctionType(resultType, mlirArgs, builder);
+
+  auto runtimeCallGenerator = getRuntimeCallGenerator(name, soughtFuncType);
+  return genElementalCall(runtimeCallGenerator, name, resultType, args,
+                          /* outline */ true);
 }
 
 mlir::Value
-IntrinsicLibrary::outlineInWrapper(ElementalGenerator generator,
-                                   llvm::StringRef name, mlir::Type resultType,
-                                   llvm::ArrayRef<mlir::Value> args) {
-  auto funcType = getFunctionType(resultType, args, builder);
-  std::string wrapperName = getIntrinsicWrapperName(name, funcType);
+IntrinsicLibrary::invokeGenerator(ElementalGenerator generator,
+                                  mlir::Type resultType,
+                                  llvm::ArrayRef<mlir::Value> args) {
+  return std::invoke(generator, *this, resultType, args);
+}
+
+mlir::Value
+IntrinsicLibrary::invokeGenerator(RuntimeCallGenerator generator,
+                                  mlir::Type resultType,
+                                  llvm::ArrayRef<mlir::Value> args) {
+  return generator(builder, loc, args);
+}
+
+mlir::Value
+IntrinsicLibrary::invokeGenerator(ExtendedGenerator generator,
+                                  mlir::Type resultType,
+                                  llvm::ArrayRef<mlir::Value> args) {
+  llvm::SmallVector<fir::ExtendedValue, 2> extendedArgs;
+  for (auto arg : args)
+    extendedArgs.emplace_back(toExtendedValue(arg, builder, loc));
+  auto extendedResult = std::invoke(generator, *this, resultType, extendedArgs);
+  return toValue(extendedResult, builder, loc);
+}
+
+template <typename GeneratorType>
+mlir::FuncOp IntrinsicLibrary::getWrapper(GeneratorType generator,
+                                          llvm::StringRef name,
+                                          mlir::FunctionType funcType,
+                                          bool loadRefArguments) {
+  assert(funcType.getNumResults() == 1 &&
+         "expect one result for intrinsic functions");
+  auto resultType = funcType.getResult(0);
+  std::string wrapperName = fir::mangleIntrinsicProcedure(name, funcType);
   auto function = builder.getNamedFunction(wrapperName);
   if (!function) {
     // First time this wrapper is needed, build it.
@@ -727,67 +837,156 @@ IntrinsicLibrary::outlineInWrapper(ElementalGenerator generator,
     auto localBuilder = std::make_unique<Fortran::lower::FirOpBuilder>(
         function, builder.getKindMap());
     localBuilder->setInsertionPointToStart(&function.front());
-    llvm::SmallVector<mlir::Value, 2> localArguments;
-    for (mlir::BlockArgument bArg : function.front().getArguments())
-      localArguments.push_back(bArg);
-
     // Location of code inside wrapper of the wrapper is independent from
     // the location of the intrinsic call.
     auto localLoc = localBuilder->getUnknownLoc();
+    llvm::SmallVector<mlir::Value, 2> localArguments;
+    for (mlir::BlockArgument bArg : function.front().getArguments()) {
+      auto refType = bArg.getType().dyn_cast<fir::ReferenceType>();
+      if (loadRefArguments && refType) {
+        auto loaded = localBuilder->create<fir::LoadOp>(localLoc, bArg);
+        localArguments.push_back(loaded);
+      } else {
+        localArguments.push_back(bArg);
+      }
+    }
+
     IntrinsicLibrary localLib{*localBuilder, localLoc};
-    mlir::Value result =
-        generator ? std::invoke(generator, localLib, resultType, localArguments)
-                  : std::invoke(&IntrinsicLibrary::genRuntimeCall, localLib,
-                                name, resultType, localArguments);
+    auto result =
+        localLib.invokeGenerator(generator, resultType, localArguments);
     localBuilder->create<mlir::ReturnOp>(localLoc, result);
   } else {
     // Wrapper was already built, ensure it has the sought type
-    assert(function.getType() == funcType);
+    assert(function.getType() == funcType &&
+           "conflict between intrinsic wrapper types");
   }
-  auto call = builder.create<mlir::CallOp>(loc, function, args);
-  return call.getResult(0);
+  return function;
 }
+
+/// Helpers to detect absent optional (not yet supported in outlining).
+bool static hasAbsentOptional(llvm::ArrayRef<mlir::Value> args) {
+  for (const auto &arg : args)
+    if (!arg)
+      return true;
+  return false;
+}
+bool static hasAbsentOptional(llvm::ArrayRef<fir::ExtendedValue> args) {
+  for (const auto &arg : args)
+    if (!fir::getBase(arg))
+      return true;
+  return false;
+}
+
+template <typename GeneratorType>
+mlir::Value
+IntrinsicLibrary::outlineInWrapper(GeneratorType generator,
+                                   llvm::StringRef name, mlir::Type resultType,
+                                   llvm::ArrayRef<mlir::Value> args) {
+  if (hasAbsentOptional(args)) {
+    // TODO: absent optional in outlining is an issue: we cannot just ignore
+    // them. Needs a better interface here. The issue is that we cannot easily
+    // tell that a value is optional or not here if it is presents. And if it is
+    // absent, we cannot tell what it type should be.
+    mlir::emitError(loc, "todo: cannot outline call to intrinsic " +
+                             llvm::Twine(name) +
+                             " with absent optional argument");
+    exit(1);
+  }
+
+  auto funcType = getFunctionType(resultType, args, builder);
+  auto wrapper = getWrapper(generator, name, funcType);
+  return builder.create<mlir::CallOp>(loc, wrapper, args).getResult(0);
+}
+
+fir::ExtendedValue
+IntrinsicLibrary::outlineInWrapper(ExtendedGenerator generator,
+                                   llvm::StringRef name, mlir::Type resultType,
+                                   llvm::ArrayRef<fir::ExtendedValue> args) {
+  if (hasAbsentOptional(args)) {
+    // TODO
+    mlir::emitError(loc, "todo: cannot outline call to intrinsic " +
+                             llvm::Twine(name) +
+                             " with absent optional argument");
+    exit(1);
+  }
+  llvm::SmallVector<mlir::Value, 2> mlirArgs;
+  for (const auto &extendedVal : args)
+    mlirArgs.emplace_back(toValue(extendedVal, builder, loc));
+  auto funcType = getFunctionType(resultType, mlirArgs, builder);
+  auto wrapper = getWrapper(generator, name, funcType);
+  auto mlirResult =
+      builder.create<mlir::CallOp>(loc, wrapper, mlirArgs).getResult(0);
+  return toExtendedValue(mlirResult, builder, loc);
+}
+
+IntrinsicLibrary::RuntimeCallGenerator
+IntrinsicLibrary::getRuntimeCallGenerator(llvm::StringRef name,
+                                          mlir::FunctionType soughtFuncType) {
+  auto funcOp = getRuntimeFunction(loc, builder, name, soughtFuncType);
+  if (!funcOp)
+    llvm::report_fatal_error("missing intrinsic: " + llvm::Twine(name) + "\n");
+
+  mlir::FunctionType actualFuncType = funcOp.getType();
+  assert(actualFuncType.getNumResults() == soughtFuncType.getNumResults() &&
+         actualFuncType.getNumInputs() == soughtFuncType.getNumInputs() &&
+         actualFuncType.getNumResults() == 1 && "Bad intrinsic match");
+
+  return [funcOp, actualFuncType, soughtFuncType](
+             Fortran::lower::FirOpBuilder &builder, mlir::Location loc,
+             llvm::ArrayRef<mlir::Value> args) {
+    llvm::SmallVector<mlir::Value, 2> convertedArguments;
+    for (const auto &pair : llvm::zip(actualFuncType.getInputs(), args))
+      convertedArguments.push_back(
+          builder.createConvert(loc, std::get<0>(pair), std::get<1>(pair)));
+    auto call = builder.create<mlir::CallOp>(loc, funcOp, convertedArguments);
+    mlir::Type soughtType = soughtFuncType.getResult(0);
+    return builder.createConvert(loc, soughtType, call.getResult(0));
+  };
+}
+
+mlir::SymbolRefAttr IntrinsicLibrary::getUnrestrictedIntrinsicSymbolRefAttr(
+    llvm::StringRef name, mlir::FunctionType signature) {
+  // Unrestricted intrinsics signature follows implicit rules: argument
+  // are passed by references. But the runtime versions expect values.
+  // So instead of duplicating the runtime, just have the wrappers loading
+  // this before calling the code generators.
+  bool loadRefArguments = true;
+  mlir::FuncOp funcOp;
+  for (auto &handler : handlers)
+    if (name == handler.name)
+      funcOp = std::visit(
+          [&](auto generator) {
+            return getWrapper(generator, name, signature, loadRefArguments);
+          },
+          handler.generator);
+
+  if (!funcOp) {
+    llvm::SmallVector<mlir::Type, 2> argTypes;
+    for (auto type : signature.getInputs()) {
+      if (auto refType = type.dyn_cast<fir::ReferenceType>())
+        argTypes.push_back(refType.getEleTy());
+      else
+        argTypes.push_back(type);
+    }
+    auto soughtFuncType =
+        builder.getFunctionType(signature.getResults(), argTypes);
+    auto rtCallGenerator = getRuntimeCallGenerator(name, soughtFuncType);
+    funcOp = getWrapper(rtCallGenerator, name, signature, loadRefArguments);
+  }
+
+  return builder.getSymbolRefAttr(funcOp.getName());
+}
+
+//===----------------------------------------------------------------------===//
+// Code generators for the intrinsic
+//===----------------------------------------------------------------------===//
 
 mlir::Value IntrinsicLibrary::genRuntimeCall(llvm::StringRef name,
                                              mlir::Type resultType,
                                              llvm::ArrayRef<mlir::Value> args) {
-  // Look up runtime
   mlir::FunctionType soughtFuncType =
       getFunctionType(resultType, args, builder);
-  if (auto funcOp = getRuntimeFunction(loc, builder, name, soughtFuncType)) {
-    mlir::FunctionType actualFuncType = funcOp->getType();
-    if (actualFuncType.getNumResults() != soughtFuncType.getNumResults() ||
-        actualFuncType.getNumInputs() != soughtFuncType.getNumInputs() ||
-        actualFuncType.getNumInputs() != args.size() ||
-        actualFuncType.getNumResults() != 1) {
-      llvm_unreachable("Bad intrinsic match");
-    }
-    llvm::SmallVector<mlir::Value, 2> convertedArguments;
-    int i = 0;
-    for (mlir::Value arg : args) {
-      auto actualType = actualFuncType.getInput(i);
-      if (soughtFuncType.getInput(i) != actualType) {
-        auto castedArg = builder.createConvert(loc, actualType, arg);
-        convertedArguments.push_back(castedArg);
-      } else {
-        convertedArguments.push_back(arg);
-      }
-      ++i;
-    }
-    auto call = builder.create<mlir::CallOp>(loc, *funcOp, convertedArguments);
-    mlir::Type soughtType = soughtFuncType.getResult(0);
-    mlir::Value res = call.getResult(0);
-    if (actualFuncType.getResult(0) != soughtType) {
-      auto castedRes = builder.createConvert(loc, soughtType, res);
-      return castedRes;
-    } else {
-      return res;
-    }
-  } else {
-    // could not find runtime function
-    llvm::report_fatal_error("missing intrinsic: " + llvm::Twine(name) + "\n");
-  }
-  return {}; // gets rid of warnings
+  return getRuntimeCallGenerator(name, soughtFuncType)(builder, loc, args);
 }
 
 mlir::Value IntrinsicLibrary::genConversion(mlir::Type resultType,
@@ -951,6 +1150,28 @@ mlir::Value IntrinsicLibrary::genIOr(mlir::Type resultType,
   return builder.create<mlir::OrOp>(loc, args[0], args[1]);
 }
 
+// LEN
+// Note that this is only used for unrestricted intrinsic.
+// Usage of LEN are otherwise rewritten as descriptor inquiries by the
+// front-end.
+fir::ExtendedValue
+IntrinsicLibrary::genLen(mlir::Type resultType,
+                         llvm::ArrayRef<fir::ExtendedValue> args) {
+  // Optional KIND argument reflected in result type.
+  assert(args.size() >= 1);
+  mlir::Value len;
+  if (const auto *charBox = args[0].getCharBox()) {
+    len = charBox->getLen();
+  } else if (const auto *charBoxArray = args[0].getCharBox()) {
+    len = charBoxArray->getLen();
+  } else {
+    Fortran::lower::CharacterExprHelper helper{builder, loc};
+    len = helper.createUnboxChar(fir::getBase(args[0])).second;
+  }
+
+  return builder.createConvert(loc, resultType, len);
+}
+
 // LEN_TRIM
 fir::ExtendedValue
 IntrinsicLibrary::genLenTrim(mlir::Type resultType,
@@ -1087,34 +1308,45 @@ mlir::Value IntrinsicLibrary::genExtremum(mlir::Type,
 }
 
 //===----------------------------------------------------------------------===//
-// IntrinsicCallOpsHelper
+// Public intrinsic call helpers
 //===----------------------------------------------------------------------===//
 
-fir::ExtendedValue Fortran::lower::IntrinsicCallOpsHelper::genIntrinsicCall(
-    llvm::StringRef name, mlir::Type resultType,
-    llvm::ArrayRef<fir::ExtendedValue> args) {
+fir::ExtendedValue
+Fortran::lower::genIntrinsicCall(Fortran::lower::FirOpBuilder &builder,
+                                 mlir::Location loc, llvm::StringRef name,
+                                 mlir::Type resultType,
+                                 llvm::ArrayRef<fir::ExtendedValue> args) {
   return IntrinsicLibrary{builder, loc}.genIntrinsicCall(name, resultType,
                                                          args);
 }
 
-mlir::Value Fortran::lower::IntrinsicCallOpsHelper::genMax(
-    llvm::ArrayRef<mlir::Value> args) {
+mlir::Value Fortran::lower::genMax(Fortran::lower::FirOpBuilder &builder,
+                                   mlir::Location loc,
+                                   llvm::ArrayRef<mlir::Value> args) {
   assert(args.size() > 0 && "max requires at least one argument");
   return IntrinsicLibrary{builder, loc}
       .genExtremum<Extremum::Max, ExtremumBehavior::MinMaxss>(args[0].getType(),
                                                               args);
 }
 
-mlir::Value Fortran::lower::IntrinsicCallOpsHelper::genMin(
-    llvm::ArrayRef<mlir::Value> args) {
+mlir::Value Fortran::lower::genMin(Fortran::lower::FirOpBuilder &builder,
+                                   mlir::Location loc,
+                                   llvm::ArrayRef<mlir::Value> args) {
   assert(args.size() > 0 && "min requires at least one argument");
   return IntrinsicLibrary{builder, loc}
       .genExtremum<Extremum::Min, ExtremumBehavior::MinMaxss>(args[0].getType(),
                                                               args);
 }
 
-mlir::Value Fortran::lower::IntrinsicCallOpsHelper::genPow(mlir::Type type,
-                                                           mlir::Value x,
-                                                           mlir::Value y) {
+mlir::Value Fortran::lower::genPow(Fortran::lower::FirOpBuilder &builder,
+                                   mlir::Location loc, mlir::Type type,
+                                   mlir::Value x, mlir::Value y) {
   return IntrinsicLibrary{builder, loc}.genRuntimeCall("pow", type, {x, y});
+}
+
+mlir::SymbolRefAttr Fortran::lower::getUnrestrictedIntrinsicSymbolRefAttr(
+    Fortran::lower::FirOpBuilder &builder, mlir::Location loc,
+    llvm::StringRef name, mlir::FunctionType signature) {
+  return IntrinsicLibrary{builder, loc}.getUnrestrictedIntrinsicSymbolRefAttr(
+      name, signature);
 }

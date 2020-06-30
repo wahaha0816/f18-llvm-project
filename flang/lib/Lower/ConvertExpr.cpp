@@ -318,11 +318,17 @@ private:
   }
   fir::ExtendedValue
   genval(const Fortran::evaluate::ProcedureDesignator &proc) {
+    if (const auto *intrinsic = proc.GetSpecificIntrinsic()) {
+      auto signature = Fortran::lower::translateSignature(proc, converter);
+      auto symbolRefAttr =
+          Fortran::lower::getUnrestrictedIntrinsicSymbolRefAttr(
+              builder, getLoc(), intrinsic->name, signature);
+      mlir::Value funcPtr =
+          builder.create<mlir::ConstantOp>(getLoc(), signature, symbolRefAttr);
+      return funcPtr;
+    }
     const auto *symbol = proc.GetSymbol();
-    // TODO: non restricted specific intrinsics, needs to get runtime symbol,
-    // or think of something else.
-    if (!symbol)
-      TODO();
+    assert(symbol && "expected symbol in ProcedureDesignator");
     if (Fortran::semantics::IsDummy(*symbol)) {
       auto val = symMap.lookupSymbol(*symbol);
       assert(val && "Dummy procedure not in symbol map");
@@ -472,8 +478,7 @@ private:
     auto lhs = genunbox(op.left());
     auto rhs = genunbox(op.right());
     assert(lhs && rhs && "boxed value not handled");
-    return Fortran::lower::IntrinsicCallOpsHelper{builder, getLoc()}.genPow(
-        ty, lhs, rhs);
+    return Fortran::lower::genPow(builder, getLoc(), ty, lhs, rhs);
   }
 
   template <Fortran::common::TypeCategory TC, int KIND>
@@ -484,8 +489,7 @@ private:
     auto lhs = genunbox(op.left());
     auto rhs = genunbox(op.right());
     assert(lhs && rhs && "boxed value not handled");
-    return Fortran::lower::IntrinsicCallOpsHelper{builder, getLoc()}.genPow(
-        ty, lhs, rhs);
+    return Fortran::lower::genPow(builder, getLoc(), ty, lhs, rhs);
   }
 
   mlir::Value createComplex(fir::KindTy kind, mlir::Value real,
@@ -518,14 +522,13 @@ private:
   fir::ExtendedValue
   genval(const Fortran::evaluate::Extremum<Fortran::evaluate::Type<TC, KIND>>
              &op) {
-    bool isMax = op.ordering == Fortran::evaluate::Ordering::Greater;
     auto lhs = genunbox(op.left());
     auto rhs = genunbox(op.right());
     assert(lhs && rhs && "boxed value not handled");
     llvm::SmallVector<mlir::Value, 2> operands{lhs, rhs};
-    Fortran::lower::IntrinsicCallOpsHelper helper(builder, getLoc());
-
-    return isMax ? helper.genMax(operands) : helper.genMin(operands);
+    if (op.ordering == Fortran::evaluate::Ordering::Greater)
+      return Fortran::lower::genMax(builder, getLoc(), operands);
+    return Fortran::lower::genMin(builder, getLoc(), operands);
   }
 
   template <int KIND>
@@ -1117,13 +1120,13 @@ private:
               Fortran::evaluate::Expr<Fortran::evaluate::SomeType>>(arg)) {
         operands.emplace_back(genval(*expr));
       } else {
-        operands.emplace_back(mlir::Value{}); // optional
+        operands.emplace_back(mlir::Value{}); // absent optional
       }
     }
     // Let the intrinsic library lower the intrinsic procedure call
     llvm::StringRef name{intrinsic.name};
-    return Fortran::lower::IntrinsicCallOpsHelper{builder, getLoc()}
-        .genIntrinsicCall(name, resultType[0], operands);
+    return Fortran::lower::genIntrinsicCall(builder, getLoc(), name,
+                                            resultType[0], operands);
   }
 
   template <typename A>
