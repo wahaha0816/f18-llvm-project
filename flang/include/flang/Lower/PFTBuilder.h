@@ -513,6 +513,9 @@ struct FunctionLikeUnit : public ProgramUnit {
   /// Terminal basic block (if any)
   mlir::Block *finalBlock{};
   std::vector<std::vector<Variable>> varList;
+
+  /// List host associated variables
+  std::vector<SymbolRef> capturedVariables;
 };
 
 /// Module-like units contain a list of function-like units.
