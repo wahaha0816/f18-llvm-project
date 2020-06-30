@@ -936,7 +936,9 @@ genFormat(Fortran::lower::AbstractConverter &converter, mlir::Location loc,
   // integer variable containing an ASSIGN label
   assert(Fortran::semantics::ExprHasTypeCategory(
       *e, Fortran::common::TypeCategory::Integer));
-  TODO();
+  // TODO - implement this
+  llvm::report_fatal_error(
+      "using a variable to reference a FORMAT statement; not implemented yet");
 }
 
 template <typename A>
