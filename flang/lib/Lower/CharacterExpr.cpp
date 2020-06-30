@@ -21,8 +21,10 @@ static fir::CharacterType getCharacterType(mlir::Type type) {
     return boxType.getEleTy();
   if (auto refType = type.dyn_cast<fir::ReferenceType>())
     type = refType.getEleTy();
-  if (auto seqType = type.dyn_cast<fir::SequenceType>())
+  if (auto seqType = type.dyn_cast<fir::SequenceType>()) {
+    assert(seqType.getShape().size() == 1 && "rank must be 1");
     type = seqType.getEleTy();
+  }
   if (auto charType = type.dyn_cast<fir::CharacterType>())
     return charType;
   llvm_unreachable("Invalid character value type");
@@ -33,8 +35,11 @@ static fir::CharacterType getCharacterType(const fir::CharBoxValue &box) {
 }
 
 static bool needToMaterialize(const fir::CharBoxValue &box) {
-  return box.getBuffer().getType().isa<fir::SequenceType>() ||
-         box.getBuffer().getType().isa<fir::CharacterType>();
+  auto buffTy = box.getBuffer().getType();
+  if (auto seqTy = buffTy.dyn_cast<fir::SequenceType>())
+    if (seqTy.getShape().size() == 1)
+      buffTy = seqTy.getEleTy();
+  return buffTy.isa<fir::CharacterType>();
 }
 
 static std::optional<fir::SequenceType::Extent>
@@ -461,7 +466,8 @@ Fortran::lower::CharacterExprHelper::materializeCharacter(mlir::Value str) {
 
 bool Fortran::lower::CharacterExprHelper::isCharacterLiteral(mlir::Type type) {
   if (auto seqType = type.dyn_cast<fir::SequenceType>())
-    return seqType.getEleTy().isa<fir::CharacterType>();
+    return (seqType.getShape().size() == 1) &&
+           seqType.getEleTy().isa<fir::CharacterType>();
   return false;
 }
 
@@ -471,7 +477,8 @@ bool Fortran::lower::CharacterExprHelper::isCharacter(mlir::Type type) {
   if (auto refType = type.dyn_cast<fir::ReferenceType>())
     type = refType.getEleTy();
   if (auto seqType = type.dyn_cast<fir::SequenceType>())
-    type = seqType.getEleTy();
+    if (seqType.getShape().size() == 1)
+      type = seqType.getEleTy();
   return type.isa<fir::CharacterType>();
 }
 
