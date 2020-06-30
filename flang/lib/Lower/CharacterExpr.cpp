@@ -92,13 +92,18 @@ Fortran::lower::CharacterExprHelper::toExtendedValue(mlir::Value character,
     // FIXME: only allow `?` in last dimension ?
     auto typeExtents =
         llvm::ArrayRef<fir::SequenceType::Extent>{shape}.drop_front();
+    auto indexType = builder.getIndexType();
     for (auto extent : typeExtents) {
       if (extent == fir::SequenceType::getUnknownExtent())
-        extents.emplace_back(mlir::Value{});
-      else
-        extents.emplace_back(
-            builder.createIntegerConstant(loc, builder.getIndexType(), extent));
+        break;
+      extents.emplace_back(
+          builder.createIntegerConstant(loc, indexType, extent));
     }
+    // Last extent might be missing in case of assumed-size. If more extents
+    // could not be deduced from type, that's an error (a fir.box should
+    // have been used in the interface).
+    if (extents.size() + 1 < typeExtents.size())
+      mlir::emitError(loc, "cannot retrieve array extents from type");
   } else if (type.isa<fir::CharacterType>()) {
     if (!resultLen)
       resultLen = builder.createIntegerConstant(loc, lenType, 1);
