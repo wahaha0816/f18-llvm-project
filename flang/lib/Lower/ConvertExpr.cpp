@@ -624,48 +624,9 @@ private:
     llvm_unreachable("unhandled logical operation");
   }
 
-  /// Construct a CHARACTER literal
-  template <int KIND, typename E>
-  fir::CharBoxValue genCharLit(const E &data, int64_t size) {
-    auto type = fir::SequenceType::get(
-        {size}, fir::CharacterType::get(builder.getContext(), KIND));
-    // FIXME: for wider char types, use an array of i16 or i32
-    // for now, just fake it that it's a i8 to get it past the C++ compiler
-    std::string globalName =
-        converter.uniqueCGIdent("cl", (const char *)data.c_str());
-    auto global = builder.getNamedGlobal(globalName);
-    if (!global)
-      global = builder.createGlobalConstant(
-          getLoc(), type, globalName,
-          [&](Fortran::lower::FirOpBuilder &builder) {
-            auto context = builder.getContext();
-            // FIXME: more fakery
-            auto strAttr =
-                mlir::StringAttr::get((const char *)data.c_str(), context);
-            auto valTag =
-                mlir::Identifier::get(fir::StringLitOp::value(), context);
-            mlir::NamedAttribute dataAttr(valTag, strAttr);
-            auto sizeTag =
-                mlir::Identifier::get(fir::StringLitOp::size(), context);
-            mlir::NamedAttribute sizeAttr(sizeTag,
-                                          builder.getI64IntegerAttr(size));
-            llvm::SmallVector<mlir::NamedAttribute, 2> attrs{dataAttr,
-                                                             sizeAttr};
-            auto str = builder.create<fir::StringLitOp>(
-                getLoc(), llvm::ArrayRef<mlir::Type>{type}, llvm::None, attrs);
-            builder.create<fir::HasValueOp>(getLoc(), str);
-          });
-    auto addr = builder.create<fir::AddrOfOp>(getLoc(), global.resultType(),
-                                              global.getSymbol());
-    auto len = builder.createIntegerConstant(
-        getLoc(),
-        Fortran::lower::CharacterExprHelper{builder, getLoc()}.getLengthType(),
-        size);
-    return fir::CharBoxValue{addr, len};
-  }
-
+  /// Convert a scalar literal constant to IR.
   template <Fortran::common::TypeCategory TC, int KIND>
-  mlir::Value genScalarLit(
+  fir::ExtendedValue genScalarLit(
       const Fortran::evaluate::Scalar<Fortran::evaluate::Type<TC, KIND>>
           &value) {
     if constexpr (TC == Fortran::common::TypeCategory::Integer) {
@@ -706,6 +667,60 @@ private:
       llvm_unreachable("unhandled constant");
     }
   }
+  /// Convert a scalar literal CHARACTER to IR. (specialization)
+  template <int KIND>
+  fir::ExtendedValue
+  genScalarLit(const Fortran::evaluate::Scalar<Fortran::evaluate::Type<
+                   Fortran::common::TypeCategory::Character, KIND>> &value,
+               int64_t len) {
+    auto type = fir::SequenceType::get(
+        {len}, fir::CharacterType::get(builder.getContext(), KIND));
+    // FIXME: for wider char types, use an array of i16 or i32
+    // for now, just fake it that it's a i8 to get it past the C++ compiler
+    std::string globalName =
+        converter.uniqueCGIdent("cl", (const char *)value.c_str());
+    auto global = builder.getNamedGlobal(globalName);
+    if (!global)
+      global = builder.createGlobalConstant(
+          getLoc(), type, globalName,
+          [&](Fortran::lower::FirOpBuilder &builder) {
+            auto context = builder.getContext();
+            // FIXME: more fakery
+            auto strAttr =
+                mlir::StringAttr::get((const char *)value.c_str(), context);
+            auto valTag =
+                mlir::Identifier::get(fir::StringLitOp::value(), context);
+            mlir::NamedAttribute dataAttr(valTag, strAttr);
+            auto sizeTag =
+                mlir::Identifier::get(fir::StringLitOp::size(), context);
+            mlir::NamedAttribute sizeAttr(sizeTag,
+                                          builder.getI64IntegerAttr(len));
+            llvm::SmallVector<mlir::NamedAttribute, 2> attrs{dataAttr,
+                                                             sizeAttr};
+            auto str = builder.create<fir::StringLitOp>(
+                getLoc(), llvm::ArrayRef<mlir::Type>{type}, llvm::None, attrs);
+            builder.create<fir::HasValueOp>(getLoc(), str);
+          });
+    auto addr = builder.create<fir::AddrOfOp>(getLoc(), global.resultType(),
+                                              global.getSymbol());
+    auto lenp = builder.createIntegerConstant(
+        getLoc(),
+        Fortran::lower::CharacterExprHelper{builder, getLoc()}.getLengthType(),
+        len);
+    return fir::CharBoxValue{addr, lenp};
+  }
+  /// Helper to call the correct scalar conversion based on category.
+  template <Fortran::common::TypeCategory TC, int KIND>
+  fir::ExtendedValue genScalarLit(
+      const Fortran::evaluate::Scalar<Fortran::evaluate::Type<TC, KIND>> &value,
+      const Fortran::evaluate::Constant<Fortran::evaluate::Type<TC, KIND>>
+          &con) {
+    if constexpr (TC == Fortran::common::TypeCategory::Character) {
+      return genScalarLit<KIND>(value, con.LEN());
+    } else /*constexpr*/ {
+      return genScalarLit<TC, KIND>(value);
+    }
+  }
 
   template <Fortran::common::TypeCategory TC, int KIND>
   fir::ExtendedValue genArrayLit(
@@ -719,8 +734,9 @@ private:
     mlir::Value array = builder.create<fir::UndefOp>(getLoc(), arrayTy);
     Fortran::evaluate::ConstantSubscripts subscripts = con.lbounds();
     do {
-      auto constant = genScalarLit<TC, KIND>(con.At(subscripts));
-      std::vector<mlir::Value> idx;
+      auto constant =
+          fir::getBase(genScalarLit<TC, KIND>(con.At(subscripts), con));
+      llvm::SmallVector<mlir::Value, 8> idx;
       for (const auto &pair : llvm::zip(subscripts, con.lbounds())) {
         const auto &dim = std::get<0>(pair);
         const auto &lb = std::get<1>(pair);
@@ -742,14 +758,9 @@ private:
     // - derived type constant
     if (con.Rank() > 0)
       return genArrayLit(con);
-    if (auto opt = con.GetScalarValue()) {
-      if constexpr (TC == Fortran::common::TypeCategory::Character) {
-        return genCharLit<KIND>(opt.value(), con.LEN());
-      } else {
-        return genScalarLit<TC, KIND>(opt.value());
-      }
-    }
-    llvm_unreachable("constant has no value");
+    auto opt = con.GetScalarValue();
+    assert(opt.has_value() && "constant has no value");
+    return genScalarLit<TC, KIND>(opt.value(), con);
   }
 
   template <Fortran::common::TypeCategory TC>
