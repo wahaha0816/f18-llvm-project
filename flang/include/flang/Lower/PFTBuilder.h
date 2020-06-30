@@ -33,6 +33,7 @@ class SemanticsContext;
 class Scope;
 } // namespace semantics
 namespace lower {
+class ClosureInterface;
 namespace pft {
 
 struct Evaluation;
@@ -513,6 +514,10 @@ struct FunctionLikeUnit : public ProgramUnit {
   /// Terminal basic block (if any)
   mlir::Block *finalBlock{};
   std::vector<std::vector<Variable>> varList;
+
+  /// If this is a host or internal procedure, store information related 
+  /// to variable capture.
+  std::unique_ptr<Fortran::lower::ClosureInterface> closure;
 };
 
 /// Module-like units contain a list of function-like units.

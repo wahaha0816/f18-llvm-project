@@ -1040,8 +1040,10 @@ namespace {
 /// symbol table, which is sorted by name.
 struct SymbolDependenceDepth {
   explicit SymbolDependenceDepth(
-      std::vector<std::vector<lower::pft::Variable>> &vars)
-      : vars{vars} {}
+      std::vector<std::vector<lower::pft::Variable>> &vars,
+      lower::pft::FunctionLikeUnit *host,
+      std::vector<lower::pft::SymbolRef> &hostVars)
+      : vars{vars}, host{host}, hostVariables{hostVars} {}
 
   // Analyze the equivalence sets. This analysis need not be performed when the
   // scope has no equivalence sets.
@@ -1079,10 +1081,40 @@ struct SymbolDependenceDepth {
       return 0;
     }
     if (sym.has<semantics::UseDetails>() ||
-        sym.has<semantics::HostAssocDetails>() ||
         sym.has<semantics::NamelistDetails>() ||
         sym.has<semantics::MiscDetails>()) {
       // FIXME: do we want to do anything with any of these?
+      return 0;
+    }
+    if (const auto *details = sym.detailsIf<semantics::HostAssocDetails>()) {
+      // Only look at HostAssocDetails if this is an internal procedure
+      // (otherwise, the host is the current function and there is no need to
+      // capture variables)
+      if (!host)
+        return 0;
+      assert(internal && host->closure && "unallocated closure data structure inf PFT");
+      const auto &hostSym = details->symbol();
+      // Some HostAssocDetails may belong to the current function unit (e.g
+      // in blocks). Do not capture those.
+      // FIXME: main program can also be the host
+      if (&hostSym.owner() != host->getSubprogramSymbol().scope())
+        return 0;
+
+      // Does this also capture procedure pointers ?
+      // Note 1: among the host associated symbols may be the procedure being
+      // defined itself so, there is pretty much always at lest some host
+      // associated symbols. Note 2: what the impact of BLOCK on all this ? Are
+      // they any sub-scopes(omp...) ? Note 3: host statement functions will
+      // need to be captured for analysis
+      // TODO: go through scope of host associated stmt-functions !
+      if (semantics::IsProcedure(hostSym))
+        return 0;
+      // For now, only capture host objects.
+      assert(hostSym.has<semantics::ObjectEntityDetails>() &&
+             "TODO: more complex host associations");
+      llvm::errs() << "capturing: " << sym << "\n";
+      internal->addHostAssociatedVariable(sym);
+      host->closure->asHostInterface().addCapturedVariable(hostSym);
       return 0;
     }
 
@@ -1177,12 +1209,20 @@ private:
   std::vector<std::vector<lower::pft::Variable>> &vars;
   llvm::SmallSet<const semantics::Symbol *, 32> aliasSyms;
   std::vector<std::tuple<std::size_t, std::size_t>> stores;
+  lower::pft::FunctionLikeUnit *host;
+  lower::InternalProcedureInterface internal*;
 };
 } // namespace
 
 void Fortran::lower::pft::FunctionLikeUnit::processSymbolTable(
     const semantics::Scope &scope) {
-  SymbolDependenceDepth sdd{varList};
+  auto *hostProcedure = parentVariant.getIf<FunctionLikeUnit>();
+  lower::InternalProcedureInterface* internal = nullptr;
+  if (hostProcedure) {
+    closure = new lower::InternalProcedureInterface{};
+    internal = &closure->asInternalInterface();
+  }
+  SymbolDependenceDepth sdd{varList, hostProcedure, internal};
   if (!scope.equivalenceSets().empty())
     sdd.analyzeAliases(scope);
   for (const auto &iter : scope)
@@ -1293,7 +1333,7 @@ void Fortran::lower::pft::Variable::dump() const {
                  << std::get<1>(*store) << "]:";
   else
     llvm_unreachable("not a Variable");
-  
+
   llvm::errs() << " depth: " << depth;
   if (global)
     llvm::errs() << ", global";

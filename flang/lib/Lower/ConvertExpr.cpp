@@ -284,6 +284,7 @@ private:
   fir::ExtendedValue gen(Fortran::semantics::SymbolRef sym) {
     if (auto val = symMap.lookupSymbol(sym))
       return getExValue(val);
+    llvm::errs() << sym << "\n";
     llvm_unreachable("all symbols should be in the map");
     auto addr = builder.createTemporary(getLoc(), converter.genType(sym),
                                         sym->name().ToString());

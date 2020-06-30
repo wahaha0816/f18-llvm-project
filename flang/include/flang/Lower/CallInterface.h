@@ -301,6 +301,52 @@ getOrDeclareFunction(llvm::StringRef name,
                      const Fortran::evaluate::ProcedureDesignator &,
                      Fortran::lower::AbstractConverter &);
 
+
+class HostProcedureInterface {
+public:
+  void addCapturedVariable(const Fortran::lower::Symbol&);
+  void createHostVariablesTuple(Fortran::lower::AbstractConverter&); 
+private: 
+  mlir::Value hostLink;
+  mlir::Type hostLinkType;
+  /// Map captured variables to their position in the host link tuple.
+  /// The map contains the sum of all host variables used in all the internal
+  /// procedures.
+  llvm::DenseMap<SymbolRef, unsigned int> capturedVariables;
+};
+
+class InternalProcedureInterface {
+public:
+  // Call while building interface
+  void addHostAssociatedVariable(const Fortran::lower::Symbol&);
+  // Call from CalleeInterface
+  void setHostLink(mlir::Value);
+  using MapVariableCallBack = std::function<void(const Fortran::lower::Symbol&, mlir::Value)>
+  // Call from Bridge
+  void extractHostVariables(Fortran::lower::AbstractConverter, MapVariableCallBack) const; 
+private:
+  mlir::Value hostLink;
+  mlir::Type hostLinkType;
+  /// List host associated variables
+  llvm::SmallVector<SymbolRef, 4> hostVariables;
+};
+
+class ClosureInterface {
+public:
+  mlir::Type getHostLinkType() const;
+  mlir::Value getHostLink() const;
+  bool isHost() const {std::holds_alternative<HostProcedureInterface>(closure);}
+  bool isInternal() const {!isHost();}
+  HostProcedureInterface& asHostInterface() {
+    return std::get<HostProcedureInterface>(closure);
+  };
+  InternalProcedureInterface& asInternalInterface() {
+    return std::get<InternalProcedureInterface>(closure);
+  }
+private:
+  std::variant<HostProcedureInterface, InternalProcedureInterface> closure;
+};
+
 } // namespace Fortran::lower
 
 #endif // FORTRAN_LOWER_FIRBUILDER_H
