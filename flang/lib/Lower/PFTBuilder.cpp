@@ -964,8 +964,9 @@ namespace {
 /// symbol table, which is sorted by name.
 struct SymbolDependenceDepth {
   explicit SymbolDependenceDepth(
-      std::vector<std::vector<lower::pft::Variable>> &vars)
-      : vars{vars} {}
+      std::vector<std::vector<lower::pft::Variable>> &vars,
+      std::vector<lower::pft::SymbolRef> &capturedVars)
+      : vars{vars}, capturedVariables{capturedVars} {}
 
   // Recursively visit each symbol to determine the height of its dependence on
   // other symbols.
@@ -978,10 +979,15 @@ struct SymbolDependenceDepth {
       return 0;
     }
     if (sym.has<semantics::UseDetails>() ||
-        sym.has<semantics::HostAssocDetails>() ||
         sym.has<semantics::NamelistDetails>() ||
         sym.has<semantics::MiscDetails>()) {
       // FIXME: do we want to do anything with any of these?
+      return 0;
+    }
+    if (const auto *details = sym.detailsIf<semantics::HostAssocDetails>()) {
+      // const auto& hostSym = details->symbol();
+      // assert(hostSym.has<semantics::ObjectEntityDetails>() && "TODO: more
+      // complex host associations"); capturedVariables.emplace_back(hostSym);
       return 0;
     }
 
@@ -1050,6 +1056,7 @@ private:
 
   llvm::SmallSet<const semantics::Symbol *, 32> seen;
   std::vector<std::vector<lower::pft::Variable>> &vars;
+  std::vector<lower::pft::SymbolRef> &capturedVariables;
 };
 } // namespace
 
@@ -1065,7 +1072,7 @@ void Fortran::lower::pft::FunctionLikeUnit::processSymbolTable(
                  << "\n";
     exit(1);
   }
-  SymbolDependenceDepth sdd{varList};
+  SymbolDependenceDepth sdd{varList, capturedVariables};
   for (const auto &iter : scope)
     sdd.analyze(iter.second.get());
   sdd.finalize();
