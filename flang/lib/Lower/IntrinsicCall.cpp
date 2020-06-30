@@ -679,14 +679,17 @@ fir::ExtendedValue toExtendedValue(mlir::Value val,
 
   if (auto arrayType = type.dyn_cast<fir::SequenceType>()) {
     type = arrayType.getEleTy();
-    // FIXME: only allow `?` in last dimension ?
     for (auto extent : arrayType.getShape()) {
       if (extent == fir::SequenceType::getUnknownExtent())
-        extents.emplace_back(mlir::Value{});
-      else
-        extents.emplace_back(
-            builder.createIntegerConstant(loc, indexType, extent));
+        break;
+      extents.emplace_back(
+          builder.createIntegerConstant(loc, indexType, extent));
     }
+    // Last extent might be missing in case of assumed-size. If more extents
+    // could not be deduced from type, that's an error (a fir.box should
+    // have been used in the interface).
+    if (extents.size() + 1 < arrayType.getShape().size())
+      mlir::emitError(loc, "cannot retrieve array extents from type");
   } else if (type.isa<fir::BoxType>() || type.isa<fir::RecordType>()) {
     mlir::emitError(loc, "descriptor or derived type not yet handled");
   }
@@ -694,15 +697,6 @@ fir::ExtendedValue toExtendedValue(mlir::Value val,
   if (!extents.empty())
     return fir::ArrayBoxValue{base, extents};
   return base;
-}
-
-llvm::SmallVector<fir::ExtendedValue, 2>
-toExtendedValue(llvm::ArrayRef<mlir::Value> values,
-                Fortran::lower::FirOpBuilder &builder, mlir::Location loc) {
-  llvm::SmallVector<fir::ExtendedValue, 2> extendedValues;
-  for (auto val : values)
-    extendedValues.emplace_back(toExtendedValue(val, builder, loc));
-  return extendedValues;
 }
 
 mlir::Value toValue(const fir::ExtendedValue &val,
@@ -718,15 +712,6 @@ mlir::Value toValue(const fir::ExtendedValue &val,
   // FIXME: need to access other ExtendedValue variants and handle them
   // properly.
   return fir::getBase(val);
-}
-
-llvm::SmallVector<mlir::Value, 2>
-toValue(llvm::ArrayRef<fir::ExtendedValue> extendedValues,
-        Fortran::lower::FirOpBuilder &builder, mlir::Location loc) {
-  llvm::SmallVector<mlir::Value, 2> values;
-  for (const auto &extendedVal : extendedValues)
-    values.emplace_back(toValue(extendedVal, builder, loc));
-  return values;
 }
 
 //===----------------------------------------------------------------------===//
@@ -792,8 +777,14 @@ IntrinsicLibrary::genIntrinsicCall(llvm::StringRef name, mlir::Type resultType,
 
   // Try the runtime if no special handler was defined for the
   // intrinsic being called. Maths runtime only has numerical elemental.
+
+  // FIXME: using toValue to get the type won't work with array arguments.
+  llvm::SmallVector<mlir::Value, 2> mlirArgs;
+  for (const auto &extendedVal : args)
+    mlirArgs.emplace_back(toValue(extendedVal, builder, loc));
   mlir::FunctionType soughtFuncType =
-      getFunctionType(resultType, toValue(args, builder, loc), builder);
+      getFunctionType(resultType, mlirArgs, builder);
+
   auto runtimeCallGenerator = getRuntimeCallGenerator(name, soughtFuncType);
   return genElementalCall(runtimeCallGenerator, name, resultType, args,
                           /* outline */ true);
@@ -817,7 +808,9 @@ mlir::Value
 IntrinsicLibrary::invokeGenerator(ExtendedGenerator generator,
                                   mlir::Type resultType,
                                   llvm::ArrayRef<mlir::Value> args) {
-  auto extendedArgs = toExtendedValue(args, builder, loc);
+  llvm::SmallVector<fir::ExtendedValue, 2> extendedArgs;
+  for (auto arg : args)
+    extendedArgs.emplace_back(toExtendedValue(arg, builder, loc));
   auto extendedResult = std::invoke(generator, *this, resultType, extendedArgs);
   return toValue(extendedResult, builder, loc);
 }
@@ -916,7 +909,9 @@ IntrinsicLibrary::outlineInWrapper(ExtendedGenerator generator,
                              " with absent optional argument");
     exit(1);
   }
-  auto mlirArgs = toValue(args, builder, loc);
+  llvm::SmallVector<mlir::Value, 2> mlirArgs;
+  for (const auto &extendedVal : args)
+    mlirArgs.emplace_back(toValue(extendedVal, builder, loc));
   auto funcType = getFunctionType(resultType, mlirArgs, builder);
   auto wrapper = getWrapper(generator, name, funcType);
   auto mlirResult =
