@@ -777,11 +777,22 @@ IntrinsicLibrary::genIntrinsicCall(llvm::StringRef name, mlir::Type resultType,
 
   // Try the runtime if no special handler was defined for the
   // intrinsic being called. Maths runtime only has numerical elemental.
+  // No optional arguments are expected at this point, the code will
+  // crash if it gets absent optional.
 
   // FIXME: using toValue to get the type won't work with array arguments.
   llvm::SmallVector<mlir::Value, 2> mlirArgs;
-  for (const auto &extendedVal : args)
-    mlirArgs.emplace_back(toValue(extendedVal, builder, loc));
+  for (const auto &extendedVal : args) {
+    auto val = toValue(extendedVal, builder, loc);
+    if (!val) {
+      // If an absent optional gets there, most likely its handler has just
+      // not yet been defined.
+      mlir::emitError(loc,
+                      "TODO: missing intrinsic lowering: " + llvm::Twine(name));
+      exit(1);
+    }
+    mlirArgs.emplace_back(val);
+  }
   mlir::FunctionType soughtFuncType =
       getFunctionType(resultType, mlirArgs, builder);
 
@@ -923,8 +934,12 @@ IntrinsicLibrary::RuntimeCallGenerator
 IntrinsicLibrary::getRuntimeCallGenerator(llvm::StringRef name,
                                           mlir::FunctionType soughtFuncType) {
   auto funcOp = getRuntimeFunction(loc, builder, name, soughtFuncType);
-  if (!funcOp)
-    llvm::report_fatal_error("missing intrinsic: " + llvm::Twine(name) + "\n");
+  if (!funcOp) {
+    mlir::emitError(loc,
+                    "TODO: missing intrinsic lowering: " + llvm::Twine(name));
+    llvm::errs() << "requested type was: " << soughtFuncType << "\n";
+    exit(1);
+  }
 
   mlir::FunctionType actualFuncType = funcOp.getType();
   assert(actualFuncType.getNumResults() == soughtFuncType.getNumResults() &&
