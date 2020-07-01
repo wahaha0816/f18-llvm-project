@@ -42,12 +42,7 @@ std::unique_ptr<mlir::Pass> createFirToCfgPass();
 /// nodes as block arguments.
 std::unique_ptr<mlir::Pass> createMemToRegPass();
 
-/// This pass will preform inlining on FIR.
-std::unique_ptr<mlir::Pass> createInlinerPass();
-
-/// Is inlining enabled? Check this before instantiating the pass with
-/// createInlinerPass().
-bool inlinerIsEnabled();
+/// Support for inlining on FIR.
 bool canLegallyInline(mlir::Operation *op, mlir::Region *reg,
                       mlir::BlockAndValueMapping &map);
 
