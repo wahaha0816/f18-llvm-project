@@ -145,17 +145,15 @@ Fortran::lower::CharacterExprHelper::createEmbox(const fir::CharBoxValue &box) {
   auto boxCharType = fir::BoxCharType::get(builder.getContext(), kind);
   auto refType = getReferenceType(str);
   // So far, fir.emboxChar fails lowering to llvm when it is given
-  // fir.data<fir.array<len x fir.char<kind>>> types, so convert to
-  // fir.data<fir.char<kind>> if needed.
+  // fir.ref<fir.array<len x fir.char<kind>>> types, so convert to
+  // fir.ref<fir.char<kind>> if needed.
   auto buff = str.getBuffer();
-  if (refType != str.getBuffer().getType())
-    buff = builder.createConvert(loc, refType, buff);
+  buff = builder.createConvert(loc, refType, buff);
   // Convert in case the provided length is not of the integer type that must
   // be used in boxchar.
   auto lenType = getLengthType();
   auto len = str.getLen();
-  if (str.getLen().getType() != lenType)
-    len = builder.createConvert(loc, lenType, len);
+  len = builder.createConvert(loc, lenType, len);
   return builder.create<fir::EmboxCharOp>(loc, boxCharType, buff, len);
 }
 
@@ -212,16 +210,20 @@ Fortran::lower::CharacterExprHelper::createTemp(mlir::Type type,
 void Fortran::lower::CharacterExprHelper::createLengthOneAssign(
     const fir::CharBoxValue &lhs, const fir::CharBoxValue &rhs) {
   auto addr = lhs.getBuffer();
-  auto refType = getReferenceType(lhs);
-  addr = builder.createConvert(loc, refType, addr);
-
   auto val = rhs.getBuffer();
-  if (!needToMaterialize(rhs)) {
-    mlir::Value rhsAddr = rhs.getBuffer();
-    rhsAddr = builder.createConvert(loc, refType, rhsAddr);
-    val = builder.create<fir::LoadOp>(loc, rhsAddr);
+  // If rhs value resides in memory, load it.
+  if (!needToMaterialize(rhs))
+    val = builder.create<fir::LoadOp>(loc, val);
+  auto valTy = val.getType();
+  // Precondition is rhs is size 1, but it may be wrapped in a fir.array.
+  if (auto seqTy = valTy.dyn_cast<fir::SequenceType>()) {
+    auto zero = builder.createIntegerConstant(loc, builder.getIndexType(), 0);
+    valTy = seqTy.getEleTy();
+    val = builder.create<fir::ExtractValueOp>(loc, valTy, val, zero);
   }
-
+  auto addrTy = fir::ReferenceType::get(valTy);
+  addr = builder.createConvert(loc, addrTy, addr);
+  assert(fir::dyn_cast_ptrEleTy(addr.getType()) == val.getType());
   builder.create<fir::StoreOp>(loc, val, addr);
 }
 
