@@ -1292,9 +1292,9 @@ void LabelEnforce::SayWithConstruct(SemanticsContext &context,
       .Attach(constructLocation, GetEnclosingConstructMsg());
 }
 
-bool HasAlternateReturns(const Symbol &sub) {
-  for (const auto *args : sub.get<SubprogramDetails>().dummyArgs()) {
-    if (!args) {
+bool HasAlternateReturns(const Symbol &subprogram) {
+  for (const auto *dummyArg : subprogram.get<SubprogramDetails>().dummyArgs()) {
+    if (!dummyArg) {
       return true;
     }
   }

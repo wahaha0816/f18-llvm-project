@@ -2020,6 +2020,8 @@ void ExpressionAnalyzer::Analyze(const parser::CallStmt &callStmt) {
       ProcedureDesignator *proc{std::get_if<ProcedureDesignator>(&callee->u)};
       CHECK(proc);
       if (CheckCall(call.source, *proc, callee->arguments)) {
+        bool hasAlternateReturns{
+            analyzer.GetActuals().size() < actualArgList.size()};
         callStmt.typedCall.reset(new ProcedureRef{std::move(*proc),
             std::move(callee->arguments), hasAlternateReturns});
       }
