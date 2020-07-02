@@ -2011,9 +2011,6 @@ void ExpressionAnalyzer::Analyze(const parser::CallStmt &callStmt) {
     analyzer.Analyze(arg, true /* is subroutine call */);
   }
   if (!analyzer.fatalErrors()) {
-    // An alternate return specifier actual argument has no code in the call.
-    bool hasAlternateReturns{
-        analyzer.GetActuals().size() < actualArgList.size()};
     if (std::optional<CalleeAndArguments> callee{
             GetCalleeAndArguments(std::get<parser::ProcedureDesignator>(call.t),
                 analyzer.GetActuals(), true /* subroutine */)}) {
