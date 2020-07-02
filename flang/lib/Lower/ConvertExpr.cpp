@@ -1341,7 +1341,7 @@ private:
 
   fir::ExtendedValue genval(const Fortran::evaluate::ProcedureRef &procRef) {
     llvm::SmallVector<mlir::Type, 1> resTy;
-    if (procRef.HasAlternateReturns())
+    if (procRef.hasAlternateReturns())
       resTy.push_back(builder.getIndexType());
     return genProcedureRef(procRef, resTy);
   }
