@@ -965,8 +965,9 @@ namespace {
 struct SymbolDependenceDepth {
   explicit SymbolDependenceDepth(
       std::vector<std::vector<lower::pft::Variable>> &vars,
-      std::vector<lower::pft::SymbolRef> &capturedVars)
-      : vars{vars}, capturedVariables{capturedVars} {}
+      std::unique_ptr<lower::pft::FunctionLikeUnit::CaptureMap> &capturedVars,
+      std::vector<lower::pft::SymbolRef> &hostVars)
+      : vars{vars}, capturedVariables{capturedVars}, hostVariables{hostVars} {}
 
   // Recursively visit each symbol to determine the height of its dependence on
   // other symbols.
@@ -985,9 +986,26 @@ struct SymbolDependenceDepth {
       return 0;
     }
     if (const auto *details = sym.detailsIf<semantics::HostAssocDetails>()) {
-      // const auto& hostSym = details->symbol();
-      // assert(hostSym.has<semantics::ObjectEntityDetails>() && "TODO: more
-      // complex host associations"); capturedVariables.emplace_back(hostSym);
+      const auto &hostSym = details->symbol();
+      // Iiik, that strategy just does not work, they are no HostAssociated
+      // symbols created for objects...
+      //
+      // Does this also capture procedure pointers ?
+      // Note 1: among the host associated symbols may be the procedure being
+      // defined itself so, there is pretty much always at lest some host
+      // associated symbols. Note 2: what the impact of BLOCK on all this ? Are
+      // they any sub-scopes(omp...) ? Note 3: host statement functions will
+      // need to be captured for analysis
+      if (semantics::IsProcedure(hostSym))
+        return 0;
+      // For now, only capture host objects.
+      assert(hostSym.has<semantics::ObjectEntityDetails>() &&
+             "TODO: more complex host associations");
+      llvm::errs() << "capturing: " << sym << "\n";
+      hostVariables.emplace_back(sym);
+      if (!capturedVariables)
+        capturedVariables.reset(new lower::pft::FunctionLikeUnit::CaptureMap);
+      capturedVariables->try_emplace(hostSym, capturedVariables->size());
       return 0;
     }
 
@@ -1056,7 +1074,8 @@ private:
 
   llvm::SmallSet<const semantics::Symbol *, 32> seen;
   std::vector<std::vector<lower::pft::Variable>> &vars;
-  std::vector<lower::pft::SymbolRef> &capturedVariables;
+  std::unique_ptr<lower::pft::FunctionLikeUnit::CaptureMap> &capturedVariables;
+  std::vector<lower::pft::SymbolRef> &hostVariables;
 };
 } // namespace
 
@@ -1072,7 +1091,7 @@ void Fortran::lower::pft::FunctionLikeUnit::processSymbolTable(
                  << "\n";
     exit(1);
   }
-  SymbolDependenceDepth sdd{varList, capturedVariables};
+  SymbolDependenceDepth sdd{varList, capturedVariables, hostVariables};
   for (const auto &iter : scope)
     sdd.analyze(iter.second.get());
   sdd.finalize();

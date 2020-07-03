@@ -788,11 +788,12 @@ private:
         info.isStructured() ? builder->getIndexType() : info.loopVariableType;
     auto lowerValue = genFIRLoopIndex(info.lowerExpr, type);
     auto upperValue = genFIRLoopIndex(info.upperExpr, type);
-    info.stepValue =
-        info.stepExpr.has_value() ? genFIRLoopIndex(*info.stepExpr, type)
-        : info.isStructured()
-            ? builder->create<mlir::ConstantIndexOp>(loc, 1)
-            : builder->createIntegerConstant(loc, info.loopVariableType, 1);
+    info.stepValue = info.stepExpr.has_value()
+                         ? genFIRLoopIndex(*info.stepExpr, type)
+                         : info.isStructured()
+                               ? builder->create<mlir::ConstantIndexOp>(loc, 1)
+                               : builder->createIntegerConstant(
+                                     loc, info.loopVariableType, 1);
     assert(info.stepValue && "step value must be set");
     info.loopVariable = createTemp(loc, *info.loopVariableSym);
 
@@ -1902,12 +1903,11 @@ private:
         addSymbol(arg.entity.get(), arg.firArgument);
       }
     };
-    for (const auto &arg : callee.getPassedArguments()) {
+
+    for (const auto &arg : callee.getPassedArguments())
       mapPassedEntity(arg);
-    }
-    if (auto passedResult = callee.getPassedResult()) {
+    if (auto passedResult = callee.getPassedResult())
       mapPassedEntity(*passedResult);
-    }
   }
 
   /// Prepare to translate a new function
@@ -1918,6 +1918,64 @@ private:
     builder = new Fortran::lower::FirOpBuilder(func, bridge.getKindMap());
     assert(builder && "FirOpBuilder did not instantiate");
     builder->setInsertionPointToStart(&func.front());
+
+    // Process host associated variables
+    if (!funit.hostVariables.empty()) {
+      llvm::errs() << "internal procedure\n";
+      auto &host =
+          funit.parentVariant.get<Fortran::lower::pft::FunctionLikeUnit>();
+      assert(host.capturedVariables && "no capture map in host");
+      auto loc = toLocation();
+
+      // FIXME: hide and share code below
+      auto &captureMap = *host.capturedVariables;
+      // Build host tuple type
+      llvm::SmallVector<mlir::Type, 4> capturedTypes(captureMap.size());
+      for (const auto &pair : captureMap) {
+        auto ty = fir::ReferenceType::get(genType(pair.first));
+        assert(pair.second < capturedTypes.size() &&
+               "bad position for capture variable in host tuple");
+        capturedTypes[pair.second] = ty;
+      }
+      auto hostTupleTy = mlir::TupleType::get(capturedTypes, &getMLIRContext());
+      auto hostTupleRefTy = fir::ReferenceType::get(hostTupleTy);
+
+      // FIXME: hack passing of host pointer to test
+      mlir::Value hostTupleRef =
+          builder->create<fir::UndefOp>(loc, hostTupleRefTy);
+      // TODO: hostTupleRef = callee.getHostTupleRef();
+      // funit.hostTupleRef = hostTupleRef;
+      mlir::Value hostTuple = builder->create<fir::LoadOp>(loc, hostTupleRef);
+      auto indexType = builder->getIndexType();
+      auto tupleTypes =
+          hostTuple.getType().dyn_cast<mlir::TupleType>().getTypes();
+      for (const auto &sym : funit.hostVariables) {
+        llvm::errs() << sym << "\n";
+        const auto &details =
+            sym.get().get<Fortran::semantics::HostAssocDetails>();
+        auto it = captureMap.find(details.symbol());
+        assert(it != captureMap.end() &&
+               "associated symbol not in host capture map");
+        std::size_t positionInTuple = it->second;
+        assert(positionInTuple < tupleTypes.size() &&
+               "associated symbol position outside of host tuple");
+        auto type = tupleTypes[positionInTuple];
+        auto pos =
+            builder->createIntegerConstant(loc, indexType, positionInTuple);
+        auto ref =
+            builder->create<fir::ExtractValueOp>(loc, type, hostTuple, pos);
+        addSymbol(sym, ref);
+        addSymbol(details.symbol(), ref);
+      }
+    }
+
+    //// Captured variable:
+    //// That may not be the place to do this, for "normal arguments" this does
+    //// does not set the "properties", length, bounds....
+    //// instantiateLocal is doing more work
+    // if (callee.isInternalProcedure())
+    //  for (const auto& captured : callee.getCapturedVariables(builder, loc))
+    //    mapPassedEntity(captured);
 
     mapDummyAndResults(callee);
 
