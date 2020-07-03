@@ -514,8 +514,12 @@ struct FunctionLikeUnit : public ProgramUnit {
   mlir::Block *finalBlock{};
   std::vector<std::vector<Variable>> varList;
 
+  using CaptureMap = llvm::DenseMap<SymbolRef, unsigned int>;
+  /// List of captured variable if the current FunctionLikeUnit  /// has
+  /// internal procedures.
+  std::unique_ptr<CaptureMap> capturedVariables;
   /// List host associated variables
-  std::vector<SymbolRef> capturedVariables;
+  std::vector<SymbolRef> hostVariables;
 };
 
 /// Module-like units contain a list of function-like units.

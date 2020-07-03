@@ -322,7 +322,8 @@ public:
     return fir::getBase(lookupSymbol(sym));
   }
 
-  bool lookupLabelSet(Fortran::lower::SymbolRef sym, Fortran::lower::pft::LabelSet &labelSet) override final {
+  bool lookupLabelSet(Fortran::lower::SymbolRef sym,
+                      Fortran::lower::pft::LabelSet &labelSet) override final {
     auto &owningProc = *getEval().getOwningProcedure();
     auto iter = owningProc.assignSymbolLabelMap.find(sym);
     if (iter == owningProc.assignSymbolLabelMap.end()) {
@@ -332,7 +333,8 @@ public:
     return true;
   }
 
-  Fortran::lower::pft::Evaluation* lookupLabel(Fortran::lower::pft::Label label) override final {
+  Fortran::lower::pft::Evaluation *
+  lookupLabel(Fortran::lower::pft::Label label) override final {
     auto &owningProc = *getEval().getOwningProcedure();
     auto iter = owningProc.labelEvaluationMap.find(label);
     if (iter == owningProc.labelEvaluationMap.end()) {
@@ -2178,6 +2180,64 @@ private:
     builder = new Fortran::lower::FirOpBuilder(func, bridge.getKindMap());
     assert(builder && "FirOpBuilder did not instantiate");
     builder->setInsertionPointToStart(&func.front());
+
+    // Process host associated variables
+    if (!funit.hostVariables.empty()) {
+      llvm::errs() << "internal procedure\n";
+      auto &host =
+          funit.parentVariant.get<Fortran::lower::pft::FunctionLikeUnit>();
+      assert(host.capturedVariables && "no capture map in host");
+      auto loc = toLocation();
+
+      // FIXME: hide and share code below
+      auto &captureMap = *host.capturedVariables;
+      // Build host tuple type
+      llvm::SmallVector<mlir::Type, 4> capturedTypes(captureMap.size());
+      for (const auto &pair : captureMap) {
+        auto ty = fir::ReferenceType::get(genType(pair.first));
+        assert(pair.second < capturedTypes.size() &&
+               "bad position for capture variable in host tuple");
+        capturedTypes[pair.second] = ty;
+      }
+      auto hostTupleTy = mlir::TupleType::get(capturedTypes, &getMLIRContext());
+      auto hostTupleRefTy = fir::ReferenceType::get(hostTupleTy);
+
+      // FIXME: hack passing of host pointer to test
+      mlir::Value hostTupleRef =
+          builder->create<fir::UndefOp>(loc, hostTupleRefTy);
+      // TODO: hostTupleRef = callee.getHostTupleRef();
+      // funit.hostTupleRef = hostTupleRef;
+      mlir::Value hostTuple = builder->create<fir::LoadOp>(loc, hostTupleRef);
+      auto indexType = builder->getIndexType();
+      auto tupleTypes =
+          hostTuple.getType().dyn_cast<mlir::TupleType>().getTypes();
+      for (const auto &sym : funit.hostVariables) {
+        llvm::errs() << sym << "\n";
+        const auto &details =
+            sym.get().get<Fortran::semantics::HostAssocDetails>();
+        auto it = captureMap.find(details.symbol());
+        assert(it != captureMap.end() &&
+               "associated symbol not in host capture map");
+        std::size_t positionInTuple = it->second;
+        assert(positionInTuple < tupleTypes.size() &&
+               "associated symbol position outside of host tuple");
+        auto type = tupleTypes[positionInTuple];
+        auto pos =
+            builder->createIntegerConstant(loc, indexType, positionInTuple);
+        auto ref =
+            builder->create<fir::ExtractValueOp>(loc, type, hostTuple, pos);
+        addSymbol(sym, ref);
+        addSymbol(details.symbol(), ref);
+      }
+    }
+
+    //// Captured variable:
+    //// That may not be the place to do this, for "normal arguments" this does
+    //// does not set the "properties", length, bounds....
+    //// instantiateLocal is doing more work
+    // if (callee.isInternalProcedure())
+    //  for (const auto& captured : callee.getCapturedVariables(builder, loc))
+    //    mapPassedEntity(captured);
 
     mapDummiesAndResults(funit, callee);
 
