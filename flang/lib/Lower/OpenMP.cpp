@@ -19,31 +19,73 @@
 
 #define TODO() llvm_unreachable("not yet implemented")
 
+void Fortran::lower::genOMP(
+    Fortran::lower::AbstractConverter &absConv,
+    Fortran::lower::pft::Evaluation &eval,
+    const Fortran::parser::OpenMPSimpleStandaloneConstruct
+        &simpleStandaloneConstruct) {
+  const auto &directive =
+      std::get<Fortran::parser::OmpSimpleStandaloneDirective>(
+          simpleStandaloneConstruct.t);
+  switch (directive.v) {
+  default:
+    TODO();
+  case parser::OmpSimpleStandaloneDirective::Directive::Barrier: {
+    absConv.getFirOpBuilder().create<mlir::omp::BarrierOp>(
+        absConv.getCurrentLocation());
+    break;
+  }
+  }
+}
+
+void Fortran::lower::genOMP(
+    Fortran::lower::AbstractConverter &absConv,
+    Fortran::lower::pft::Evaluation &eval,
+    const Fortran::parser::OpenMPStandaloneConstruct &standaloneConstruct) {
+  std::visit(
+      common::visitors{
+          [&](const Fortran::parser::OpenMPSimpleStandaloneConstruct
+                  &simpleStandaloneConstruct) {
+            genOMP(absConv, eval, simpleStandaloneConstruct);
+          },
+          [&](const Fortran::parser::OpenMPFlushConstruct &flushConstruct) {
+            TODO();
+          },
+          [&](const Fortran::parser::OpenMPCancelConstruct &cancelConstruct) {
+            TODO();
+          },
+          [&](const Fortran::parser::OpenMPCancellationPointConstruct
+                  &cancellationPointConstruct) { TODO(); },
+      },
+      standaloneConstruct.u);
+}
+
 void Fortran::lower::genOpenMPConstruct(
     Fortran::lower::AbstractConverter &absConv,
     Fortran::lower::pft::Evaluation &eval,
     const Fortran::parser::OpenMPConstruct &ompConstruct) {
-  if (auto StandaloneConstruct{
-          std::get_if<Fortran::parser::OpenMPStandaloneConstruct>(
-              &ompConstruct.u)}) {
 
-    if (auto SimpleStandaloneConstruct{
-            std::get_if<Fortran::parser::OpenMPSimpleStandaloneConstruct>(
-                &StandaloneConstruct->u)}) {
-      const auto &Directive{
-          std::get<Fortran::parser::OmpSimpleStandaloneDirective>(
-              SimpleStandaloneConstruct->t)};
-      switch (Directive.v) {
-      default:
-        TODO();
-      case parser::OmpSimpleStandaloneDirective::Directive::Barrier: {
-        absConv.getFirOpBuilder().create<mlir::omp::BarrierOp>(
-            absConv.getCurrentLocation());
-        break;
-      }
-      }
-    }
-  }
+  std::visit(
+      common::visitors{
+          [&](const Fortran::parser::OpenMPStandaloneConstruct
+                  &standaloneConstruct) {
+            genOMP(absConv, eval, standaloneConstruct);
+          },
+          [&](const Fortran::parser::OpenMPSectionsConstruct
+                  &sectionsConstruct) { TODO(); },
+          [&](const Fortran::parser::OpenMPLoopConstruct &loopConstruct) {
+            TODO();
+          },
+          [&](const Fortran::parser::OpenMPBlockConstruct &blockConstruct) {
+            TODO();
+          },
+          [&](const Fortran::parser::OpenMPAtomicConstruct &atomicConstruct) {
+            TODO();
+          },
+          [&](const Fortran::parser::OpenMPCriticalConstruct
+                  &criticalConstruct) { TODO(); },
+      },
+      ompConstruct.u);
 }
 
 void Fortran::lower::genOpenMPEndLoop(
