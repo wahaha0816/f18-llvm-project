@@ -16,12 +16,12 @@
 #define TODO() llvm_unreachable("not yet implemented")
 
 void Fortran::lower::genOpenMPConstruct(
-    Fortran::lower::AbstractConverter &ABSConv,
-    Fortran::lower::pft::Evaluation &Eval,
-    const Fortran::parser::OpenMPConstruct &OMPConstruct) {
+    Fortran::lower::AbstractConverter &absConv,
+    Fortran::lower::pft::Evaluation &eval,
+    const Fortran::parser::OpenMPConstruct &ompConstruct) {
   if (auto StandaloneConstruct{
           std::get_if<Fortran::parser::OpenMPStandaloneConstruct>(
-              &OMPConstruct.u)}) {
+              &ompConstruct.u)}) {
 
     if (auto SimpleStandaloneConstruct{
             std::get_if<Fortran::parser::OpenMPSimpleStandaloneConstruct>(
@@ -33,8 +33,8 @@ void Fortran::lower::genOpenMPConstruct(
       default:
         TODO();
       case parser::OmpSimpleStandaloneDirective::Directive::Barrier: {
-        ABSConv.getFirOpBuilder().create<mlir::omp::BarrierOp>(
-            ABSConv.getCurrentLocation());
+        absConv.getFirOpBuilder().create<mlir::omp::BarrierOp>(
+            absConv.getCurrentLocation());
         break;
       }
       }
