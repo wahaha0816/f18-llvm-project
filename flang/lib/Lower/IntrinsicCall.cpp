@@ -208,6 +208,7 @@ struct IntrinsicLibrary {
   mlir::Value genCeiling(mlir::Type, llvm::ArrayRef<mlir::Value>);
   mlir::Value genConjg(mlir::Type, llvm::ArrayRef<mlir::Value>);
   mlir::Value genDim(mlir::Type, llvm::ArrayRef<mlir::Value>);
+  mlir::Value genDprod(mlir::Type, llvm::ArrayRef<mlir::Value>);
   template <Extremum, ExtremumBehavior>
   mlir::Value genExtremum(mlir::Type, llvm::ArrayRef<mlir::Value>);
   mlir::Value genFloor(mlir::Type, llvm::ArrayRef<mlir::Value>);
@@ -301,6 +302,7 @@ static constexpr IntrinsicHandler handlers[]{
     {"conjg", &I::genConjg},
     {"dim", &I::genDim},
     {"dble", &I::genConversion},
+    {"dprod", &I::genDprod},
     {"floor", &I::genFloor},
     {"iand", &I::genIAnd},
     {"ichar", &I::genIchar},
@@ -1113,6 +1115,17 @@ mlir::Value IntrinsicLibrary::genDim(mlir::Type resultType,
   auto cmp =
       builder.create<fir::CmpfOp>(loc, mlir::CmpFPredicate::OGT, diff, zero);
   return builder.create<mlir::SelectOp>(loc, cmp, diff, zero);
+}
+
+// DPROD
+mlir::Value IntrinsicLibrary::genDprod(mlir::Type resultType,
+                                       llvm::ArrayRef<mlir::Value> args) {
+  assert(args.size() == 2);
+  assert(fir::isa_real(resultType) &&
+         "Result must be double precision in DPROD");
+  auto a = builder.createConvert(loc, resultType, args[0]);
+  auto b = builder.createConvert(loc, resultType, args[1]);
+  return builder.create<fir::MulfOp>(loc, a, b);
 }
 
 // FLOOR
