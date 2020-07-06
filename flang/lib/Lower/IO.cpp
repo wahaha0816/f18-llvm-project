@@ -1399,18 +1399,95 @@ mlir::Value Fortran::lower::genReadStatement(
                                                assignMap);
 }
 
+/// Get the file expression from the inquire spec list. Also return if the
+/// expression is a file name.
+static std::pair<const Fortran::semantics::SomeExpr *, bool>
+getInquireFileExpr(const std::list<Fortran::parser::InquireSpec> *stmt) {
+  if (!stmt)
+    return {nullptr, false};
+  for (const auto &spec : *stmt) {
+    if (auto *f = std::get_if<Fortran::parser::FileUnitNumber>(&spec.u))
+      return {Fortran::semantics::GetExpr(*f), false};
+    if (auto *f = std::get_if<Fortran::parser::FileNameExpr>(&spec.u))
+      return {Fortran::semantics::GetExpr(*f), true};
+  }
+  // semantics should have already caught this condition
+  llvm_unreachable("inquire spec must have a file");
+}
+
 mlir::Value Fortran::lower::genInquireStatement(
     Fortran::lower::AbstractConverter &converter,
-    const Fortran::parser::InquireStmt &) {
+    const Fortran::parser::InquireStmt &stmt) {
   auto &builder = converter.getFirOpBuilder();
   auto loc = converter.getCurrentLocation();
   mlir::FuncOp beginFunc;
-  // if (...
-  beginFunc = getIORuntimeFunc<mkIOKey(BeginInquireUnit)>(loc, builder);
-  // else if (...
-  beginFunc = getIORuntimeFunc<mkIOKey(BeginInquireFile)>(loc, builder);
-  // else
-  beginFunc = getIORuntimeFunc<mkIOKey(BeginInquireIoLength)>(loc, builder);
-  // TODO: implement this!
-  llvm::report_fatal_error("INQUIRE statement is not implemented");
+  mlir::Value cookie;
+  ConditionSpecifierInfo csi{};
+  const auto *list =
+      std::get_if<std::list<Fortran::parser::InquireSpec>>(&stmt.u);
+  auto exprPair = getInquireFileExpr(list);
+  auto inquireFileUnit = [&]() -> bool {
+    return exprPair.first && !exprPair.second;
+  };
+  auto inquireFileName = [&]() -> bool {
+    return exprPair.first && exprPair.second;
+  };
+
+  // Determine which BeginInquire call to make.
+  if (inquireFileUnit()) {
+    // File unit call.
+    beginFunc = getIORuntimeFunc<mkIOKey(BeginInquireUnit)>(loc, builder);
+    mlir::FunctionType beginFuncTy = beginFunc.getType();
+    auto unit = converter.genExprValue(exprPair.first, loc);
+    auto un = builder.createConvert(loc, beginFuncTy.getInput(0), unit);
+    auto file = getDefaultFilename(builder, loc, beginFuncTy.getInput(1));
+    auto line = getDefaultLineNo(builder, loc, beginFuncTy.getInput(2));
+    llvm::SmallVector<mlir::Value, 4> beginArgs{un, file, line};
+    cookie =
+        builder.create<mlir::CallOp>(loc, beginFunc, beginArgs).getResult(0);
+    // Handle remaining arguments in specifier list.
+    genConditionHandlerCall(converter, loc, cookie, *list, csi);
+  } else if (inquireFileName()) {
+    // Filename call.
+    beginFunc = getIORuntimeFunc<mkIOKey(BeginInquireFile)>(loc, builder);
+    mlir::FunctionType beginFuncTy = beginFunc.getType();
+    auto file = converter.genExprValue(exprPair.first, loc);
+    // Helper to query [BUFFER, LEN].
+    Fortran::lower::CharacterExprHelper helper(builder, loc);
+    auto dataLen = helper.materializeCharacter(file);
+    auto buff =
+        builder.createConvert(loc, beginFuncTy.getInput(0), dataLen.first);
+    auto len =
+        builder.createConvert(loc, beginFuncTy.getInput(1), dataLen.second);
+    auto kindInt = helper.getCharacterKind(file.getType());
+    mlir::Value kindValue =
+        builder.createIntegerConstant(loc, beginFuncTy.getInput(2), kindInt);
+    auto sourceFile = getDefaultFilename(builder, loc, beginFuncTy.getInput(3));
+    auto line = getDefaultLineNo(builder, loc, beginFuncTy.getInput(4));
+    llvm::SmallVector<mlir::Value, 5> beginArgs = {
+        buff, len, kindValue, sourceFile, line,
+    };
+    cookie =
+        builder.create<mlir::CallOp>(loc, beginFunc, beginArgs).getResult(0);
+    // Handle remaining arguments in specifier list.
+    genConditionHandlerCall(converter, loc, cookie, *list, csi);
+  } else {
+    // Io length call.
+    const auto *ioLength =
+        std::get_if<Fortran::parser::InquireStmt::Iolength>(&stmt.u);
+    assert(ioLength && "must have an io length");
+    beginFunc = getIORuntimeFunc<mkIOKey(BeginInquireIoLength)>(loc, builder);
+    mlir::FunctionType beginFuncTy = beginFunc.getType();
+    auto file = getDefaultFilename(builder, loc, beginFuncTy.getInput(0));
+    auto line = getDefaultLineNo(builder, loc, beginFuncTy.getInput(1));
+    llvm::SmallVector<mlir::Value, 4> beginArgs{file, line};
+    cookie =
+        builder.create<mlir::CallOp>(loc, beginFunc, beginArgs).getResult(0);
+    // Handle remaining arguments in output list.
+    genConditionHandlerCall(
+        converter, loc, cookie,
+        std::get<std::list<Fortran::parser::OutputItem>>(ioLength->t), csi);
+  }
+  // Generate end statement call.
+  return genEndIO(converter, loc, cookie, csi);
 }
