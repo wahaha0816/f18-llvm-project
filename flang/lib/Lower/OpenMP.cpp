@@ -28,13 +28,23 @@ void Fortran::lower::genOMP(
       std::get<Fortran::parser::OmpSimpleStandaloneDirective>(
           simpleStandaloneConstruct.t);
   switch (directive.v) {
-  default:
-    TODO();
-  case parser::OmpSimpleStandaloneDirective::Directive::Barrier: {
+
+  case parser::OmpSimpleStandaloneDirective::Directive::Barrier:
     absConv.getFirOpBuilder().create<mlir::omp::BarrierOp>(
         absConv.getCurrentLocation());
     break;
-  }
+  case parser::OmpSimpleStandaloneDirective::Directive::Taskwait:
+    TODO();
+  case parser::OmpSimpleStandaloneDirective::Directive::Taskyield:
+    TODO();
+  case parser::OmpSimpleStandaloneDirective::Directive::TargetEnterData:
+    TODO();
+  case parser::OmpSimpleStandaloneDirective::Directive::TargetExitData:
+    TODO();
+  case parser::OmpSimpleStandaloneDirective::Directive::TargetUpdate:
+    TODO();
+  case parser::OmpSimpleStandaloneDirective::Directive::Ordered:
+    TODO();
   }
 }
 
