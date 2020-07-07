@@ -5,16 +5,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-///
-/// Experimental IO lowering to FIR + runtime. The Runtime design is under
-/// design.
-///
-/// FIXME This interface is also not final. Should it be based on parser::..
-/// nodes and lower expressions as needed or should it get every expression
-/// already lowered as mlir::Value? (currently second options, not sure it will
-/// provide enough information for complex IO statements).
-///
-//===----------------------------------------------------------------------===//
 
 #ifndef FORTRAN_LOWER_IO_H
 #define FORTRAN_LOWER_IO_H
