@@ -55,7 +55,7 @@ class FirOpBuilder;
 class AbstractConverter {
 public:
   //===--------------------------------------------------------------------===//
-  // Symbols     
+  // Symbols
   //===--------------------------------------------------------------------===//
 
   /// Get the mlir instance of a symbol.
