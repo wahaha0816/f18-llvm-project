@@ -28,22 +28,24 @@ void Fortran::lower::genOMP(
       std::get<Fortran::parser::OmpSimpleStandaloneDirective>(
           simpleStandaloneConstruct.t);
   switch (directive.v) {
-
-  case parser::OmpSimpleStandaloneDirective::Directive::Barrier:
+#if 0 // does not compile
+  case Fortran::parser::OmpSimpleStandaloneDirective::Directive::Barrier:
     absConv.getFirOpBuilder().create<mlir::omp::BarrierOp>(
         absConv.getCurrentLocation());
     break;
-  case parser::OmpSimpleStandaloneDirective::Directive::Taskwait:
+  case Fortran::parser::OmpSimpleStandaloneDirective::Directive::Taskwait:
     TODO();
-  case parser::OmpSimpleStandaloneDirective::Directive::Taskyield:
+  case Fortran::parser::OmpSimpleStandaloneDirective::Directive::Taskyield:
     TODO();
-  case parser::OmpSimpleStandaloneDirective::Directive::TargetEnterData:
+  case Fortran::parser::OmpSimpleStandaloneDirective::Directive::
+      TargetEnterData:
     TODO();
-  case parser::OmpSimpleStandaloneDirective::Directive::TargetExitData:
+  case Fortran::parser::OmpSimpleStandaloneDirective::Directive::TargetExitData:
     TODO();
-  case parser::OmpSimpleStandaloneDirective::Directive::TargetUpdate:
+  case Fortran::parser::OmpSimpleStandaloneDirective::Directive::TargetUpdate:
     TODO();
-  case parser::OmpSimpleStandaloneDirective::Directive::Ordered:
+  case Fortran::parser::OmpSimpleStandaloneDirective::Directive::Ordered:
+#endif
     TODO();
   }
 }
