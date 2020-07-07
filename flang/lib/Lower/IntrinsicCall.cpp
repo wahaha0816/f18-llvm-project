@@ -19,8 +19,8 @@
 #include "flang/Lower/ComplexExpr.h"
 #include "flang/Lower/ConvertType.h"
 #include "flang/Lower/FIRBuilder.h"
+#include "flang/Lower/Mangler.h"
 #include "flang/Lower/Runtime.h"
-#include "flang/Optimizer/Support/InternalNames.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <algorithm>

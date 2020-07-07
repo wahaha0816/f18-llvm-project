@@ -10,18 +10,27 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef FORTRAN_LOWER_MANGLER_H_
-#define FORTRAN_LOWER_MANGLER_H_
+#ifndef FORTRAN_LOWER_MANGLER_H
+#define FORTRAN_LOWER_MANGLER_H
 
+#include "mlir/IR/StandardTypes.h"
+#include "llvm/ADT/StringRef.h"
 #include <string>
 
 namespace fir {
 struct NameUniquer;
-}
 
-namespace llvm {
-class StringRef;
-}
+/// Returns a name suitable to define mlir functions for Fortran intrinsic
+/// Procedure. These names are guaranteed to not conflict with user defined
+/// procedures. This is needed to implement Fortran generic intrinsics as
+/// several mlir functions specialized for the argument types.
+/// The result is guaranteed to be distinct for different mlir::FunctionType
+/// arguments. The mangling pattern is:
+///    fir.<generic name>.<result type>.<arg type>...
+/// e.g ACOS(COMPLEX(4)) is mangled as fir.acos.z4.z4
+std::string mangleIntrinsicProcedure(llvm::StringRef genericName,
+                                     mlir::FunctionType);
+} // namespace fir
 
 namespace Fortran {
 namespace common {
@@ -45,4 +54,4 @@ std::string demangleName(llvm::StringRef name);
 } // namespace lower
 } // namespace Fortran
 
-#endif // FORTRAN_LOWER_MANGLER_H_
+#endif // FORTRAN_LOWER_MANGLER_H
