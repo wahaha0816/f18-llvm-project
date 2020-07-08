@@ -16,6 +16,7 @@
 #include "flang/Lower/PFTBuilder.h"
 #include "flang/Parser/parse-tree.h"
 #include "mlir/Dialect/OpenMP/OpenMPDialect.h"
+#include "llvm/Frontend/OpenMP/OMPConstants.h"
 
 #define TODO() llvm_unreachable("not yet implemented")
 
@@ -28,24 +29,24 @@ void Fortran::lower::genOMP(
       std::get<Fortran::parser::OmpSimpleStandaloneDirective>(
           simpleStandaloneConstruct.t);
   switch (directive.v) {
-#if 0 // does not compile
-  case Fortran::parser::OmpSimpleStandaloneDirective::Directive::Barrier:
+
+  default:
+    break;
+  case llvm::omp::Directive::OMPD_barrier:
     absConv.getFirOpBuilder().create<mlir::omp::BarrierOp>(
         absConv.getCurrentLocation());
     break;
-  case Fortran::parser::OmpSimpleStandaloneDirective::Directive::Taskwait:
+  case llvm::omp::Directive::OMPD_taskwait:
     TODO();
-  case Fortran::parser::OmpSimpleStandaloneDirective::Directive::Taskyield:
+  case llvm::omp::Directive::OMPD_taskyield:
     TODO();
-  case Fortran::parser::OmpSimpleStandaloneDirective::Directive::
-      TargetEnterData:
+  case llvm::omp::Directive::OMPD_target_enter_data:
     TODO();
-  case Fortran::parser::OmpSimpleStandaloneDirective::Directive::TargetExitData:
+  case llvm::omp::Directive::OMPD_target_exit_data:
     TODO();
-  case Fortran::parser::OmpSimpleStandaloneDirective::Directive::TargetUpdate:
+  case llvm::omp::Directive::OMPD_target_update:
     TODO();
-  case Fortran::parser::OmpSimpleStandaloneDirective::Directive::Ordered:
-#endif
+  case llvm::omp::Directive::OMPD_ordered:
     TODO();
   }
 }
