@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef OPTIMIZER_DIALECT_FIRTYPE_H
-#define OPTIMIZER_DIALECT_FIRTYPE_H
+#ifndef FORTRAN_OPTIMIZER_DIALECT_FIRTYPE_H
+#define FORTRAN_OPTIMIZER_DIALECT_FIRTYPE_H
 
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -42,6 +42,7 @@ class FIROpsDialect;
 using KindTy = unsigned;
 
 namespace detail {
+struct BoxTypeStorage;
 struct BoxCharTypeStorage;
 struct BoxProcTypeStorage;
 struct CharacterTypeStorage;
@@ -56,6 +57,7 @@ struct RealTypeStorage;
 struct RecordTypeStorage;
 struct ReferenceTypeStorage;
 struct SequenceTypeStorage;
+struct ShapeShiftTypeStorage;
 struct SliceTypeStorage;
 struct TypeDescTypeStorage;
 struct VectorTypeStorage;
@@ -96,6 +98,10 @@ bool isa_aggregate(mlir::Type t);
 /// Extract the `Type` pointed to from a FIR memory reference type. If `t` is
 /// not a memory reference type, then returns a null `Type`.
 mlir::Type dyn_cast_ptrEleTy(mlir::Type t);
+
+/// Extract the `Type` pointed to from a FIR memory reference or box type. If
+/// `t` is not a memory reference or box type, then returns a null `Type`.
+mlir::Type dyn_cast_ptrOrBoxEleTy(mlir::Type t);
 
 // Intrinsic types
 
@@ -177,6 +183,23 @@ public:
 
 // FIR support types
 
+/// The type of a Fortran descriptor. Descriptors are tuples of information that
+/// describe an entity being passed from a calling context. This information
+/// might include (but is not limited to) whether the entity is an array, its
+/// size, or what type it has.
+class BoxType
+    : public mlir::Type::TypeBase<BoxType, mlir::Type, detail::BoxTypeStorage> {
+public:
+  using Base::Base;
+  static BoxType get(mlir::Type eleTy, mlir::AffineMapAttr map = {});
+  mlir::Type getEleTy() const;
+  mlir::AffineMapAttr getLayoutMap() const;
+
+  static mlir::LogicalResult
+  verifyConstructionInvariants(mlir::Location, mlir::Type eleTy,
+                               mlir::AffineMapAttr map);
+};
+
 /// The type of a pair that describes a CHARACTER variable. Specifically, a
 /// CHARACTER consists of a reference to a buffer (the string value) and a LEN
 /// type parameter (the runtime length of the buffer).
@@ -200,6 +223,20 @@ public:
 
   static mlir::LogicalResult verifyConstructionInvariants(mlir::Location,
                                                           mlir::Type eleTy);
+};
+
+
+/// Type of a vector of runtime values that define the shape and the origin of a
+/// multidimensional array object. The vector is of pairs, origin offset and
+/// extent, of each array dimension. The rank of a ShapeShiftType must be at
+/// least 1.
+class ShapeShiftType
+    : public mlir::Type::TypeBase<ShapeShiftType, mlir::Type,
+                                  detail::ShapeShiftTypeStorage> {
+public:
+  using Base::Base;
+  static ShapeShiftType get(mlir::MLIRContext *ctx, unsigned rank);
+  unsigned getRank() const;
 };
 
 /// Type of a vector that represents an array slice operation on an array.
@@ -436,4 +473,4 @@ bool isa_unknown_size_box(mlir::Type t);
 
 } // namespace fir
 
-#endif // OPTIMIZER_DIALECT_FIRTYPE_H
+#endif // FORTRAN_OPTIMIZER_DIALECT_FIRTYPE_H
