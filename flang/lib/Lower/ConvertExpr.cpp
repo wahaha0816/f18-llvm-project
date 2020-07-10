@@ -41,29 +41,39 @@ class ExprLowering {
 public:
   explicit ExprLowering(mlir::Location loc,
                         Fortran::lower::AbstractConverter &converter,
-                        const Fortran::lower::SomeExpr &expr,
                         Fortran::lower::SymMap &map,
-                        llvm::ArrayRef<mlir::Value> lcvs = {})
+                        const Fortran::lower::ExpressionContext &context
+                        )
       : location{loc}, converter{converter},
-        builder{converter.getFirOpBuilder()}, expr{expr}, symMap{map},
-        lcvs{lcvs.begin(), lcvs.end()} {}
+        builder{converter.getFirOpBuilder()}, symMap{map}, context{context} {}
 
   /// Lower the expression `expr` into MLIR standard dialect
-  mlir::Value gen() { return fir::getBase(gen(expr)); }
+  mlir::Value genAddr(const Fortran::lower::SomeExpr &expr) {
+    return fir::getBase(gen(expr));
+  }
 
-  fir::ExtendedValue genExtAddr() { return gen(expr); }
+  fir::ExtendedValue genExtAddr(const Fortran::lower::SomeExpr &expr) {
+    return gen(expr);
+  }
 
-  mlir::Value genval() { return fir::getBase(genval(expr)); }
+  mlir::Value genValue(const Fortran::lower::SomeExpr &expr) {
+    return fir::getBase(genval(expr));
+  }
 
-  fir::ExtendedValue genExtVal() { return genval(expr); }
+  fir::ExtendedValue genExtValue(const Fortran::lower::SomeExpr &expr) {
+    return genval(expr);
+  }
+
+  fir::ExtendedValue genStringLit(llvm::StringRef str, std::uint64_t len) {
+    return genScalarLit<1>(str.str(), static_cast<int64_t>(len));
+  }
 
 private:
   mlir::Location location;
   Fortran::lower::AbstractConverter &converter;
   Fortran::lower::FirOpBuilder &builder;
-  const Fortran::lower::SomeExpr &expr;
   Fortran::lower::SymMap &symMap;
-  llvm::SmallVector<mlir::Value, 8> lcvs;
+  const Fortran::lower::ExpressionContext &context;
 
   mlir::Location getLoc() { return location; }
 
@@ -303,11 +313,11 @@ private:
     if (auto *s = var.getUnboxed())
       if (fir::isReferenceLike(s->getType()))
         return genLoad(*s);
-    if (lcvs.size() > 0) {
+    if (inArrayContext()) {
       // FIXME: make this more robust
       auto base = fir::getBase(var);
-      auto ty = builder.getRefType(peelType(base.getType(), lcvs.size() + 1));
-      auto coor = builder.create<fir::CoordinateOp>(getLoc(), ty, base, lcvs);
+      auto ty = builder.getRefType(peelType(base.getType(), context.getLoopVars().size() + 1));
+      auto coor = builder.create<fir::CoordinateOp>(getLoc(), ty, base, context.getLoopVars());
       return genLoad(coor);
     }
     return var;
@@ -947,7 +957,7 @@ private:
     return false;
   }
 
-  bool inArrayContext() { return lcvs.size() > 0; }
+  bool inArrayContext() { return context.inArrayContext(); }
 
   fir::ExtendedValue gen(const Fortran::lower::SymbolBox &si,
                          const Fortran::evaluate::ArrayRef &aref) {
@@ -975,8 +985,8 @@ private:
           auto tlb = builder.createConvert(loc, idxTy, std::get<0>(*trip));
           auto dlb = builder.createConvert(loc, idxTy, getLB(arr, dim));
           auto diff = builder.create<mlir::SubIOp>(loc, tlb, dlb);
-          assert(idx < lcvs.size());
-          auto sum = builder.create<mlir::AddIOp>(loc, diff, lcvs[idx++]);
+          assert(idx < context.getLoopVars().size());
+          auto sum = builder.create<mlir::AddIOp>(loc, diff, context.getLoopVars()[idx++]);
           auto del = builder.createConvert(loc, idxTy, std::get<2>(*trip));
           auto scaled = builder.create<mlir::MulIOp>(loc, del, delta);
           auto prod = builder.create<mlir::MulIOp>(loc, scaled, sum);
@@ -1059,7 +1069,7 @@ private:
           // triple notation for slicing operation
           auto ty = builder.getIndexType();
           auto step = builder.createConvert(loc, ty, std::get<2>(*range));
-          auto scale = builder.create<mlir::MulIOp>(loc, ty, lcvs[i], step);
+          auto scale = builder.create<mlir::MulIOp>(loc, ty, context.getLoopVars()[i], step);
           auto off = builder.createConvert(loc, ty, std::get<0>(*range));
           args.push_back(builder.create<mlir::AddIOp>(loc, ty, off, scale));
         }
@@ -1408,28 +1418,40 @@ mlir::Value Fortran::lower::createSomeExpression(
     mlir::Location loc, Fortran::lower::AbstractConverter &converter,
     const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &expr,
     Fortran::lower::SymMap &symMap) {
-  return ExprLowering{loc, converter, expr, symMap}.genval();
+  Fortran::lower::ExpressionContext bogon;
+  return ExprLowering{loc, converter, symMap, bogon}.genValue(expr);
 }
 
 fir::ExtendedValue Fortran::lower::createSomeExtendedExpression(
     mlir::Location loc, Fortran::lower::AbstractConverter &converter,
     const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &expr,
-    Fortran::lower::SymMap &symMap, llvm::ArrayRef<mlir::Value> lcvs) {
-  return ExprLowering{loc, converter, expr, symMap, lcvs}.genExtVal();
+    Fortran::lower::SymMap &symMap,
+    const Fortran::lower::ExpressionContext &context) {
+  return ExprLowering{loc, converter, symMap, context}.genExtValue(expr);
 }
 
 mlir::Value Fortran::lower::createSomeAddress(
     mlir::Location loc, Fortran::lower::AbstractConverter &converter,
     const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &expr,
     Fortran::lower::SymMap &symMap) {
-  return ExprLowering{loc, converter, expr, symMap}.gen();
+  Fortran::lower::ExpressionContext bogon;
+  return ExprLowering{loc, converter, symMap, bogon}.genAddr(expr);
 }
 
 fir::ExtendedValue Fortran::lower::createSomeExtendedAddress(
     mlir::Location loc, Fortran::lower::AbstractConverter &converter,
     const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &expr,
-    Fortran::lower::SymMap &symMap, llvm::ArrayRef<mlir::Value> lcvs) {
-  return ExprLowering{loc, converter, expr, symMap, lcvs}.genExtAddr();
+    Fortran::lower::SymMap &symMap,
+    const Fortran::lower::ExpressionContext &context) {
+  return ExprLowering{loc, converter, symMap, context}.genExtAddr(expr);
+}
+
+fir::ExtendedValue Fortran::lower::createStringLiteral(
+    mlir::Location loc, Fortran::lower::AbstractConverter &converter,
+    llvm::StringRef str, uint64_t len) {
+  Fortran::lower::SymMap bogon1;
+  Fortran::lower::ExpressionContext bogon2;
+  return ExprLowering{loc, converter, bogon1, bogon2}.genStringLit(str, len);
 }
 
 //===----------------------------------------------------------------------===//
