@@ -1,4 +1,3 @@
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
 
 add_flang_library(FortranSemantics
   assignment.cpp
@@ -45,6 +44,7 @@ add_flang_library(FortranSemantics
 
   LINK_LIBS
   FortranCommon
+  FortranParser
   FortranEvaluate
 
   LINK_COMPONENTS
