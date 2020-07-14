@@ -20,16 +20,14 @@
 
 #define TODO() llvm_unreachable("not yet implemented")
 
-void Fortran::lower::genOMP(
-    Fortran::lower::AbstractConverter &absConv,
-    Fortran::lower::pft::Evaluation &eval,
-    const Fortran::parser::OpenMPSimpleStandaloneConstruct
-        &simpleStandaloneConstruct) {
+static void genOMP(Fortran::lower::AbstractConverter &absConv,
+                   Fortran::lower::pft::Evaluation &eval,
+                   const Fortran::parser::OpenMPSimpleStandaloneConstruct
+                       &simpleStandaloneConstruct) {
   const auto &directive =
       std::get<Fortran::parser::OmpSimpleStandaloneDirective>(
           simpleStandaloneConstruct.t);
   switch (directive.v) {
-
   default:
     break;
   case llvm::omp::Directive::OMPD_barrier:
@@ -51,12 +49,12 @@ void Fortran::lower::genOMP(
   }
 }
 
-void Fortran::lower::genOMP(
-    Fortran::lower::AbstractConverter &absConv,
-    Fortran::lower::pft::Evaluation &eval,
-    const Fortran::parser::OpenMPStandaloneConstruct &standaloneConstruct) {
+static void
+genOMP(Fortran::lower::AbstractConverter &absConv,
+       Fortran::lower::pft::Evaluation &eval,
+       const Fortran::parser::OpenMPStandaloneConstruct &standaloneConstruct) {
   std::visit(
-      common::visitors{
+      Fortran::common::visitors{
           [&](const Fortran::parser::OpenMPSimpleStandaloneConstruct
                   &simpleStandaloneConstruct) {
             genOMP(absConv, eval, simpleStandaloneConstruct);
