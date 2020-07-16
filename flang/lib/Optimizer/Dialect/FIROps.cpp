@@ -1019,7 +1019,7 @@ static mlir::LogicalResult verify(fir::ResultOp op) {
 
   if (parentOp->getNumResults() != op.getNumOperands())
     return op.emitOpError() << "parent of result must have same arity";
-  for (auto e : llvm::zip(results, operands)) {
+  for (auto e : llvm::zip(results, operands))
     if (std::get<0>(e).getType() != std::get<1>(e).getType())
       return op.emitOpError()
              << "types mismatch between result op and its parent";
