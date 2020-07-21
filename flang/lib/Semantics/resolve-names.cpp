@@ -2948,6 +2948,7 @@ void SubprogramVisitor::Post(const parser::EntryStmt &stmt) {
       } else {
         dummy = &MakeSymbol(*dummyName, EntityDetails(true));
       }
+      ApplyImplicitRules(*dummy);
       entryDetails.add_dummyArg(*dummy);
     } else {
       if (inFunction) { // C1573
