@@ -11,17 +11,114 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef FLANG_OPTIMIZER_TRANSFORMS_PASSES
-#define FLANG_OPTIMIZER_TRANSFORMS_PASSES
+#ifndef FORTRAN_OPTIMIZER_TRANSFORMS_FIR_PASSES
+#define FORTRAN_OPTIMIZER_TRANSFORMS_FIR_PASSES
 
 include "mlir/Pass/PassBase.td"
 
-def ExternalNameConversion : Pass<"external-name-interop", "mlir::ModuleOp"> {
-  let summary = "Convert name for external interoperability";
+def AffineDialectPromotion : FunctionPass<"promote-to-affine"> {
+  let summary = "Promotes `fir.{do_loop,if}` to `affine.{for,if}`.";
   let description = [{
-    Demangle FIR internal name and mangle them for external interoperability.
+    Convert fir operations which satisfy affine constraints to the affine
+    dialect.
+
+    `fir.do_loop` will be converted to `affine.for` if the loops inside the body
+    can be converted and the indices for memory loads and stores satisfy
+    `affine.apply` criteria for symbols and dimensions.
+
+    `fir.if` will be converted to `affine.if` where possible. `affine.if`'s
+    condition uses an integer set (==, >=) and an analysis is done to determine
+    the fir condition's parent operations to construct the integer set.
+
+    `fir.load` (`fir.store`) will be converted to `affine.load` (`affine.store`)
+    where possible. This conversion includes adding a dummy `fir.convert` cast
+    to adapt values of type `!fir.ref<!fir.array>` to `memref`. This is done
+    because the affine dialect presently only understands the `memref` type.
   }];
-  let constructor = "::fir::createExternalNameConversionPass()";
+  let constructor = "::fir::createPromoteToAffinePass()";
+  let dependentDialects = [
+    "fir::FIROpsDialect", "mlir::StandardOpsDialect", "mlir::AffineDialect"    
+  ];
 }
 
-#endif // FLANG_OPTIMIZER_TRANSFORMS_PASSES
+def AffineDialectDemotion : FunctionPass<"demote-affine"> {
+  let summary = "Converts `affine.{load,store}` back to fir operations";
+  let description = [{
+    Affine dialect's default lowering for loads and stores is different from
+    fir as it uses the `memref` type. The `memref` type is not compatible with
+    the Fortran runtime. Therefore, conversion of memory operations back to
+    `fir.load` and `fir.store` with `!fir.ref<?>` types is required.
+  }];
+  let constructor = "::fir::createAffineDemotionPass()";
+}
+
+def FirLoopResultOpt : FunctionPass<"fir-loop-result-opt"> {
+  let summary = "Optimizes `fir.do_loop` by removing unused final iteration values.";
+  let description = [{
+    TODO - do we need this if we overhaul fir.do_loop a bit?
+  }];
+  let constructor = "::fir::createFirLoopResultOptPass()";
+}
+
+def MemRefDataFlowOpt : FunctionPass<"fir-memref-dataflow-opt"> {
+  let summary = "Perform store/load forwarding and potentially removing dead stores.";
+  let description = [{
+    This pass performs store to load forwarding to eliminate memory accesses and
+    potentially the entire allocation if all the accesses are forwarded.
+  }];
+  let constructor = "::fir::createMemDataFlowOptPass()";
+}
+
+def BasicCSE : FunctionPass<"basic-cse"> {
+  let summary = "Basic common sub-expression elimination.";
+  let description = [{
+     Perform common subexpression elimination on FIR operations. This pass
+     differs from the MLIR CSE pass in that it is FIR/Fortran semantics aware.
+  }];
+  let constructor = "::fir::createCSEPass()";
+}
+
+def ControlFlowLowering : FunctionPass<"lower-control-flow"> {
+  let summary = "Convert affine dialect, fir.select_type to standard dialect.";
+  let description = [{
+    This converts the affine dialect back to standard dialect. It also converts
+    `fir.select_type` to more primitive operations. This pass is required before
+    code gen to the LLVM IR dialect.
+
+    TODO: Should the affine rewriting by moved to AffineDialectDemotion?
+  }];
+  let constructor = "::fir::createControlFlowLoweringPass()";
+}
+
+def CFGConversion : FunctionPass<"cfg-conversion"> {
+  let summary = "Convert FIR structured control flow ops to CFG ops.";
+  let description = [{
+    Transform the `fir.do_loop`, `fir.if`, and `fir.iterate_while` ops into
+    plain old test and branch operations. Removing the high-level control
+    structures can enable other optimizations.
+
+    This pass is required before code gen to the LLVM IR dialect.
+  }];
+  let constructor = "::fir::createFirToCfgPass()";
+}
+
+def ArrayValueCopy : FunctionPass<"array-value-copy"> {
+  let summary = "Convert array value operations to memory operations.";
+  let description = [{
+    Transform the set of array value primitives to a memory-based array
+    representation.
+
+    The Ops `array_load`, `array_store`, `array_fetch`, and `array_update` are
+    used to manage abstract aggregate array values. A simple analysis is done
+    to determine if there are potential dependences between these operations.
+    If not, these array operations can be lowered to work directly on the memory
+    representation. If there is a potential conflict, a temporary is created
+    along with appropriate copy-in/copy-out operations. Here, a more refined
+    analysis might be deployed, such as using the affine framework.
+
+    This pass is required before code gen to the LLVM IR dialect.
+  }];
+  let constructor = "::fir::createArrayValueCopyPass()";
+}
+
+#endif // FORTRAN_OPTIMIZER_TRANSFORMS_FIR_PASSES
