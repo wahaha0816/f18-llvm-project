@@ -171,7 +171,7 @@ static void makeNextConditionalOn(Fortran::lower::FirOpBuilder &builder,
                                   bool inIterWhileLoop = false) {
   if (!checkResult || !ok)
     // Either I/O calls do not need to be checked, or the next I/O call is the
-    // first potentially failable call.
+    // first potentially erroneous call.
     return;
   // A previous I/O call for a statement returned the bool `ok`.  If this call
   // is in a fir.iterate_while loop, the result must be propagated up to the
@@ -934,7 +934,8 @@ lowerReferenceAsStringSelect(
 
   auto symbol = GetLastSymbol(&expr);
   Fortran::lower::pft::LabelSet labels;
-  [[maybe_unused]] auto foundLabelSet = converter.lookupLabelSet(*symbol, labels);
+  [[maybe_unused]] auto foundLabelSet =
+      converter.lookupLabelSet(*symbol, labels);
   assert(foundLabelSet && "Label not found in map");
 
   for (auto label : labels) {
