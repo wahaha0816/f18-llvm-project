@@ -751,6 +751,13 @@ threadSpecs(Fortran::lower::AbstractConverter &converter, mlir::Location loc,
   return insertPt;
 }
 
+/// Most I/O statements have some form of optional exception condition handling
+/// for when there is a failure. There are 5 basic forms: ERR, EOR, END, IOSTAT,
+/// and IOMSG. The first three cause control-flow to transfer to another
+/// statement. The final two return information from the runtime, via a
+/// variable, about the nature of I/O failure. Not all statements have all 5
+/// forms, but this handler will match the ones that do occur in the spec-list
+/// of a particular statement.
 template <typename A>
 static void
 genConditionHandlerCall(Fortran::lower::AbstractConverter &converter,
@@ -759,11 +766,25 @@ genConditionHandlerCall(Fortran::lower::AbstractConverter &converter,
   for (const auto &spec : specList) {
     std::visit(
         Fortran::common::visitors{
-            [&](const Fortran::parser::StatVariable &msgVar) {
-              csi.ioStatExpr = Fortran::semantics::GetExpr(msgVar);
+            [&](const Fortran::parser::StatVariable &var) {
+              csi.ioStatExpr = Fortran::semantics::GetExpr(var);
             },
-            [&](const Fortran::parser::MsgVariable &msgVar) {
-              csi.ioMsgExpr = Fortran::semantics::GetExpr(msgVar);
+            [&](const Fortran::parser::InquireSpec::IntVar &var) {
+              if (std::get<Fortran::parser::InquireSpec::IntVar::Kind>(var.t) ==
+                  Fortran::parser::InquireSpec::IntVar::Kind::Iostat)
+                csi.ioStatExpr = Fortran::semantics::GetExpr(
+                    std::get<Fortran::parser::ScalarIntVariable>(var.t));
+            },
+            [&](const Fortran::parser::MsgVariable &var) {
+              csi.ioMsgExpr = Fortran::semantics::GetExpr(var);
+            },
+            [&](const Fortran::parser::InquireSpec::CharVar &var) {
+              if (std::get<Fortran::parser::InquireSpec::CharVar::Kind>(
+                      var.t) ==
+                  Fortran::parser::InquireSpec::CharVar::Kind::Iomsg)
+                csi.ioMsgExpr = Fortran::semantics::GetExpr(
+                    std::get<Fortran::parser::ScalarDefaultCharVariable>(
+                        var.t));
             },
             [&](const Fortran::parser::EndLabel &) { csi.hasEnd = true; },
             [&](const Fortran::parser::EorLabel &) { csi.hasEor = true; },
@@ -1523,6 +1544,10 @@ mlir::Value genInquireSpec<Fortran::parser::InquireSpec::CharVar>(
     Fortran::lower::AbstractConverter &converter, mlir::Location loc,
     mlir::Value cookie, mlir::Value idExpr,
     const Fortran::parser::InquireSpec::CharVar &var) {
+  // IOMSG is handled with exception conditions
+  if (std::get<Fortran::parser::InquireSpec::CharVar::Kind>(var.t) ==
+      Fortran::parser::InquireSpec::CharVar::Kind::Iomsg)
+    return {};
   auto &builder = converter.getFirOpBuilder();
   mlir::FuncOp specFunc =
       getIORuntimeFunc<mkIOKey(InquireCharacter)>(loc, builder);
@@ -1550,6 +1575,10 @@ mlir::Value genInquireSpec<Fortran::parser::InquireSpec::IntVar>(
     Fortran::lower::AbstractConverter &converter, mlir::Location loc,
     mlir::Value cookie, mlir::Value idExpr,
     const Fortran::parser::InquireSpec::IntVar &var) {
+  // IOSTAT is handled with exception conditions
+  if (std::get<Fortran::parser::InquireSpec::IntVar::Kind>(var.t) ==
+      Fortran::parser::InquireSpec::IntVar::Kind::Iostat)
+    return {};
   auto &builder = converter.getFirOpBuilder();
   mlir::FuncOp specFunc =
       getIORuntimeFunc<mkIOKey(InquireInteger64)>(loc, builder);
