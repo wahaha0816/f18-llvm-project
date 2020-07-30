@@ -940,19 +940,31 @@ lowerReferenceAsStringSelect(
 
   for (auto label : labels) {
     indexList.push_back(label);
-    auto eval = converter.lookupLabel(label);
+    auto *eval = converter.lookupLabel(label);
     assert(eval && "Label is missing from the table");
 
-    auto stringLit = lowerSourceTextAsStringLit(
-        converter, loc, toStringRef(eval->position), strTy, lenTy);
-    auto stringRef = std::get<0>(stringLit);
-    auto stringLen = std::get<1>(stringLit);
+    auto text = toStringRef(eval->position);
+    mlir::Value stringRef;
+    mlir::Value stringLen;
+    if (eval->isA<Fortran::parser::FormatStmt>()) {
+      assert(text.find('(') != llvm::StringRef::npos &&
+             "FORMAT is unexpectedly ill-formed");
+      // This is a format statement, so extract the spec from the text.
+      auto stringLit =
+          lowerSourceTextAsStringLit(converter, loc, text, strTy, lenTy);
+      stringRef = std::get<0>(stringLit);
+      stringLen = std::get<1>(stringLit);
+    } else {
+      // This is not a format statement, so use null.
+      stringRef = builder.createConvert(
+          loc, strTy,
+          builder.createIntegerConstant(loc, builder.getIndexType(), 0));
+      stringLen = builder.createIntegerConstant(loc, lenTy, 0);
+    }
 
     // Pass the format string reference and the string length out of the select
     // statement
-    llvm::SmallVector<mlir::Value, 8> args;
-    args.push_back(stringRef);
-    args.push_back(stringLen);
+    llvm::SmallVector<mlir::Value, 8> args = {stringRef, stringLen};
     builder.create<mlir::BranchOp>(loc, endBlock, args);
 
     // Add block to the list of cases and make a new one
