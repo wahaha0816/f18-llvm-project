@@ -2154,6 +2154,11 @@ private:
     for (const auto &arg : callee.getPassedArguments())
       mapPassedEntity(arg);
 
+    // TODO: closure
+    // if (auto closure = callee.getClosureInterface())
+    //   for (const auto sym& : closure.getCapturedVariables())
+    //     addSymbol(sym, closure.getReference(sym));
+
     // Allocate local skeleton instances of dummies from other entry points.
     // Most of these locals will not survive into final generated code, but
     // some will.  It is illegal to reference them at run time if they do.
@@ -2212,6 +2217,7 @@ private:
       auto indexType = builder->getIndexType();
       auto tupleTypes =
           hostTuple.getType().dyn_cast<mlir::TupleType>().getTypes();
+
       for (const auto &sym : funit.hostVariables) {
         llvm::errs() << sym << "\n";
         const auto &details =
