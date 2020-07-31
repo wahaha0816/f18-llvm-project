@@ -2167,7 +2167,8 @@ private:
     }
     if (auto passedResult = callee.getPassedResult()) {
       mapPassedEntity(*passedResult);
-      if (*passedResult->entity != *funit.primaryResult)
+      if (funit.primaryResult &&
+          passedResult->entity.get() != *funit.primaryResult)
         addSymbol(*funit.primaryResult, lookupSymbol(passedResult->entity));
     }
   }
