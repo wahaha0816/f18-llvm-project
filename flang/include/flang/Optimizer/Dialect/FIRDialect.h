@@ -42,6 +42,7 @@ inline void registerFIRDialects(mlir::DialectRegistry &registry) {
   // clang-format off
   registry.insert<mlir::AffineDialect,
                   mlir::LLVM::LLVMDialect,
+                  mlir::omp::OpenACCDialect,
                   mlir::omp::OpenMPDialect,
                   mlir::scf::SCFDialect,
                   mlir::StandardOpsDialect,
