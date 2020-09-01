@@ -167,6 +167,11 @@ mlir::Type fir::BoxDimsOp::getTupleType() {
 // CallOp
 //===----------------------------------------------------------------------===//
 
+mlir::FunctionType fir::CallOp::getFunctionType() {
+  return mlir::FunctionType::get(getOperandTypes(), getResultTypes(),
+                                 getContext());
+}
+
 static void printCallOp(mlir::OpAsmPrinter &p, fir::CallOp &op) {
   auto callee = op.callee();
   bool isDirect = callee.hasValue();
@@ -323,7 +328,8 @@ mlir::ParseResult fir::parseCmpcOp(mlir::OpAsmParser &parser,
 void fir::ConvertOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<ConvertConvertOptPattern, RedundantConvertOptPattern,
-                 CombineConvertOptPattern, ForwardConstantConvertPattern>(context);
+                 CombineConvertOptPattern, ForwardConstantConvertPattern>(
+      context);
 }
 
 mlir::OpFoldResult fir::ConvertOp::fold(llvm::ArrayRef<mlir::Attribute> opnds) {
@@ -348,7 +354,7 @@ mlir::OpFoldResult fir::ConvertOp::fold(llvm::ArrayRef<mlir::Attribute> opnds) {
 
 bool fir::ConvertOp::isIntegerCompatible(mlir::Type ty) {
   return ty.isa<mlir::IntegerType>() || ty.isa<mlir::IndexType>() ||
-         ty.isa<fir::IntType>() || ty.isa<fir::LogicalType>() ||
+         ty.isa<fir::IntegerType>() || ty.isa<fir::LogicalType>() ||
          ty.isa<fir::CharacterType>();
 }
 
@@ -412,8 +418,8 @@ void fir::CoordinateOp::build(OpBuilder &builder, OperationState &result,
 //===----------------------------------------------------------------------===//
 
 mlir::FunctionType fir::DispatchOp::getFunctionType() {
-  auto attr = getAttr("fn_type").cast<mlir::TypeAttr>();
-  return attr.getValue().cast<mlir::FunctionType>();
+  return mlir::FunctionType::get(getOperandTypes(), getResultTypes(),
+                                 getContext());
 }
 
 //===----------------------------------------------------------------------===//
@@ -993,7 +999,7 @@ static constexpr llvm::StringRef getTargetOffsetAttr() {
 template <typename A, typename... AdditionalArgs>
 static A getSubOperands(unsigned pos, A allArgs,
                         mlir::DenseIntElementsAttr ranges,
-                        AdditionalArgs &&... additionalArgs) {
+                        AdditionalArgs &&...additionalArgs) {
   unsigned start = 0;
   for (unsigned i = 0; i < pos; ++i)
     start += (*(ranges.begin() + i)).getZExtValue();
