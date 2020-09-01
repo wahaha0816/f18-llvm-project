@@ -64,16 +64,22 @@ static void genACC(Fortran::lower::AbstractConverter &absConv,
                          firOpBuilder.getI64IntegerAttr(collapseValue.value()));
         }
       } else if (const auto *seqClause =
-              std::get_if<Fortran::parser::AccClause::Seq>(&clause.u)) {
+                     std::get_if<Fortran::parser::AccClause::Seq>(&clause.u)) {
+        (void)seqClause;
       } else if (const auto *gangClause =
-              std::get_if<Fortran::parser::AccClause::Gang>(&clause.u)) {
+                     std::get_if<Fortran::parser::AccClause::Gang>(&clause.u)) {
+        (void)gangClause;
       } else if (const auto *vectorClause =
-              std::get_if<Fortran::parser::AccClause::Vector>(&clause.u)) {
+                     std::get_if<Fortran::parser::AccClause::Vector>(
+                         &clause.u)) {
+        (void)vectorClause;
       } else if (const auto *workerClause =
-              std::get_if<Fortran::parser::AccClause::Worker>(&clause.u)) {
+                     std::get_if<Fortran::parser::AccClause::Worker>(
+                         &clause.u)) {
+        (void)workerClause;
+      } else {
+        TODO();
       }
-
-
     }
 
     // Place the insertion point to the start of the first block.
@@ -105,8 +111,9 @@ void Fortran::lower::genOpenACCConstruct(
           [&](const Fortran::parser::OpenACCWaitConstruct &waitConstruct) {
             TODO();
           },
-          [&](const Fortran::parser::OpenACCAtomicConstruct
-                  &atomicConstruct) { TODO(); },
+          [&](const Fortran::parser::OpenACCAtomicConstruct &atomicConstruct) {
+            TODO();
+          },
       },
-        acc.u);
+      acc.u);
 }
