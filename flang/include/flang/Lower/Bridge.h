@@ -49,17 +49,18 @@ class LoweringBridge {
 public:
   /// Create a lowering bridge instance.
   static LoweringBridge
-  create(const Fortran::common::IntrinsicTypeDefaultKinds &defaultKinds,
+  create(mlir::MLIRContext &ctx,
+         const Fortran::common::IntrinsicTypeDefaultKinds &defaultKinds,
          const Fortran::evaluate::IntrinsicProcTable &intrinsics,
          const Fortran::parser::CookedSource &cooked) {
-    return LoweringBridge{defaultKinds, intrinsics, cooked};
+    return LoweringBridge{ctx, defaultKinds, intrinsics, cooked};
   }
 
   //===--------------------------------------------------------------------===//
   // Getters
   //===--------------------------------------------------------------------===//
 
-  mlir::MLIRContext &getMLIRContext() { return *context.get(); }
+  mlir::MLIRContext &getMLIRContext() { return context; }
   mlir::ModuleOp &getModule() { return *module.get(); }
   const Fortran::common::IntrinsicTypeDefaultKinds &getDefaultKinds() const {
     return defaultKinds;
@@ -93,6 +94,7 @@ public:
 
 private:
   explicit LoweringBridge(
+      mlir::MLIRContext &ctx,
       const Fortran::common::IntrinsicTypeDefaultKinds &defaultKinds,
       const Fortran::evaluate::IntrinsicProcTable &intrinsics,
       const Fortran::parser::CookedSource &cooked);
@@ -102,7 +104,7 @@ private:
   const Fortran::common::IntrinsicTypeDefaultKinds &defaultKinds;
   const Fortran::evaluate::IntrinsicProcTable &intrinsics;
   const Fortran::parser::CookedSource *cooked;
-  std::unique_ptr<mlir::MLIRContext> context;
+  mlir::MLIRContext &context;
   std::unique_ptr<mlir::ModuleOp> module;
   fir::KindMapping kindMap;
 };
