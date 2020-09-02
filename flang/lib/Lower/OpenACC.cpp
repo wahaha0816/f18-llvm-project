@@ -36,7 +36,7 @@ static void genACC(Fortran::lower::AbstractConverter &absConv,
     llvm::ArrayRef<mlir::Type> argTy;
     mlir::ValueRange range;
     // Temporarly set to default 0 as operands are not generated yet.
-    llvm::SmallVector<int32_t, 2> operandSegmentSizes(/*Size=*/2,
+    llvm::SmallVector<int32_t, 2> operandSegmentSizes(/*Size=*/7,
                                                       /*Value=*/0);
     auto loopOp =
         firOpBuilder.create<mlir::acc::LoopOp>(currentLocation, argTy, range);
@@ -52,7 +52,6 @@ static void genACC(Fortran::lower::AbstractConverter &absConv,
     const auto &accClauseList =
         std::get<Fortran::parser::AccClauseList>(beginLoopDirective.t);
 
-    //
     for (const auto &clause : accClauseList.v) {
       if (const auto *collapseClause =
               std::get_if<Fortran::parser::AccClause::Collapse>(&clause.u)) {
