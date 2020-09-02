@@ -21,6 +21,9 @@
 namespace fir {
 struct NameUniquer;
 }
+namespace llvm {
+class Triple;
+}
 
 namespace Fortran {
 namespace common {
@@ -52,8 +55,10 @@ public:
   create(mlir::MLIRContext &ctx,
          const Fortran::common::IntrinsicTypeDefaultKinds &defaultKinds,
          const Fortran::evaluate::IntrinsicProcTable &intrinsics,
-         const Fortran::parser::CookedSource &cooked) {
-    return LoweringBridge{ctx, defaultKinds, intrinsics, cooked};
+         const Fortran::parser::CookedSource &cooked, llvm::Triple &triple,
+         fir::NameUniquer &uniquer, fir::KindMapping &kindMap) {
+    return LoweringBridge(ctx, defaultKinds, intrinsics, cooked, triple,
+                          uniquer, kindMap);
   }
 
   //===--------------------------------------------------------------------===//
@@ -89,7 +94,7 @@ public:
   void parseSourceFile(llvm::SourceMgr &);
 
   /// Cross the bridge from the Fortran parse-tree, etc. to MLIR dialects
-  void lower(const Fortran::parser::Program &program, fir::NameUniquer &uniquer,
+  void lower(const Fortran::parser::Program &program,
              const Fortran::semantics::SemanticsContext &semanticsContext);
 
 private:
@@ -97,7 +102,8 @@ private:
       mlir::MLIRContext &ctx,
       const Fortran::common::IntrinsicTypeDefaultKinds &defaultKinds,
       const Fortran::evaluate::IntrinsicProcTable &intrinsics,
-      const Fortran::parser::CookedSource &cooked);
+      const Fortran::parser::CookedSource &cooked, llvm::Triple &triple,
+      fir::NameUniquer &uniquer, fir::KindMapping &kindMap);
   LoweringBridge() = delete;
   LoweringBridge(const LoweringBridge &) = delete;
 
@@ -106,7 +112,7 @@ private:
   const Fortran::parser::CookedSource *cooked;
   mlir::MLIRContext &context;
   std::unique_ptr<mlir::ModuleOp> module;
-  fir::KindMapping kindMap;
+  fir::KindMapping &kindMap;
 };
 
 } // namespace lower
