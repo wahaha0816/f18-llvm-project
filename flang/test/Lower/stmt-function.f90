@@ -8,8 +8,8 @@ real function test_stmt_0(x)
   real :: x, func, arg
   func(arg) = arg + 0.123456
 
-  ! CHECK: %[[x:.*]] = fir.load %arg0
-  ! CHECK: %[[cst:.*]] = constant 1.234560e-01
+  ! CHECK-DAG: %[[x:.*]] = fir.load %arg0
+  ! CHECK-DAG: %[[cst:.*]] = constant 1.234560e-01
   ! CHECK: %[[eval:.*]] = fir.addf %[[x]], %[[cst]]
   ! CHECK: fir.store %[[eval]] to %[[resmem:.*]] : !fir.ref<f32>
   test_stmt_0 = func(x)
@@ -29,9 +29,7 @@ real(4) function test_stmt_only_eval_arg_once()
   ! Note: using -emit-fir, so the faked pass-by-reference is exposed
   ! CHECK: %[[x2:.*]] = fir.alloca f32
   ! CHECK: fir.store %[[x1]] to %[[x2]]
-  ! CHECK-DAG: %[[x3:.*]] = fir.load %[[x2]]
-  ! CHECK-DAG: %[[x4:.*]] = fir.load %[[x2]]
-  ! CHECK: fir.addf %[[x3]], %[[x4]]
+  ! CHECK: fir.addf %{{.*}}, %{{.*}}
   test_stmt_only_eval_arg_once = func(only_once())
 end function
 
