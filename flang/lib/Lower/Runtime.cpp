@@ -7,20 +7,23 @@
 //===----------------------------------------------------------------------===//
 
 #include "flang/Lower/Runtime.h"
+#include "../runtime/clock.h"
 #include "../runtime/stop.h"
 #include "RTBuilder.h"
 #include "flang/Lower/Bridge.h"
 #include "flang/Lower/FIRBuilder.h"
+#include "flang/Lower/Support/BoxValue.h"
 #include "flang/Parser/parse-tree.h"
 #include "flang/Semantics/tools.h"
 #include "llvm/ADT/SmallVector.h"
 
+using namespace Fortran::runtime;
 #define mkRTKey(X) mkKey(RTNAME(X))
 
-static constexpr std::tuple<mkRTKey(StopStatementText),
+static constexpr std::tuple<mkRTKey(DateAndTime), mkRTKey(FailImageStatement),
+                            mkRTKey(PauseStatement),
                             mkRTKey(ProgramEndStatement),
-                            mkRTKey(StopStatement), mkRTKey(FailImageStatement),
-                            mkRTKey(PauseStatement)>
+                            mkRTKey(StopStatement), mkRTKey(StopStatementText)>
     newRTTable;
 
 template <typename A>
@@ -176,4 +179,43 @@ void Fortran::lower::genPauseStatement(
   auto loc = converter.getCurrentLocation();
   auto callee = genRuntimeFunction<mkRTKey(PauseStatement)>(loc, bldr);
   bldr.create<fir::CallOp>(loc, callee, llvm::None);
+}
+
+void Fortran::lower::genDateAndTime(Fortran::lower::FirOpBuilder &builder,
+                                    mlir::Location loc,
+                                    llvm::Optional<fir::CharBoxValue> date,
+                                    llvm::Optional<fir::CharBoxValue> time,
+                                    llvm::Optional<fir::CharBoxValue> zone) {
+  auto callee = genRuntimeFunction<mkRTKey(DateAndTime)>(loc, builder);
+  mlir::Type idxTy = builder.getIndexType();
+  mlir::Value zero;
+  auto splitArg = [&](llvm::Optional<fir::CharBoxValue> arg,
+                      mlir::Value &buffer, mlir::Value &len) {
+    if (arg) {
+      buffer = arg->getBuffer();
+      len = arg->getLen();
+    } else {
+      if (!zero)
+        zero = builder.createIntegerConstant(loc, idxTy, 0);
+      buffer = zero;
+      len = zero;
+    }
+  };
+  mlir::Value dateBuffer;
+  mlir::Value dateLen;
+  splitArg(date, dateBuffer, dateLen);
+  mlir::Value timeBuffer;
+  mlir::Value timeLen;
+  splitArg(time, timeBuffer, timeLen);
+  mlir::Value zoneBuffer;
+  mlir::Value zoneLen;
+  splitArg(zone, zoneBuffer, zoneLen);
+
+  llvm::SmallVector<mlir::Value, 2> args{dateBuffer, timeBuffer, zoneBuffer,
+                                         dateLen,    timeLen,    zoneLen};
+  llvm::SmallVector<mlir::Value, 2> operands;
+  for (const auto &op : llvm::zip(args, callee.getType().getInputs()))
+    operands.emplace_back(
+        builder.convertWithSemantics(loc, std::get<1>(op), std::get<0>(op)));
+  builder.create<fir::CallOp>(loc, callee, operands);
 }
