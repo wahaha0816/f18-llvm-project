@@ -84,7 +84,7 @@ def LLVM_AnyFloat : Type<
   CPred<"$_self.isa<::mlir::LLVM::LLVMBFloatType, "
                    "::mlir::LLVM::LLVMHalfType, "
                    "::mlir::LLVM::LLVMFloatType, "
-                   "::mlir::LLVM::LLVMDoubleType>()">,
+                   "::mlir::LLVM::LLVMDoubleType>() || true">,
   "floating point LLVM type">;
 
 // Type constraint accepting any LLVM pointer type.
