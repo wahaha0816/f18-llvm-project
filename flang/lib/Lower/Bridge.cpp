@@ -385,6 +385,22 @@ public:
                                       bridge.getDefaultKinds(), tc);
   }
 
+  // FIXME: Should we fold the CHARACTER fixup into genType itself?
+  mlir::Type genTypeWithCharFixup(Fortran::lower::SymbolRef sym) {
+    auto symTy = genType(sym);
+    if (symTy.isa<fir::CharacterType>()) {
+      auto paramVal = sym->GetType()->characterTypeSpec().length();
+      auto expr = paramVal.GetExplicit();
+      assert(expr);
+      auto eval = Fortran::evaluate::AsGenericExpr(std::move(*expr));
+      auto lenVal = Fortran::evaluate::ToInt64(eval);
+      assert(lenVal);
+      fir::SequenceType::Shape len = {*lenVal};
+      symTy = fir::SequenceType::get(len, symTy);
+    }
+    return symTy;
+  }
+
   mlir::Location getCurrentLocation() override final { return toLocation(); }
 
   /// Generate a dummy location.
@@ -1816,17 +1832,7 @@ private:
               counter = mem->offset();
             }
             if (memDet->init()) {
-              auto memTy = genType(*mem);
-              if (memTy.isa<fir::CharacterType>()) {
-                auto paramVal = mem->GetType()->characterTypeSpec().length();
-                auto expr = paramVal.GetExplicit();
-                assert(expr);
-                auto eval = Fortran::evaluate::AsGenericExpr(std::move(*expr));
-                auto lenVal = Fortran::evaluate::ToInt64(eval);
-                assert(lenVal);
-                fir::SequenceType::Shape len = {*lenVal};
-                memTy = fir::SequenceType::get(len, memTy);
-              }
+              auto memTy = genTypeWithCharFixup(*mem);
               members.push_back(memTy);
               counter = mem->offset() + mem->size();
             }
@@ -2201,19 +2207,7 @@ private:
                   counter = mem->offset();
                 }
                 if (memDet->init()) {
-                  auto memTy = genType(*mem);
-                  if (memTy.isa<fir::CharacterType>()) {
-                    auto paramVal =
-                        mem->GetType()->characterTypeSpec().length();
-                    auto expr = paramVal.GetExplicit();
-                    assert(expr);
-                    auto eval =
-                        Fortran::evaluate::AsGenericExpr(std::move(*expr));
-                    auto lenVal = Fortran::evaluate::ToInt64(eval);
-                    assert(lenVal);
-                    fir::SequenceType::Shape len = {*lenVal};
-                    memTy = fir::SequenceType::get(len, memTy);
-                  }
+                  auto memTy = genTypeWithCharFixup(*mem);
                   members.push_back(memTy);
                   counter = mem->offset() + mem->size();
                 }
@@ -2290,7 +2284,7 @@ private:
     llvm::SmallVector<mlir::Value, 1> offs{builder->createIntegerConstant(
         loc, builder->getIndexType(), byteOffset)};
     auto varAddr = builder->create<fir::CoordinateOp>(loc, i8Ptr, base, offs);
-    auto localTy = builder->getRefType(genType(var));
+    auto localTy = builder->getRefType(genTypeWithCharFixup(var.getSymbol()));
     mlir::Value local = builder->createConvert(loc, localTy, varAddr);
     mapSymbolAttributes(var, storeMap, local);
   }
