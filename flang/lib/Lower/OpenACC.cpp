@@ -88,8 +88,8 @@ static void genACC(Fortran::lower::AbstractConverter &converter,
           if (const auto &gangNumValue =
                   std::get<std::optional<Fortran::parser::ScalarIntExpr>>(
                       x.t)) {
-            gangNum = converter.genExprValue(
-                *Fortran::semantics::GetExpr(gangNumValue.value()));
+            gangNum = fir::getBase(converter.genExprValue(
+                *Fortran::semantics::GetExpr(gangNumValue.value())));
             operands.push_back(gangNum);
           }
           if (const auto &gangStaticValue =
@@ -98,8 +98,8 @@ static void genACC(Fortran::lower::AbstractConverter &converter,
                 std::get<std::optional<Fortran::parser::ScalarIntExpr>>(
                     gangStaticValue.value().t);
             if (expr) {
-              gangStatic =
-                  converter.genExprValue(*Fortran::semantics::GetExpr(*expr));
+              gangStatic = fir::getBase(
+                  converter.genExprValue(*Fortran::semantics::GetExpr(*expr)));
             } else {
               // * was passed as value and will be represented as a -1 constant
               // integer.
@@ -115,8 +115,8 @@ static void genACC(Fortran::lower::AbstractConverter &converter,
                      std::get_if<Fortran::parser::AccClause::Worker>(
                          &clause.u)) {
         if (workerClause->v) {
-          workerNum = converter.genExprValue(
-              *Fortran::semantics::GetExpr(*workerClause->v));
+          workerNum = fir::getBase(converter.genExprValue(
+              *Fortran::semantics::GetExpr(*workerClause->v)));
           operands.push_back(workerNum);
         }
         executionMapping |= mlir::acc::OpenACCExecMapping::WORKER;
@@ -124,8 +124,8 @@ static void genACC(Fortran::lower::AbstractConverter &converter,
                      std::get_if<Fortran::parser::AccClause::Vector>(
                          &clause.u)) {
         if (vectorClause->v) {
-          vectorLength = converter.genExprValue(
-              *Fortran::semantics::GetExpr(*vectorClause->v));
+          vectorLength = fir::getBase(converter.genExprValue(
+              *Fortran::semantics::GetExpr(*vectorClause->v)));
           operands.push_back(vectorLength);
         }
         executionMapping |= mlir::acc::OpenACCExecMapping::VECTOR;
@@ -138,8 +138,8 @@ static void genACC(Fortran::lower::AbstractConverter &converter,
                   accTileExpr.t);
           ++tileOperands;
           if (expr) {
-            operands.push_back(
-                converter.genExprValue(*Fortran::semantics::GetExpr(*expr)));
+            operands.push_back(fir::getBase(
+                converter.genExprValue(*Fortran::semantics::GetExpr(*expr))));
           } else {
             // * was passed as value and will be represented as a -1 constant
             // integer.
