@@ -1843,8 +1843,7 @@ private:
               static_cast<fir::SequenceType::Extent>(std::get<0>(st.interval) +
                                                      std::get<1>(st.interval) -
                                                      counter)};
-          auto byteTy = builder->getIntegerType(8);
-          auto memTy = fir::SequenceType::get(len, byteTy);
+          auto memTy = fir::SequenceType::get(len, i8Ty);
           members.push_back(memTy);
         }
         return mlir::TupleType::get(members, builder->getContext());
