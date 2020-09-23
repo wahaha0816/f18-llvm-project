@@ -13,10 +13,76 @@
 // <complex> functions that are guaranteed to exist from the C++ standard.
 
 #include "intrinsics-library-templates.h"
+#include "flang/Evaluate/expression.h"
 #include <cmath>
 #include <complex>
 
 namespace Fortran::evaluate {
+
+using IntrinsicType = common::TupleToVariant<AllIntrinsicTypes>;
+
+// Define constexpr vector class to hold argument type descriptions
+template <typename... FortranType>
+struct StaticTypeVectorStorage {
+  static constexpr IntrinsicType values[]{FortranType{}...};
+  static constexpr const IntrinsicType *start{&values[0]};
+  static constexpr const IntrinsicType *end{start + sizeof...(FortranType)};
+};
+template <>
+struct StaticTypeVectorStorage<> {
+  static constexpr const IntrinsicType *start{nullptr}, *end{nullptr};
+};
+struct StaticTypeVector {
+  template <typename... FortranType>
+  static constexpr StaticTypeVector create() {
+    using storage = StaticTypeVectorStorage<FortranType...>;
+    return StaticTypeVector{storage::start, storage::end};
+  }
+  using const_iterator = const IntrinsicType *;
+  constexpr const_iterator begin() const { return startPtr; }
+  constexpr const_iterator end() const { return endPtr; }
+  const IntrinsicType *startPtr{nullptr};
+  const IntrinsicType *endPtr{nullptr};
+};
+
+using FolderType = Expr<SomeType> (*)(std::vector<Expr<SomeType>>&&);
+class HostRuntimeFunction {
+public:
+  parser::CharBlock name;
+  IntrinsicType resultType;
+  StaticTypeVector argumentTypes;
+  FolderType folder;
+};
+
+template<typename T> struct FuncTypeAnalyzer {};
+template<typename HostTR, typename... HostTA> struct FuncTypeAnalyzer<FuncPointer<HostTR, HostTA...>> {
+  static constexpr IntrinsicType result{host::FortranType<HostTR>{}};
+  static constexpr StaticTypeVector arguments{StaticTypeVector::create<host::FortranType<HostTA>...>()};
+};
+
+
+template<typename HostTR, typename... HostTA>
+Expr<SomeType> applyHostFunction(FuncPointer<HostTR, HostTA...>, std::vector<Expr<SomeType>>&& args) {
+  // TODO
+  return args[0]; 
+}
+template<typename HostFuncType, HostFuncType func>
+class FolderFactory {
+public:
+  static constexpr HostRuntimeFunction create(const parser::CharBlock &name) {
+    return HostRuntimeFunction{name, FuncTypeAnalyzer<HostFuncType>::result, FuncTypeAnalyzer<HostFuncType>::arguments, &fold};
+  }
+private:
+  static Expr<SomeType> fold(std::vector<Expr<SomeType>>&& args) {
+    // Non constexpr handling
+    return applyHostFunction(func, std::move(args));
+  }
+};
+
+
+float myacos(float);
+
+static constexpr HostRuntimeFunction acosDesc{FolderFactory<decltype(&myacos), myacos>::create("acos")};
 
 // Note: argument passing is ignored in equivalence
 bool HostIntrinsicProceduresLibrary::HasEquivalentProcedure(

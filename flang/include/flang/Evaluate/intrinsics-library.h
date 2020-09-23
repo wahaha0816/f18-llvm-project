@@ -19,6 +19,7 @@
 
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -102,6 +103,23 @@ public:
 
 private:
   std::multimap<std::string, const HostRuntimeIntrinsicProcedure> procedures_;
+};
+
+class HostRuntimeFunction;
+class HostRuntimeLibraryImpl;
+class HostRuntimeLibrary {
+public:
+  HostRuntimeLibrary();
+  void AddProcedure(HostRuntimeFunction &&sym);
+  bool HasEquivalentFunction(
+      const HostRuntimeFunction &sym) const;
+  template <template <typename> typename ConstantContainer, typename TR,
+      typename... TA>
+  std::optional<HostProcedureWrapper<ConstantContainer, TR, TA...>>
+  GetHostProcedureWrapper(const std::string &name) const;
+
+private:
+  std::unique_ptr<HostRuntimeLibraryImpl> impl;
 };
 
 } // namespace Fortran::evaluate
