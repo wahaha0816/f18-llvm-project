@@ -101,6 +101,10 @@ public:
   std::pair<mlir::Value, mlir::Value>
   materializeCharacterOrSequence(mlir::Value str);
 
+  /// Temporary helper to safely get length from ExtendedValue until
+  /// migration of all character manipulation to CharBoxValue/CharArrayBoxValue.
+  mlir::Value getLen(const fir::ExtendedValue &);
+
   /// Return true if \p type is a character literal type (is
   /// `fir.array<len x fir.char<kind>>`).;
   static bool isCharacterLiteral(mlir::Type type);
@@ -152,6 +156,15 @@ public:
   /// as if it were one longer CHARACTER scalar, each element append to the
   /// previous.
   static bool isArray(mlir::Type type);
+
+  /// Temporary helper to help migrating towards properties of
+  /// ExtendedValue containing characters.
+  /// Mainly, this ensure that characters are always CharArrayBoxValue,
+  /// CharBoxValue, or BoxValue and that the base address is not a boxchar.
+  /// Return the argument if this is not a character.
+  /// TODO: Create and propagate ExtendedValue according to properties listed
+  /// above instead of fixing it when needed.
+  fir::ExtendedValue cleanUpCharacterExtendedValue(const fir::ExtendedValue &);
 
 private:
   fir::CharBoxValue materializeValue(mlir::Value str);

@@ -163,11 +163,24 @@ Fortran::lower::CharacterExprHelper::toExtendedValue(mlir::Value character,
       resultLen = builder.createIntegerConstant(loc, lenType, 1);
   } else if (auto boxCharType = type.dyn_cast<fir::BoxCharType>()) {
     auto refType = builder.getRefType(boxCharType.getEleTy());
-    auto unboxed =
-        builder.create<fir::UnboxCharOp>(loc, refType, lenType, character);
-    base = unboxed.getResult(0);
-    if (!resultLen)
-      resultLen = unboxed.getResult(1);
+    // If the embox is accessible, use its operand to avoid filling
+    // the generated fir with embox/unbox.
+    mlir::Value boxCharLen;
+    if (auto definingOp = character.getDefiningOp()) {
+      if (auto box = dyn_cast<fir::EmboxCharOp>(definingOp)) {
+        base = box.memref();
+        boxCharLen = box.len();
+      }
+    }
+    if (!boxCharLen) {
+      auto unboxed =
+          builder.create<fir::UnboxCharOp>(loc, refType, lenType, character);
+      base = unboxed.getResult(0);
+      boxCharLen = unboxed.getResult(1);
+    }
+    if (!resultLen) {
+      resultLen = boxCharLen;
+    }
   } else if (type.isa<fir::BoxType>()) {
     mlir::emitError(loc, "descriptor or derived type not yet handled");
   } else {
@@ -631,4 +644,31 @@ bool Fortran::lower::CharacterExprHelper::isArray(mlir::Type type) {
     return (!charTy.singleton()) || (seqTy.getDimension() > 1);
   }
   return false;
+}
+
+mlir::Value
+Fortran::lower::CharacterExprHelper::getLen(const fir::ExtendedValue &exv) {
+  // If the ExtendedValue has a length field, use it.
+  if (const auto *charBox = exv.getCharBox())
+    return charBox->getLen();
+  if (const auto *charArrayBox = exv.getBoxOf<fir::CharArrayBoxValue>())
+    return charArrayBox->getLen();
+  if (const auto *boxValue = exv.getBoxOf<fir::BoxValue>())
+    return boxValue->getLen();
+  if (auto *unboxed = exv.getUnboxed())
+    return toDataLengthPair(*unboxed).getLen();
+  // TODO: Is length of character procedure pointer needed ?
+  llvm::report_fatal_error("BoxProc length has not length");
+}
+
+fir::ExtendedValue
+Fortran::lower::CharacterExprHelper::cleanUpCharacterExtendedValue(
+    const fir::ExtendedValue &exv) {
+  if (const auto *charBox = exv.getCharBox())
+    return toExtendedValue(charBox->getBuffer(), charBox->getLen());
+  if (auto *unboxed = exv.getUnboxed())
+    if (isCharacter(unboxed->getType()))
+      return toExtendedValue(*unboxed);
+  // TODO: clean CharArrayBoxValue and BoxProc ?
+  return exv;
 }
