@@ -1165,7 +1165,7 @@ genBuffer(Fortran::lower::AbstractConverter &converter, mlir::Location loc,
   // Helper to query [BUFFER, LEN].
   Fortran::lower::CharacterExprHelper helper(builder, loc);
   auto dataLen = helper.materializeCharacterOrSequence(
-      fir::getBase(converter.genExprValue(*e)));
+      fir::getBase(converter.genExprAddr(*e)));
   auto buff = builder.createConvert(loc, strTy, dataLen.first);
   auto len = builder.createConvert(loc, lenTy, dataLen.second);
   return {buff, len};
