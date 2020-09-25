@@ -1657,7 +1657,7 @@ mlir::Value genInquireSpec<Fortran::parser::InquireSpec::CharVar>(
   auto specFuncTy = specFunc.getType();
   const auto *varExpr = Fortran::semantics::GetExpr(
       std::get<Fortran::parser::ScalarDefaultCharVariable>(var.t));
-  auto str = fir::getBase(converter.genExprValue(varExpr, loc));
+  auto str = fir::getBase(converter.genExprAddr(varExpr, loc));
   Fortran::lower::CharacterExprHelper helper(builder, loc);
   auto data = helper.materializeCharacter(str);
   llvm::SmallVector<mlir::Value, 8> args = {
