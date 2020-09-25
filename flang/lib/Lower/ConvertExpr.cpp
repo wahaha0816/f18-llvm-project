@@ -842,20 +842,79 @@ private:
       auto idxTy = builder.getIndexType();
       mlir::Value array = builder.create<fir::UndefOp>(getLoc(), arrayTy);
       Fortran::evaluate::ConstantSubscripts subscripts = con.lbounds();
+      bool foundRange = false;
+      mlir::Value rangeValue;
+      llvm::SmallVector<mlir::Value, 8> rangeStartIdx;
+      Fortran::evaluate::ConstantSubscripts rangeStartSubscripts;
+      uint64_t elemsInRange = 0;
+      const uint64_t minRangeSize = 2;
+
       do {
         auto constant =
             fir::getBase(genScalarLit<TC, KIND>(con.At(subscripts), con));
-        llvm::SmallVector<mlir::Value, 8> idx;
-        for (const auto &pair : llvm::zip(subscripts, con.lbounds())) {
-          const auto &dim = std::get<0>(pair);
-          const auto &lb = std::get<1>(pair);
-          idx.push_back(
-              builder.createIntegerConstant(getLoc(), idxTy, dim - lb));
-        }
+        auto createIndexes = [&](Fortran::evaluate::ConstantSubscripts subs){
+          llvm::SmallVector<mlir::Value, 8> idx;
+          for (const auto &[dim, lb] : llvm::zip(subs, con.lbounds()))
+            // Add normalized upper bound index to idx.
+            idx.push_back(
+                builder.createIntegerConstant(getLoc(), idxTy, dim - lb));
+
+          return idx;
+        };
+
+	auto idx = createIndexes(subscripts);
         auto insVal = builder.createConvert(getLoc(), eleTy, constant);
-        array = builder.create<fir::InsertValueOp>(getLoc(), arrayTy, array,
-                                                   insVal, idx);
+        auto nextSubscripts(subscripts);
+
+        // Check to see if the next value is the same as the current value
+        bool nextIsSame = con.IncrementSubscripts(nextSubscripts) &&
+                          con.At(subscripts) == con.At(nextSubscripts);
+        bool newRange = (nextIsSame != foundRange) && !foundRange;
+        bool endOfRange = (nextIsSame != foundRange) && foundRange;
+        bool continueRange = nextIsSame && foundRange;
+
+        if (newRange) {
+          // Mark the start of the range
+          rangeStartIdx = idx;
+          rangeStartSubscripts = subscripts;
+          rangeValue = insVal;
+          foundRange = true;
+          elemsInRange = 1;
+        } else if (endOfRange) {
+          ++elemsInRange;
+          if (elemsInRange >= minRangeSize) {
+            // Zip together the upper and lower bounds of the range for each
+            // index in the form [lb0, up0, lb1, up1, ... , lbn, upn] to pass
+            // to the InserOnEangeOp.
+            llvm::SmallVector<mlir::Value, 8> zippedRange;
+            for (size_t i = 0; i < idx.size(); ++i) {
+              zippedRange.push_back(rangeStartIdx[i]);
+              zippedRange.push_back(idx[i]);
+            }
+            array = builder.create<fir::InsertOnRangeOp>(
+                getLoc(), arrayTy, array, rangeValue, zippedRange);
+          } else {
+            while (true) {
+              idx = createIndexes(rangeStartSubscripts);
+              array = builder.create<fir::InsertValueOp>(
+                  getLoc(), arrayTy, array, rangeValue, idx);
+              if (rangeStartSubscripts == subscripts)
+                break;
+              con.IncrementSubscripts(rangeStartSubscripts);
+            }
+          }
+          foundRange = false;
+        } else if (continueRange) {
+          // Loop until the end of the range is found.
+	  ++elemsInRange;
+          continue;
+        } else /* no range */ {
+          // If a range has not been found then insert the current value.
+          array = builder.create<fir::InsertValueOp>(getLoc(), arrayTy, array,
+                                                     insVal, idx);
+        }
       } while (con.IncrementSubscripts(subscripts));
+
       // FIXME: return an ArrayBoxValue
       return array;
     }
