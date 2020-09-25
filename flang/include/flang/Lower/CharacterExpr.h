@@ -101,10 +101,6 @@ public:
   std::pair<mlir::Value, mlir::Value>
   materializeCharacterOrSequence(mlir::Value str);
 
-  /// Temporary helper to safely get length from ExtendedValue until
-  /// migration of all character manipulation to CharBoxValue/CharArrayBoxValue.
-  mlir::Value getLen(const fir::ExtendedValue &);
-
   /// Return true if \p type is a character literal type (is
   /// `fir.array<len x fir.char<kind>>`).;
   static bool isCharacterLiteral(mlir::Type type);

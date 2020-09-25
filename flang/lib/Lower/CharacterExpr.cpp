@@ -646,29 +646,17 @@ bool Fortran::lower::CharacterExprHelper::isArray(mlir::Type type) {
   return false;
 }
 
-mlir::Value
-Fortran::lower::CharacterExprHelper::getLen(const fir::ExtendedValue &exv) {
-  // If the ExtendedValue has a length field, use it.
-  if (const auto *charBox = exv.getCharBox())
-    return charBox->getLen();
-  if (const auto *charArrayBox = exv.getBoxOf<fir::CharArrayBoxValue>())
-    return charArrayBox->getLen();
-  if (const auto *boxValue = exv.getBoxOf<fir::BoxValue>())
-    return boxValue->getLen();
-  if (auto *unboxed = exv.getUnboxed())
-    return toDataLengthPair(*unboxed).getLen();
-  // TODO: Is length of character procedure pointer needed ?
-  llvm::report_fatal_error("BoxProc length has not length");
-}
-
 fir::ExtendedValue
 Fortran::lower::CharacterExprHelper::cleanUpCharacterExtendedValue(
     const fir::ExtendedValue &exv) {
-  if (const auto *charBox = exv.getCharBox())
-    return toExtendedValue(charBox->getBuffer(), charBox->getLen());
-  if (auto *unboxed = exv.getUnboxed())
-    if (isCharacter(unboxed->getType()))
-      return toExtendedValue(*unboxed);
-  // TODO: clean CharArrayBoxValue and BoxProc ?
-  return exv;
+  return exv.match(
+      [&](const fir::CharBoxValue &x) {
+        return toExtendedValue(x.getBuffer(), x.getLen());
+      },
+      [&](const fir::UnboxedValue &x) {
+        if (isCharacter(x.getType()))
+          return toExtendedValue(x);
+        return exv;
+      },
+      [&](const auto &) { return exv; });
 }
