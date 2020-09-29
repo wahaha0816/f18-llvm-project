@@ -64,7 +64,7 @@ static void CloseAllExternalUnits(const char *why) {
 }
 
 [[noreturn]] void RTNAME(StopStatementText)(
-    const char *code, bool isErrorStop, bool quiet) {
+      const char *code, size_t, bool isErrorStop, bool quiet) {
   CloseAllExternalUnits("STOP statement");
   if (!quiet) {
     std::fprintf(
