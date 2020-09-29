@@ -311,8 +311,11 @@ fir::CharBoxValue
 Fortran::lower::CharacterExprHelper::createCharacterTemp(mlir::Type type,
                                                          mlir::Value len) {
   assert(type.isa<fir::CharacterType>() && "expected fir character type");
+  auto typeLen = fir::SequenceType::getUnknownExtent();
+  auto charTy = fir::SequenceType::get({typeLen}, type);
+  // TODO: if len definingOp is a ConstantOp, get the length in the type. 
   llvm::SmallVector<mlir::Value, 3> sizes{len};
-  auto ref = builder.allocateLocal(loc, type, llvm::StringRef{}, sizes);
+  auto ref = builder.allocateLocal(loc, charTy, llvm::StringRef{}, sizes);
   return {ref, len};
 }
 

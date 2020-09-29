@@ -500,6 +500,8 @@ private:
       localSymbols.erase(sym);
     else if (lookupSymbol(sym))
       return false;
+    // TODO: ensure val type is fir.array<len x fir.char<kind>> like. Insert
+    // cast if needed.
     localSymbols.addCharSymbol(sym, val, len);
     return true;
   }
