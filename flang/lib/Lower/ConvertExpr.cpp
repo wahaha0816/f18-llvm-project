@@ -395,7 +395,7 @@ private:
     if (Fortran::semantics::IsDummy(*symbol)) {
       auto val = symMap.lookupSymbol(*symbol);
       assert(val && "Dummy procedure not in symbol map");
-      return val;
+      return val.getAddr();
     }
     auto name = converter.mangleName(*symbol);
     auto func = Fortran::lower::getOrDeclareFunction(name, proc, converter);
@@ -418,7 +418,7 @@ private:
     assert(symBox && "no SymbolBox associated to Symbol");
     switch (desc.field()) {
     case Fortran::evaluate::DescriptorInquiry::Field::Len:
-      return symBox.getCharLen().getValue();  
+      return symBox.getCharLen().getValue();
     default:
       TODO("descriptor inquiry other than length");
     }
@@ -1414,7 +1414,7 @@ private:
       mlir::Value argVal;
       if (const auto *argSymbol =
               Fortran::evaluate::UnwrapWholeSymbolDataRef(*expr)) {
-        argVal = symMap.lookupSymbol(*argSymbol);
+        argVal = symMap.lookupSymbol(*argSymbol).getAddr();
       } else {
         auto exv = genExtAddr(*expr);
         // FIXME: should use the box values, etc.
@@ -1490,7 +1490,7 @@ private:
     mlir::Value funcPointer;
     mlir::SymbolRefAttr funcSymbolAttr;
     if (const auto *sym = caller.getIfIndirectCallSymbol()) {
-      funcPointer = symMap.lookupSymbol(*sym);
+      funcPointer = symMap.lookupSymbol(*sym).getAddr();
       assert(funcPointer &&
              "dummy procedure or procedure pointer not in symbol map");
     } else {
