@@ -2465,8 +2465,9 @@ private:
 
     mapDummiesAndResults(funit, callee);
 
-    llvm::SmallVector<const Fortran::semantics::Symbol *, 4>
-        deferredFuncResultList;
+    // Note: not storing Variable references because getOrderedSymbolTable
+    // below returns a temporary.
+    llvm::SmallVector<Fortran::lower::pft::Variable, 4> deferredFuncResultList;
 
     CommonBlockMap commonBlockMap;
     for (const auto &var : funit.getOrderedSymbolTable()) {
@@ -2482,6 +2483,13 @@ private:
       }
     }
 
+    // Backup actual argument for entry character results
+    // with different lengths. It needs to be added to the non
+    // primary results symbol before mapSymbolAttributes is called.
+    llvm::Optional<Fortran::lower::SymbolBox> resultArg;
+    if (auto passedResult = callee.getPassedResult())
+      resultArg = lookupSymbol(passedResult->entity.get());
+
     mlir::Value primaryFuncResultStorage;
     llvm::DenseMap<std::size_t, mlir::Value> storeMap;
     for (const auto &var : funit.getOrderedSymbolTable()) {
@@ -2496,12 +2504,19 @@ private:
         instantiateVar(var, storeMap);
         primaryFuncResultStorage = getSymbolAddress(sym);
       } else {
-        deferredFuncResultList.push_back(&sym);
+        deferredFuncResultList.push_back(var);
       }
     }
-    for (auto altResult : deferredFuncResultList)
-      addSymbol(*altResult, primaryFuncResultStorage);
-    // FIXME: use mapSymbolAttributes(var, storeMap, primaryFuncResultStorage);
+
+    /// TODO: should use same mechanism as equivalence?
+    /// One blocking point is character entry returns that need special handling
+    /// since they are not locally allocated but come as argument. CHARACTER(*)
+    /// is not something that fit wells with equivalence lowering.
+    for (const auto &altResult : deferredFuncResultList) {
+      if (auto passedResult = callee.getPassedResult())
+        addSymbol(altResult.getSymbol(), resultArg.getValue().getAddr());
+      mapSymbolAttributes(altResult, storeMap, primaryFuncResultStorage);
+    }
 
     // Create most function blocks in advance.
     auto *alternateEntryEval = funit.getEntryEval();
