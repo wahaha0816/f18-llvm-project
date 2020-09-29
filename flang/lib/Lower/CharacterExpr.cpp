@@ -308,8 +308,8 @@ void Fortran::lower::CharacterExprHelper::createPadding(
 }
 
 fir::CharBoxValue
-Fortran::lower::CharacterExprHelper::createTemp(mlir::Type type,
-                                                mlir::Value len) {
+Fortran::lower::CharacterExprHelper::createCharacterTemp(mlir::Type type,
+                                                         mlir::Value len) {
   assert(type.isa<fir::CharacterType>() && "expected fir character type");
   llvm::SmallVector<mlir::Value, 3> sizes{len};
   auto ref = builder.allocateLocal(loc, type, llvm::StringRef{}, sizes);
@@ -364,7 +364,7 @@ void Fortran::lower::CharacterExprHelper::createAssign(
   // TODO: It should be rare that the assignment is between overlapping
   // substrings of the same variable. So this extra copy is pessimistic in the
   // common case.
-  auto temp = createTemp(getCharacterType(rhs), copyCount);
+  auto temp = createCharacterTemp(getCharacterType(rhs), copyCount);
   createCopy(temp, rhs, copyCount);
 
   // Actual copy
@@ -382,7 +382,7 @@ fir::CharBoxValue Fortran::lower::CharacterExprHelper::createConcatenate(
     const fir::CharBoxValue &lhs, const fir::CharBoxValue &rhs) {
   mlir::Value len =
       builder.create<mlir::AddIOp>(loc, lhs.getLen(), rhs.getLen());
-  auto temp = createTemp(getCharacterType(rhs), len);
+  auto temp = createCharacterTemp(getCharacterType(rhs), len);
   createCopy(temp, lhs, lhs.getLen());
   auto one = builder.createIntegerConstant(loc, len.getType(), 1);
   auto upperBound = builder.create<mlir::SubIOp>(loc, len, one);
@@ -478,13 +478,16 @@ mlir::Value Fortran::lower::CharacterExprHelper::createLenTrim(
   return builder.createConvert(loc, getLengthType(), result);
 }
 
-mlir::Value Fortran::lower::CharacterExprHelper::createTemp(mlir::Type type,
-                                                            int len) {
+fir::CharBoxValue
+Fortran::lower::CharacterExprHelper::createCharacterTemp(mlir::Type type,
+                                                         int len) {
   assert(type.isa<fir::CharacterType>() && "expected fir character type");
   assert(len >= 0 && "expected positive length");
   fir::SequenceType::Shape shape{len};
   auto seqType = fir::SequenceType::get(shape, type);
-  return builder.create<fir::AllocaOp>(loc, seqType);
+  auto addr = builder.create<fir::AllocaOp>(loc, seqType);
+  auto mlirLen = builder.createIntegerConstant(loc, getLengthType(), len);
+  return {addr, mlirLen};
 }
 
 // Returns integer with code for blank. The integer has the same
@@ -499,23 +502,6 @@ mlir::Value Fortran::lower::CharacterExprHelper::createBlankConstantCode(
 mlir::Value Fortran::lower::CharacterExprHelper::createBlankConstant(
     fir::CharacterType type) {
   return builder.createConvert(loc, type, createBlankConstantCode(type));
-}
-
-void Fortran::lower::CharacterExprHelper::createCopy(mlir::Value dest,
-                                                     mlir::Value src,
-                                                     mlir::Value count) {
-  createCopy(toDataLengthPair(dest), toDataLengthPair(src), count);
-}
-
-void Fortran::lower::CharacterExprHelper::createPadding(mlir::Value str,
-                                                        mlir::Value lower,
-                                                        mlir::Value upper) {
-  createPadding(toDataLengthPair(str), lower, upper);
-}
-
-mlir::Value Fortran::lower::CharacterExprHelper::createSubstring(
-    mlir::Value str, llvm::ArrayRef<mlir::Value> bounds) {
-  return createEmbox(createSubstring(toDataLengthPair(str), bounds));
 }
 
 void Fortran::lower::CharacterExprHelper::createAssign(
@@ -539,20 +525,6 @@ Fortran::lower::CharacterExprHelper::createLenTrim(mlir::Value str) {
   return createLenTrim(toDataLengthPair(str));
 }
 
-void Fortran::lower::CharacterExprHelper::createAssign(mlir::Value lptr,
-                                                       mlir::Value llen,
-                                                       mlir::Value rptr,
-                                                       mlir::Value rlen) {
-  createAssign(fir::CharBoxValue{lptr, llen}, fir::CharBoxValue{rptr, rlen});
-}
-
-mlir::Value
-Fortran::lower::CharacterExprHelper::createConcatenate(mlir::Value lhs,
-                                                       mlir::Value rhs) {
-  return createEmbox(
-      createConcatenate(toDataLengthPair(lhs), toDataLengthPair(rhs)));
-}
-
 mlir::Value
 Fortran::lower::CharacterExprHelper::createEmboxChar(mlir::Value addr,
                                                      mlir::Value len) {
@@ -563,12 +535,6 @@ std::pair<mlir::Value, mlir::Value>
 Fortran::lower::CharacterExprHelper::createUnboxChar(mlir::Value boxChar) {
   auto box = toDataLengthPair(boxChar);
   return {box.getBuffer(), box.getLen()};
-}
-
-mlir::Value
-Fortran::lower::CharacterExprHelper::createCharacterTemp(mlir::Type type,
-                                                         mlir::Value len) {
-  return createEmbox(createTemp(type, len));
 }
 
 std::pair<mlir::Value, mlir::Value>

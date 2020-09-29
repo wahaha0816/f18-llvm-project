@@ -568,10 +568,12 @@ private:
   fir::ExtendedValue genval(const Fortran::evaluate::Concat<KIND> &op) {
     auto lhs = genval(op.left());
     auto rhs = genval(op.right());
-    auto lhsBase = fir::getBase(lhs);
-    auto rhsBase = fir::getBase(rhs);
-    return Fortran::lower::CharacterExprHelper{builder, getLoc()}
-        .createConcatenate(lhsBase, rhsBase);
+    auto *lhsChar = lhs.getCharBox();
+    auto *rhsChar = rhs.getCharBox();
+    if (lhsChar && rhsChar)
+      return Fortran::lower::CharacterExprHelper{builder, getLoc()}
+          .createConcatenate(*lhsChar, *rhsChar);
+    llvm::report_fatal_error("TODO: character array concatenate");
   }
 
   /// MIN and MAX operations
@@ -917,10 +919,19 @@ private:
       assert(upper && "boxed value not handled");
       bounds.push_back(upper);
     }
-    // FIXME: a string should be a CharBoxValue
-    auto addr = fir::getBase(baseString);
-    return Fortran::lower::CharacterExprHelper{builder, getLoc()}
-        .createSubstring(addr, bounds);
+    Fortran::lower::CharacterExprHelper charHelper{builder, getLoc()};
+    auto cleanedString = charHelper.cleanUpCharacterExtendedValue(baseString);
+    return cleanedString.match(
+        [&](const fir::CharBoxValue &x) -> fir::ExtendedValue {
+          return charHelper.createSubstring(x, bounds);
+        },
+        [&](const fir::CharArrayBoxValue &) -> fir::ExtendedValue {
+          // TODO: substring array
+          llvm::report_fatal_error("TODO: array substring lowering");
+        },
+        [&](const auto &) -> fir::ExtendedValue {
+          llvm::report_fatal_error("substring base is not a CharBox");
+        });
   }
 
   /// The value of a substring.
@@ -1464,19 +1475,21 @@ private:
     }
 
     // Handle case where caller must pass result
-    mlir::Value resRef;
-    if (auto resultArg = caller.getPassedResult()) {
-      if (resultArg->passBy == PassBy::AddressAndLength) {
-        // allocate and pass character result
-        auto len = caller.getResultLength();
-        Fortran::lower::CharacterExprHelper helper{builder, getLoc()};
-        resRef = helper.createCharacterTemp(resultType[0], len);
-        auto ch = helper.createUnboxChar(resRef);
-        caller.placeAddressAndLengthInput(*resultArg, ch.first, ch.second);
-      } else {
-        TODO(""); // Pass descriptor
+    auto resRef = [&]() -> llvm::Optional<fir::ExtendedValue> {
+      if (auto resultArg = caller.getPassedResult()) {
+        if (resultArg->passBy == PassBy::AddressAndLength) {
+          // allocate and pass character result
+          auto len = caller.getResultLength();
+          Fortran::lower::CharacterExprHelper helper{builder, getLoc()};
+          auto temp = helper.createCharacterTemp(resultType[0], len);
+          caller.placeAddressAndLengthInput(*resultArg, temp.getBuffer(),
+                                            temp.getLen());
+          return fir::ExtendedValue(temp);
+        }
+        TODO("passing hidden descriptor for result"); // Pass descriptor
       }
-    }
+      return {};
+    }();
 
     // In older Fortran, procedure argument types are inferred. This may lead
     // different view of what the function signature is in different locations.
@@ -1526,8 +1539,9 @@ private:
     auto call = builder.create<fir::CallOp>(getLoc(), caller.getResultType(),
                                             funcSymbolAttr, operands);
     // Handle case where result was passed as argument
-    if (caller.getPassedResult())
-      return resRef;
+    if (caller.getPassedResult()) {
+      return resRef.getValue();
+    }
     if (resultType.size() == 0)
       return mlir::Value{}; // subroutine call
     // For now, Fortran returned values are implemented with a single MLIR

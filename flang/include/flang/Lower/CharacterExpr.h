@@ -35,18 +35,20 @@ public:
 
   /// Copy the \p count first characters of \p src into \p dest.
   /// \p count can have any integer type.
-  void createCopy(mlir::Value dest, mlir::Value src, mlir::Value count);
+  void createCopy(const fir::CharBoxValue &dest, const fir::CharBoxValue &src,
+                  mlir::Value count);
 
   /// Set characters of \p str at position [\p lower, \p upper) to blanks.
   /// \p lower and \upper bounds are zero based.
   /// If \p upper <= \p lower, no padding is done.
   /// \p upper and \p lower can have any integer type.
-  void createPadding(mlir::Value str, mlir::Value lower, mlir::Value upper);
+  void createPadding(const fir::CharBoxValue &str, mlir::Value lower,
+                     mlir::Value upper);
 
   /// Create str(lb:ub), lower bounds must always be specified, upper
   /// bound is optional.
-  mlir::Value createSubstring(mlir::Value str,
-                              llvm::ArrayRef<mlir::Value> bounds);
+  fir::CharBoxValue createSubstring(const fir::CharBoxValue &str,
+                                    llvm::ArrayRef<mlir::Value> bounds);
 
   /// Return blank character of given \p type !fir.char<kind>
   mlir::Value createBlankConstant(fir::CharacterType type);
@@ -62,7 +64,8 @@ public:
                     mlir::Value rlen);
 
   /// Create lhs // rhs in temp obtained with fir.alloca
-  mlir::Value createConcatenate(mlir::Value lhs, mlir::Value rhs);
+  fir::CharBoxValue createConcatenate(const fir::CharBoxValue &lhs,
+                                      const fir::CharBoxValue &rhs);
 
   /// LEN_TRIM intrinsic.
   mlir::Value createLenTrim(mlir::Value str);
@@ -76,14 +79,12 @@ public:
   std::pair<mlir::Value, mlir::Value> createUnboxChar(mlir::Value boxChar);
 
   /// Allocate a temp of fir::CharacterType type and length len.
-  /// Returns related fir.ref<fir.char<kind>>.
-  mlir::Value createCharacterTemp(mlir::Type type, mlir::Value len);
+  /// Returns related fir.ref<fir.array<? x fir.char<kind>>>.
+  fir::CharBoxValue createCharacterTemp(mlir::Type type, mlir::Value len);
 
   /// Allocate a temp of compile time constant length.
   /// Returns related fir.ref<fir.array<len x fir.char<kind>>>.
-  mlir::Value createCharacterTemp(mlir::Type type, int len) {
-    return createTemp(type, len);
-  }
+  fir::CharBoxValue createCharacterTemp(mlir::Type type, int len);
 
   /// Return buffer/length pair of character str, if str is a constant,
   /// it is allocated into a temp, otherwise, its memory reference is
@@ -173,20 +174,10 @@ private:
   mlir::Value createEmbox(const fir::CharBoxValue &str);
   mlir::Value createLoadCharAt(mlir::Value buff, mlir::Value index);
   void createStoreCharAt(mlir::Value str, mlir::Value index, mlir::Value c);
-  void createCopy(const fir::CharBoxValue &dest, const fir::CharBoxValue &src,
-                  mlir::Value count);
-  void createPadding(const fir::CharBoxValue &str, mlir::Value lower,
-                     mlir::Value upper);
-  fir::CharBoxValue createTemp(mlir::Type type, mlir::Value len);
   void createLengthOneAssign(const fir::CharBoxValue &lhs,
                              const fir::CharBoxValue &rhs);
   void createAssign(const fir::CharBoxValue &lhs, const fir::CharBoxValue &rhs);
-  fir::CharBoxValue createConcatenate(const fir::CharBoxValue &lhs,
-                                      const fir::CharBoxValue &rhs);
-  fir::CharBoxValue createSubstring(const fir::CharBoxValue &str,
-                                    llvm::ArrayRef<mlir::Value> bounds);
   mlir::Value createLenTrim(const fir::CharBoxValue &str);
-  mlir::Value createTemp(mlir::Type type, int len);
   mlir::Value createBlankConstantCode(fir::CharacterType type);
 
 private:

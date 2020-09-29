@@ -2084,25 +2084,23 @@ private:
       // if element type is a CHARACTER, determine the LEN value
       if (isDummy || isResult) {
         auto unboxchar = charHelp.createUnboxChar(addr);
-        auto boxAddr = unboxchar.first;
+        addr = unboxchar.first;
         if (auto c = sba.getCharLenConst()) {
           // Set/override LEN with a constant
           len = builder->createIntegerConstant(loc, idxTy, *c);
-          addr = charHelp.createEmboxChar(boxAddr, len);
         } else if (auto e = sba.getCharLenExpr()) {
           // Set/override LEN with an expression
           len = createFIRExpr(loc, &*e);
-          addr = charHelp.createEmboxChar(boxAddr, len);
         } else {
           // LEN is from the boxchar
           len = unboxchar.second;
           mustBeDummy = true;
         }
-        // XXX: Subsequent lowering expects a CHARACTER variable to be in a
+        // XXX: Subsequent lowering expects a CHARACTER variable to not be in a
         // boxchar. We assert that here. We might want to reconsider this
         // precondition.
-        assert(addr.getType().isa<fir::BoxCharType>() &&
-               "dummy CHARACTER argument must be boxchar");
+        assert(!addr.getType().isa<fir::BoxCharType>() &&
+               "dummy CHARACTER argument must be unboxed");
       } else {
         // local CHARACTER variable
         if (auto c = sba.getCharLenConst())
@@ -2124,14 +2122,8 @@ private:
       if (sba.staticSize) {
         // object shape is constant
         auto castTy = builder->getRefType(genType(var));
-        if (addr) {
-          // XXX: special handling for boxchar; see proviso above
-          if (auto box =
-                  dyn_cast_or_null<fir::EmboxCharOp>(addr.getDefiningOp()))
-            addr = builder->createConvert(loc, castTy, box.memref());
-          else
-            addr = builder->createConvert(loc, castTy, addr);
-        }
+        if (addr)
+          addr = builder->createConvert(loc, castTy, addr);
         if (sba.lboundIsAllOnes()) {
           // if lower bounds are all ones, build simple shaped object
           llvm::SmallVector<mlir::Value, 8> shape;
@@ -2159,14 +2151,8 @@ private:
       } else {
         // cast to the known constant parts from the declaration
         auto castTy = builder->getRefType(genType(var));
-        if (addr) {
-          // XXX: special handling for boxchar; see proviso above
-          if (auto box =
-                  dyn_cast_or_null<fir::EmboxCharOp>(addr.getDefiningOp()))
-            addr = builder->createConvert(loc, castTy, box.memref());
-          else
-            addr = builder->createConvert(loc, castTy, addr);
-        }
+        if (addr)
+          addr = builder->createConvert(loc, castTy, addr);
       }
       // construct constants and populate `bounds`
       for (const auto &i : llvm::zip(sba.staticLBound, sba.staticShape)) {
@@ -2239,13 +2225,10 @@ private:
       }
       assert(!mustBeDummy);
       auto charTy = genType(var);
-      auto c = sba.getCharLenConst();
-      // Note: `len` is the mlir ConstantOp with value `c`, if `c` is an int.
-      mlir::Value local = preAlloc
-                              ? preAlloc
-                              : (c ? charHelp.createCharacterTemp(charTy, *c)
-                                   : charHelp.createCharacterTemp(charTy, len));
-      addCharSymbol(sym, local, len);
+      fir::CharBoxValue local = preAlloc
+                                    ? fir::CharBoxValue(preAlloc, len)
+                                    : charHelp.createCharacterTemp(charTy, len);
+      addCharSymbol(sym, local.getBuffer(), local.getLen());
       return;
     }
     if (isDummy) {
