@@ -414,26 +414,15 @@ private:
   }
 
   fir::ExtendedValue genval(const Fortran::evaluate::DescriptorInquiry &desc) {
-    auto descRef = symMap.lookupSymbol(desc.base().GetLastSymbol());
-    assert(descRef && "no mlir::Value associated to Symbol");
-    auto descType = descRef.getAddr().getType();
-    mlir::Value res{};
+    auto symBox = symMap.lookupSymbol(desc.base().GetLastSymbol());
+    assert(symBox && "no SymbolBox associated to Symbol");
     switch (desc.field()) {
     case Fortran::evaluate::DescriptorInquiry::Field::Len:
-      if (descType.isa<fir::BoxCharType>()) {
-        auto lenType = Fortran::lower::CharacterExprHelper{builder, getLoc()}
-                           .getLengthType();
-        res = builder.create<fir::BoxCharLenOp>(getLoc(), lenType, descRef);
-      } else if (descType.isa<fir::BoxType>()) {
-        TODO("");
-      } else {
-        llvm_unreachable("not a descriptor");
-      }
-      break;
+      return symBox.getCharLen().getValue();  
     default:
-      TODO("");
+      TODO("descriptor inquiry other than length");
     }
-    return res;
+    llvm_unreachable("bad descriptor inquiry");
   }
 
   fir::ExtendedValue genval(const Fortran::evaluate::TypeParamInquiry &) {
