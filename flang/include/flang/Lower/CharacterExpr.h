@@ -93,15 +93,6 @@ public:
   /// Returns related fir.ref<fir.array<len x fir.char<kind>>>.
   fir::CharBoxValue createCharacterTemp(mlir::Type type, int len);
 
-  /// Return buffer/length pair of character str, if str is a constant,
-  /// it is allocated into a temp, otherwise, its memory reference is
-  /// returned as the buffer.
-  /// The buffer type of str is of type:
-  ///   - fir.ref<fir.array<len x fir.char<kind>>> if str has compile time
-  ///      constant length.
-  ///   - fir.ref<fir.char<kind>> if str has dynamic length.
-  std::pair<mlir::Value, mlir::Value> materializeCharacter(mlir::Value str);
-
   /// Return true if \p type is a character literal type (is
   /// `fir.array<len x fir.char<kind>>`).;
   static bool isCharacterLiteral(mlir::Type type);
@@ -164,6 +155,8 @@ public:
   fir::ExtendedValue cleanUpCharacterExtendedValue(const fir::ExtendedValue &);
 
 private:
+  /// FIXME: the implementation also needs a clean-up now that
+  /// CharBoxValue are better propagated.
   fir::CharBoxValue materializeValue(mlir::Value str);
   fir::CharBoxValue toDataLengthPair(mlir::Value character);
   mlir::Type getReferenceType(const fir::CharBoxValue &c) const;

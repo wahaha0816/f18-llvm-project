@@ -372,9 +372,8 @@ static void genInputItemList(Fortran::lower::AbstractConverter &converter,
     makeNextConditionalOn(builder, loc, insertPt, checkResult, ok,
                           inIterWhileLoop);
     Fortran::lower::CharacterExprHelper charHelper{builder, loc};
-    auto unsafeItemBox =
+    auto itemBox =
         converter.genExprAddr(Fortran::semantics::GetExpr(pVar), loc);
-    auto itemBox = charHelper.cleanUpCharacterExtendedValue(unsafeItemBox);
     auto itemAddr = fir::getBase(itemBox);
     auto itemTy = fir::dyn_cast_ptrEleTy(itemAddr.getType());
     if (!itemTy) {
@@ -1674,9 +1673,7 @@ mlir::Value genInquireSpec<Fortran::parser::InquireSpec::CharVar>(
   auto specFuncTy = specFunc.getType();
   const auto *varExpr = Fortran::semantics::GetExpr(
       std::get<Fortran::parser::ScalarDefaultCharVariable>(var.t));
-  auto str = fir::getBase(converter.genExprAddr(varExpr, loc));
-  Fortran::lower::CharacterExprHelper helper(builder, loc);
-  auto data = helper.materializeCharacter(str);
+  auto str = converter.genExprAddr(varExpr, loc);
   llvm::SmallVector<mlir::Value, 8> args = {
       builder.createConvert(loc, specFuncTy.getInput(0), cookie),
       builder.createIntegerConstant(
@@ -1685,8 +1682,8 @@ mlir::Value genInquireSpec<Fortran::parser::InquireSpec::CharVar>(
               Fortran::parser::InquireSpec::CharVar::EnumToString(
                   std::get<Fortran::parser::InquireSpec::CharVar::Kind>(var.t))
                   .c_str())),
-      builder.createConvert(loc, specFuncTy.getInput(2), data.first),
-      builder.createConvert(loc, specFuncTy.getInput(3), data.second)};
+      builder.createConvert(loc, specFuncTy.getInput(2), fir::getBase(str)),
+      builder.createConvert(loc, specFuncTy.getInput(3), fir::getLen(str))};
   return builder.create<fir::CallOp>(loc, specFunc, args).getResult(0);
 }
 /// Specialization for INTEGER.
@@ -1830,13 +1827,10 @@ mlir::Value Fortran::lower::genInquireStatement(
     // Filename call.
     beginFunc = getIORuntimeFunc<mkIOKey(BeginInquireFile)>(loc, builder);
     mlir::FunctionType beginFuncTy = beginFunc.getType();
-    auto file = fir::getBase(converter.genExprValue(exprPair.first, loc));
-    // Helper to query [BUFFER, LEN].
-    Fortran::lower::CharacterExprHelper helper(builder, loc);
-    auto dataLen = helper.materializeCharacter(file);
+    auto file = converter.genExprAddr(exprPair.first, loc);
     beginArgs = {
-        builder.createConvert(loc, beginFuncTy.getInput(0), dataLen.first),
-        builder.createConvert(loc, beginFuncTy.getInput(1), dataLen.second),
+        builder.createConvert(loc, beginFuncTy.getInput(0), fir::getBase(file)),
+        builder.createConvert(loc, beginFuncTy.getInput(1), fir::getLen(file)),
         locationToFilename(converter, loc, beginFuncTy.getInput(2)),
         locationToLineNo(builder, loc, beginFuncTy.getInput(3))};
   } else {

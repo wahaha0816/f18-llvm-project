@@ -564,16 +564,6 @@ Fortran::lower::CharacterExprHelper::createUnboxChar(mlir::Value boxChar) {
   return {box.getBuffer(), box.getLen()};
 }
 
-std::pair<mlir::Value, mlir::Value>
-Fortran::lower::CharacterExprHelper::materializeCharacter(mlir::Value str) {
-  if (needToMaterialize(str)) {
-    auto box = materializeValue(str);
-    return {box.getBuffer(), box.getLen()};
-  }
-  auto pair = toDataLengthPair(str);
-  return {pair.getBuffer(), pair.getLen()};
-}
-
 bool Fortran::lower::CharacterExprHelper::isCharacterLiteral(mlir::Type type) {
   if (auto seqType = type.dyn_cast<fir::SequenceType>())
     return (seqType.getShape().size() == 1) &&
@@ -613,19 +603,4 @@ bool Fortran::lower::CharacterExprHelper::isArray(mlir::Type type) {
     return (!charTy.singleton()) || (seqTy.getDimension() > 1);
   }
   return false;
-}
-
-fir::ExtendedValue
-Fortran::lower::CharacterExprHelper::cleanUpCharacterExtendedValue(
-    const fir::ExtendedValue &exv) {
-  return exv.match(
-      [&](const fir::CharBoxValue &x) {
-        return toExtendedValue(x.getBuffer(), x.getLen());
-      },
-      [&](const fir::UnboxedValue &x) {
-        if (isCharacter(x.getType()))
-          return toExtendedValue(x);
-        return exv;
-      },
-      [&](const auto &) { return exv; });
 }

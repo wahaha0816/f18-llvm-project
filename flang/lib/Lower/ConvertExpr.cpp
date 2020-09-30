@@ -241,29 +241,8 @@ private:
   mlir::Value createCharCompare(mlir::CmpIPredicate pred,
                                 const fir::ExtendedValue &left,
                                 const fir::ExtendedValue &right) {
-    if (auto *lhs = left.getUnboxed()) {
-      if (auto *rhs = right.getUnboxed())
-        return Fortran::lower::genBoxCharCompare(converter, getLoc(), pred,
-                                                 *lhs, *rhs);
-      if (auto *rhs = right.getCharBox())
-        return Fortran::lower::genBoxCharCompare(converter, getLoc(), pred,
-                                                 *lhs, rhs->getBuffer());
-    }
-    if (auto *lhs = left.getCharBox()) {
-      if (auto *rhs = right.getCharBox()) {
-        // FIXME: this should be passing the CharBoxValues and not just a buffer
-        // addresses
-        return Fortran::lower::genBoxCharCompare(
-            converter, getLoc(), pred, lhs->getBuffer(), rhs->getBuffer());
-      }
-      if (auto *rhs = right.getUnboxed())
-        return Fortran::lower::genBoxCharCompare(converter, getLoc(), pred,
-                                                 lhs->getBuffer(), *rhs);
-    }
-
-    // Error if execution reaches this point
-    mlir::emitError(getLoc(), "Unhandled character comparison");
-    exit(1);
+    return Fortran::lower::genCharCompare(converter, getLoc(), pred, left,
+                                          right);
   }
 
   template <typename A>
@@ -911,8 +890,7 @@ private:
       bounds.push_back(upper);
     }
     Fortran::lower::CharacterExprHelper charHelper{builder, getLoc()};
-    auto cleanedString = charHelper.cleanUpCharacterExtendedValue(baseString);
-    return cleanedString.match(
+    return baseString.match(
         [&](const fir::CharBoxValue &x) -> fir::ExtendedValue {
           return charHelper.createSubstring(x, bounds);
         },
