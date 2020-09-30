@@ -70,7 +70,10 @@ protected:
 class CharBoxValue : public AbstractBox {
 public:
   CharBoxValue(mlir::Value addr, mlir::Value len)
-      : AbstractBox{addr}, len{len} {}
+      : AbstractBox{addr}, len{len} {
+    if (addr && addr.getType().template isa<fir::BoxCharType>())
+      llvm::report_fatal_error("BoxChar should not be in CharBoxValue");
+  }
 
   CharBoxValue clone(mlir::Value newBase) const { return {newBase, len}; }
 
@@ -230,7 +233,12 @@ public:
   ExtendedValue(ExtendedValue &&) = default;
   template <typename A, typename = std::enable_if_t<
                             !std::is_same_v<std::decay_t<A>, ExtendedValue>>>
-  constexpr ExtendedValue(A &&box) : box{std::forward<A>(box)} {}
+  constexpr ExtendedValue(A &&a) : box{std::forward<A>(a)} {
+    if constexpr (std::is_same_v<std::decay_t<A>, mlir::Value>) {
+      if (a && a.getType().template isa<fir::BoxCharType>())
+        llvm::report_fatal_error("BoxChar should be unboxed");
+    }
+  }
 
   template <typename A>
   constexpr const A *getBoxOf() const {
