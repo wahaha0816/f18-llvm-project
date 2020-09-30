@@ -887,7 +887,9 @@ private:
   }
 
   fir::ExtendedValue gen(const Fortran::evaluate::ComplexPart &) { TODO(""); }
-  fir::ExtendedValue genval(const Fortran::evaluate::ComplexPart &) { TODO(""); }
+  fir::ExtendedValue genval(const Fortran::evaluate::ComplexPart &) {
+    TODO("");
+  }
 
   /// Reference to a substring.
   fir::ExtendedValue gen(const Fortran::evaluate::Substring &s) {
@@ -1297,14 +1299,19 @@ private:
 
   template <typename A>
   fir::ExtendedValue gen(const Fortran::evaluate::FunctionRef<A> &func) {
+    // FIXME: I find this very redudant to genref<Expr<A>>.
+    // Why do we need this ??
     if (!func.GetType().has_value())
       mlir::emitError(getLoc(), "internal: a function must have a type");
     auto resTy = genType(*func.GetType());
     auto retVal = genProcedureRef(func, llvm::ArrayRef<mlir::Type>{resTy});
-    auto casted = builder.createConvert(getLoc(), resTy, fir::getBase(retVal));
+    auto retValBase = fir::getBase(retVal);
+    if (fir::isa_ref_type(retValBase.getType()))
+      return retVal;
+    auto casted = builder.createConvert(getLoc(), resTy, retValBase);
     auto mem = builder.create<fir::AllocaOp>(getLoc(), resTy);
     builder.create<fir::StoreOp>(getLoc(), casted, mem);
-    return mem.getResult();
+    return fir::substBase(retVal, mem.getResult());
   }
 
   /// Generate a call to an intrinsic function.
@@ -1405,59 +1412,49 @@ private:
     for (const auto &arg : caller.getPassedArguments()) {
       const auto *actual = arg.entity;
       if (!actual)
-        TODO(""); // optional arguments
+        TODO("optional argument lowering");
       const auto *expr = actual->UnwrapExpr();
       if (!expr)
-        TODO(""); // assumed type arguments
+        TODO("assumed type actual argument lowering");
 
-      mlir::Value argRef;
-      mlir::Value argVal;
-      if (const auto *argSymbol =
-              Fortran::evaluate::UnwrapWholeSymbolDataRef(*expr)) {
-        argVal = symMap.lookupSymbol(*argSymbol).getAddr();
-      } else {
-        auto exv = genExtAddr(*expr);
-        // FIXME: should use the box values, etc.
-        argVal = fir::getBase(exv);
-      }
-      auto type = argVal.getType();
-      if (fir::isa_passbyref_type(type) || type.isa<mlir::FunctionType>()) {
-        argRef = argVal;
-        argVal = {};
-      }
-      assert((argVal || argRef) && "needs value or address");
-
-      // Handle cases where the argument must be passed by value
       if (arg.passBy == PassBy::Value) {
+        auto *argVal = genExtValue(*expr).getUnboxed();
         if (!argVal)
-          argVal = genLoad(argRef);
-        caller.placeInput(arg, argVal);
+          mlir::emitError(
+              getLoc(),
+              "Lowering internal error: passing non trivial value by by value");
+        else
+          caller.placeInput(arg, *argVal);
         continue;
       }
 
-      // From this point, arguments needs to be in memory.
-      if (!argRef) {
-        // expression is a value, so store it in a temporary so we can
-        // pass-by-reference
-        argRef = builder.createTemporary(getLoc(), argVal.getType());
-        builder.create<fir::StoreOp>(getLoc(), argVal, argRef);
-      }
+      auto argRef = genExtAddr(*expr);
+
+      auto helper = Fortran::lower::CharacterExprHelper{builder, getLoc()};
       if (arg.passBy == PassBy::BaseAddress) {
-        caller.placeInput(arg, argRef);
+        caller.placeInput(arg, fir::getBase(argRef));
       } else if (arg.passBy == PassBy::BoxChar) {
-        auto boxChar = argRef;
-        if (!boxChar.getType().isa<fir::BoxCharType>()) {
-          Fortran::lower::CharacterExprHelper helper{builder, getLoc()};
-          auto ch = helper.materializeCharacterOrSequence(boxChar);
-          boxChar = helper.createEmboxChar(ch.first, ch.second);
-        }
+        auto boxChar = argRef.match(
+            [&](const fir::CharBoxValue &x) { return helper.createEmbox(x); },
+            [&](const fir::CharArrayBoxValue &x) {
+              return helper.createEmbox(x);
+            },
+            [&](const fir::BoxValue &x) -> mlir::Value {
+              // Beware, descriptor content might have to be copied before
+              // and after the call to a contiguous character argument.
+              TODO("lowering actual arguments descriptor to boxchar");
+            },
+            [&](const auto &x) {
+              mlir::emitError(getLoc(), "Lowering internal error: actual "
+                                        "argument is not a character");
+              return mlir::Value{};
+            });
         caller.placeInput(arg, boxChar);
       } else if (arg.passBy == PassBy::Box) {
-        TODO(""); // generate emboxing if need.
+        TODO("passing descriptor in call"); // generate emboxing if need.
       } else if (arg.passBy == PassBy::AddressAndLength) {
-        Fortran::lower::CharacterExprHelper helper{builder, getLoc()};
-        auto ch = helper.materializeCharacter(argRef);
-        caller.placeAddressAndLengthInput(arg, ch.first, ch.second);
+        caller.placeAddressAndLengthInput(arg, fir::getBase(argRef),
+                                          fir::getLen(argRef));
       } else {
         llvm_unreachable("pass by value not handled here");
       }
@@ -1597,16 +1594,18 @@ private:
     if constexpr (inRefSet<std::decay_t<decltype(a)>>) {
       return gen(a);
     } else {
-      auto val = fir::getBase(genval(a));
+      auto exv = genval(a);
+      auto valBase = fir::getBase(exv);
       // Functions are always referent.
-      if (val.getType().template isa<mlir::FunctionType>() ||
-          fir::isa_ref_type(val.getType()))
-        return val;
+      if (valBase.getType().template isa<mlir::FunctionType>() ||
+          fir::isa_ref_type(valBase.getType()))
+        return exv;
+
       // Since `a` is not itself a valid referent, determine its value and
       // create a temporary location for referencing.
-      auto mem = builder.create<fir::AllocaOp>(getLoc(), val.getType());
-      builder.create<fir::StoreOp>(getLoc(), val, mem);
-      return mem.getResult();
+      auto mem = builder.create<fir::AllocaOp>(getLoc(), valBase.getType());
+      builder.create<fir::StoreOp>(getLoc(), valBase, mem);
+      return fir::substBase(exv, mem.getResult());
     }
   }
 

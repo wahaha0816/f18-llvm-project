@@ -240,6 +240,30 @@ Fortran::lower::CharacterExprHelper::createEmbox(const fir::CharBoxValue &box) {
   return builder.create<fir::EmboxCharOp>(loc, boxCharType, buff, len);
 }
 
+fir::CharBoxValue Fortran::lower::CharacterExprHelper::toScalarCharacter(
+    const fir::CharArrayBoxValue &box) {
+  // TODO: add a fast path multiplying new length at compile time if the info is
+  // in the array type.
+  auto lenType = getLengthType();
+  auto len = builder.createConvert(loc, lenType, box.getLen());
+  for (auto extent : box.getExtents())
+    len = builder.create<mlir::MulIOp>(
+        loc, len, builder.createConvert(loc, lenType, extent));
+
+  // TODO: typeLen can be improved in compiled constant cases
+  // TODO: allow bare fir.array<> (no ref) conversion here ?
+  auto typeLen = fir::SequenceType::getUnknownExtent();
+  auto charTy = fir::SequenceType::get({typeLen}, getCharacterType(box));
+  auto type = fir::ReferenceType::get(charTy);
+  auto buffer = builder.createConvert(loc, type, box.getBuffer());
+  return {buffer, len};
+}
+
+mlir::Value Fortran::lower::CharacterExprHelper::createEmbox(
+    const fir::CharArrayBoxValue &box) {
+  return createEmbox(toScalarCharacter(box));
+}
+
 /// Load a character out of `buff` from offset `index`.
 /// `buff` must be a reference to memory.
 mlir::Value
@@ -313,7 +337,7 @@ Fortran::lower::CharacterExprHelper::createCharacterTemp(mlir::Type type,
   assert(type.isa<fir::CharacterType>() && "expected fir character type");
   auto typeLen = fir::SequenceType::getUnknownExtent();
   auto charTy = fir::SequenceType::get({typeLen}, type);
-  // TODO: if len definingOp is a ConstantOp, get the length in the type. 
+  // TODO: if len definingOp is a ConstantOp, get the length in the type.
   llvm::SmallVector<mlir::Value, 3> sizes{len};
   auto ref = builder.allocateLocal(loc, charTy, llvm::StringRef{}, sizes);
   return {ref, len};

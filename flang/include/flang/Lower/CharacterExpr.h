@@ -74,6 +74,13 @@ public:
   /// Take care of type conversions before emboxing.
   /// \p len is converted to the integer type for character lengths if needed.
   mlir::Value createEmboxChar(mlir::Value addr, mlir::Value len);
+  mlir::Value createEmbox(const fir::CharBoxValue &str);
+  /// Embox a string array. The length is sizeof(str)*len(str).
+  mlir::Value createEmbox(const fir::CharArrayBoxValue &str);
+
+  /// Convert character array to a scalar by reducing the extents into the
+  /// length. Will fail if call on non reference like base.
+  fir::CharBoxValue toScalarCharacter(const fir::CharArrayBoxValue &);
 
   /// Unbox \p boxchar into (fir.ref<fir.char<kind>>, getLengthType()).
   std::pair<mlir::Value, mlir::Value> createUnboxChar(mlir::Value boxChar);
@@ -171,7 +178,6 @@ private:
   mlir::Type getSeqTy(const fir::CharBoxValue &c) const;
   mlir::Type getSeqTy(mlir::Value str) const;
   mlir::Value getCharBoxBuffer(const fir::CharBoxValue &box);
-  mlir::Value createEmbox(const fir::CharBoxValue &str);
   mlir::Value createLoadCharAt(mlir::Value buff, mlir::Value index);
   void createStoreCharAt(mlir::Value str, mlir::Value index, mlir::Value c);
   void createLengthOneAssign(const fir::CharBoxValue &lhs,
