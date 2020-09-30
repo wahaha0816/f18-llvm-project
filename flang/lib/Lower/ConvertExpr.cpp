@@ -918,7 +918,7 @@ private:
         },
         [&](const fir::CharArrayBoxValue &) -> fir::ExtendedValue {
           // TODO: substring array
-          llvm::report_fatal_error("TODO: array substring lowering");
+          TODO("array substring lowering");
         },
         [&](const auto &) -> fir::ExtendedValue {
           llvm::report_fatal_error("substring base is not a CharBox");

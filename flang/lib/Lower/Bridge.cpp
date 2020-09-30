@@ -25,8 +25,8 @@
 #include "flang/Lower/OpenMP.h"
 #include "flang/Lower/PFTBuilder.h"
 #include "flang/Lower/Runtime.h"
-#include "flang/Lower/Todo.h"
 #include "flang/Lower/Support/BoxValue.h"
+#include "flang/Lower/Todo.h"
 #include "flang/Optimizer/Dialect/FIRAttr.h"
 #include "flang/Optimizer/Dialect/FIRDialect.h"
 #include "flang/Optimizer/Dialect/FIROps.h"
@@ -618,7 +618,6 @@ private:
     assert(Fortran::semantics::HasAlternateReturns(symbol) &&
            "subroutine does not have alternate returns");
     return getSymbolAddress(symbol);
-    return mlir::Value{};
   }
 
   void genFIRProcedureExit(Fortran::lower::pft::FunctionLikeUnit &funit,
@@ -2488,9 +2487,9 @@ private:
     // Backup actual argument for entry character results
     // with different lengths. It needs to be added to the non
     // primary results symbol before mapSymbolAttributes is called.
-    llvm::Optional<Fortran::lower::SymbolBox> resultArg;
+    Fortran::lower::SymbolBox resultArg;
     if (auto passedResult = callee.getPassedResult())
-      resultArg = lookupSymbol(passedResult->entity.get());
+      resultArg = lookupSymbol(passedResult->entity.get()).getValue();
 
     mlir::Value primaryFuncResultStorage;
     llvm::DenseMap<std::size_t, mlir::Value> storeMap;
@@ -2516,7 +2515,7 @@ private:
     /// is not something that fit wells with equivalence lowering.
     for (const auto &altResult : deferredFuncResultList) {
       if (auto passedResult = callee.getPassedResult())
-        addSymbol(altResult.getSymbol(), resultArg.getValue().getAddr());
+        addSymbol(altResult.getSymbol(), resultArg.getAddr());
       mapSymbolAttributes(altResult, storeMap, primaryFuncResultStorage);
     }
 
