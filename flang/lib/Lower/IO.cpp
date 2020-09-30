@@ -527,6 +527,39 @@ static mlir::Value getDefaultScratchLen(Fortran::lower::FirOpBuilder &builder,
                                           builder.getIntegerAttr(toType, 0));
 }
 
+/// Generate a reference to a buffer and the length of buffer given
+/// a character expression. Array expression will be cast to scalar
+/// character as long as they are contiguous.
+static std::tuple<mlir::Value, mlir::Value>
+genBuffer(Fortran::lower::AbstractConverter &converter, mlir::Location loc,
+          const Fortran::semantics::SomeExpr &expr, mlir::Type strTy,
+          mlir::Type lenTy) {
+  auto &builder = converter.getFirOpBuilder();
+  auto exprAddr = converter.genExprAddr(expr);
+  Fortran::lower::CharacterExprHelper helper(builder, loc);
+  using ValuePair = std::pair<mlir::Value, mlir::Value>;
+  auto [buff, len] = exprAddr.match(
+      [&](const fir::CharBoxValue &x) -> ValuePair {
+        return {x.getBuffer(), x.getLen()};
+      },
+      [&](const fir::CharArrayBoxValue &x) -> ValuePair {
+        auto scalar = helper.toScalarCharacter(x);
+        return {scalar.getBuffer(), scalar.getLen()};
+      },
+      [&](const fir::BoxValue &) -> ValuePair {
+        // May need to copy before after IO to handle contiguous
+        // aspect. Not sure descriptor can get here though.
+        TODO("character descriptor to contiguous buffer");
+      },
+      [&](const auto &) -> ValuePair {
+        llvm::report_fatal_error(
+            "lowering internal error: IO buffer is not a character");
+      });
+  buff = builder.createConvert(loc, strTy, buff);
+  len = builder.createConvert(loc, lenTy, len);
+  return {buff, len};
+}
+
 /// Lower a string literal. Many arguments to the runtime are conveyed as
 /// Fortran CHARACTER literals.
 template <typename A>
@@ -536,18 +569,16 @@ lowerStringLit(Fortran::lower::AbstractConverter &converter, mlir::Location loc,
                mlir::Type ty2 = {}) {
   auto &builder = converter.getFirOpBuilder();
   auto *expr = Fortran::semantics::GetExpr(syntax);
-  auto str = fir::getBase(converter.genExprValue(expr, loc));
-  Fortran::lower::CharacterExprHelper helper{builder, loc};
-  auto dataLen = helper.materializeCharacterOrSequence(str);
-  auto buff = builder.createConvert(loc, strTy, dataLen.first);
-  auto len = builder.createConvert(loc, lenTy, dataLen.second);
+  if (!expr)
+    mlir::emitError(loc, "internal: null semantic expr in IO lowering");
+  auto [buff, len] = genBuffer(converter, loc, *expr, strTy, lenTy);
+  mlir::Value kind;
   if (ty2) {
-    auto kindVal = helper.getCharacterKind(str.getType());
-    auto kind = builder.create<mlir::ConstantOp>(
+    auto kindVal = expr->GetType().value().kind();
+    kind = builder.create<mlir::ConstantOp>(
         loc, builder.getIntegerAttr(ty2, kindVal));
-    return {buff, len, kind};
   }
-  return {buff, len, mlir::Value{}};
+  return {buff, len, kind};
 }
 
 /// Pass the body of the FORMAT statement in as if it were a CHARACTER literal
@@ -1155,51 +1186,19 @@ getFormat<Fortran::parser::PrintStmt>(
                    strTy, lenTy);
 }
 
-/// Generate a reference to a buffer and the length of buffer. There are 3 cases
-/// An IoUnit can be variable, a ScalarIntExpr (i.e FileUnitNumber) or a *. Only
-/// the first case (a variable) is handled here.
-static std::tuple<mlir::Value, mlir::Value>
-genBuffer(Fortran::lower::AbstractConverter &converter, mlir::Location loc,
-          const Fortran::parser::IoUnit &iounit, mlir::Type strTy,
-          mlir::Type lenTy) {
-  // Variable
-  auto *var = std::get_if<Fortran::parser::Variable>(&iounit.u);
-  assert(var && "Has to be a variable");
-  auto e = Fortran::semantics::GetExpr(*var);
-  auto &builder = converter.getFirOpBuilder();
-  auto exprAddr = converter.genExprAddr(*e);
-  Fortran::lower::CharacterExprHelper helper(builder, loc);
-  using ValuePair = std::pair<mlir::Value, mlir::Value>;
-  auto [buff, len] = exprAddr.match(
-      [&](const fir::CharBoxValue &x) -> ValuePair {
-        return {x.getBuffer(), x.getLen()};
-      },
-      [&](const fir::CharArrayBoxValue &x) -> ValuePair {
-        auto scalar = helper.toScalarCharacter(x);
-        return {scalar.getBuffer(), scalar.getLen()};
-      },
-      [&](const fir::BoxValue &) -> ValuePair {
-        // May need to copy before after IO to handle contiguous
-        // aspect. Not sure descriptor can get here though.
-        TODO("character descriptor to contiguous buffer");
-      },
-      [&](const auto &) -> ValuePair {
-        llvm::report_fatal_error(
-            "lowering internal error: IO buffer is not a character");
-      });
-  buff = builder.createConvert(loc, strTy, buff);
-  len = builder.createConvert(loc, lenTy, len);
-  return {buff, len};
-}
-
+/// There are 3 cases An IoUnit can be variable, a ScalarIntExpr (i.e
+/// FileUnitNumber) or a *. Only the first case (a variable) is handled here.
 template <typename A>
 std::tuple<mlir::Value, mlir::Value>
 getBuffer(Fortran::lower::AbstractConverter &converter, mlir::Location loc,
           const A &stmt, mlir::Type strTy, mlir::Type lenTy) {
-  if (stmt.iounit)
-    return genBuffer(converter, loc, *stmt.iounit, strTy, lenTy);
-  return genBuffer(converter, loc, *getIOControl<Fortran::parser::IoUnit>(stmt),
-                   strTy, lenTy);
+  const Fortran::parser::IoUnit *iounit =
+      stmt.iounit ? &*stmt.iounit : getIOControl<Fortran::parser::IoUnit>(stmt);
+  if (iounit)
+    if (auto *var = std::get_if<Fortran::parser::Variable>(&iounit->u))
+      if (auto *expr = Fortran::semantics::GetExpr(*var))
+        return genBuffer(converter, loc, *expr, strTy, lenTy);
+  llvm::report_fatal_error("failed to get IoUnit expr in lowering");
 }
 
 /// Create a boxed value to be passed to the runtime. `descRef` is the reference
