@@ -323,7 +323,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   mlir::Value getSymbolAddress(Fortran::lower::SymbolRef sym) override final {
-    return lookupSymbol(sym).getValue().getAddr();
+    return lookupSymbol(sym).getAddr();
   }
 
   bool lookupLabelSet(Fortran::lower::SymbolRef sym,
@@ -475,7 +475,7 @@ private:
   }
 
   /// Find the symbol in the local map or return null.
-  llvm::Optional<Fortran::lower::SymbolBox>
+  Fortran::lower::SymbolBox
   lookupSymbol(const Fortran::semantics::Symbol &sym) {
     if (auto v = localSymbols.lookupSymbol(sym))
       return v;
@@ -511,7 +511,7 @@ private:
                          llvm::ArrayRef<mlir::Value> shape = {}) {
     // FIXME: should return fir::ExtendedValue
     if (auto v = lookupSymbol(sym))
-      return v->getAddr();
+      return v.getAddr();
     auto newVal = builder->createTemporary(loc, genType(sym),
                                            sym.name().ToString(), shape);
     addSymbol(sym, newVal);
@@ -593,13 +593,13 @@ private:
       mlir::emitError(loc, "failed lowering function return");
       return;
     }
-    auto resultVal = resultSymBox->match(
+    auto resultVal = resultSymBox.match(
         [&](const fir::CharBoxValue &x) -> mlir::Value {
           return Fortran::lower::CharacterExprHelper{*builder, loc}
               .createEmboxChar(x.getBuffer(), x.getLen());
         },
         [&](const auto &) -> mlir::Value {
-          auto resultRef = resultSymBox->getAddr();
+          auto resultRef = resultSymBox.getAddr();
           mlir::Type resultRefType = builder->getRefType(genType(resultSym));
           // A function with multiple entry points returning different types
           // tags all result variables with one of the largest types to allow
@@ -2085,7 +2085,7 @@ private:
     // Arguments (and some results) already have a symbolBox with the address.
     auto maybeSymbolBox = lookupSymbol(sym);
     mlir::Value addr =
-        maybeSymbolBox ? maybeSymbolBox->getAddr() : mlir::Value{};
+        maybeSymbolBox ? maybeSymbolBox.getAddr() : mlir::Value{};
     mlir::Value len;
     [[maybe_unused]] bool mustBeDummy = false;
 
@@ -2380,7 +2380,7 @@ private:
     }
     mlir::Value commonAddr;
     if (auto symBox = lookupSymbol(common))
-      commonAddr = symBox->getAddr();
+      commonAddr = symBox.getAddr();
     if (!commonAddr) {
       commonAddr = builder->create<fir::AddrOfOp>(loc, global.resultType(),
                                                   global.getSymbol());
@@ -2489,7 +2489,7 @@ private:
     // primary results symbol before mapSymbolAttributes is called.
     Fortran::lower::SymbolBox resultArg;
     if (auto passedResult = callee.getPassedResult())
-      resultArg = lookupSymbol(passedResult->entity.get()).getValue();
+      resultArg = lookupSymbol(passedResult->entity.get());
 
     mlir::Value primaryFuncResultStorage;
     llvm::DenseMap<std::size_t, mlir::Value> storeMap;
