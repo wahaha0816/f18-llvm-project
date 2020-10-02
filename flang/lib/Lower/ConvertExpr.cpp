@@ -275,14 +275,20 @@ private:
   }
 
   /// Generate a load of a value from an address.
-  mlir::Value genLoad(const fir::ExtendedValue &addr) {
+  fir::ExtendedValue genLoad(const fir::ExtendedValue &addr) {
     auto loc = getLoc();
     return addr.match(
-        [&](const fir::CharBoxValue &box) -> mlir::Value {
+        [&](const fir::CharBoxValue &box) -> fir::ExtendedValue {
           auto buffer = box.getBuffer();
           auto len = dyn_cast<mlir::ConstantOp>(box.getLen().getDefiningOp());
           if (!len) {
             // TODO: return an emboxchar?
+            // Not sure an emboxchar would help, it would simply
+            // indirects the memory reference, so it fakes the load and then
+            // makes it harder to work with the character due to the
+            // indirection. Solutions I see are:
+            //  1. create a temp and returns a CharBoxValue pointing to it.
+            //  2. create a dynamic vector fir type that can abstract 1.
             mlir::emitError(loc, "cannot load a variable length char");
             return {};
           }
@@ -298,10 +304,17 @@ private:
           auto charTy =
               builder.getRefType(fir::SequenceType::get(shape, baseTy));
           auto casted = builder.createConvert(loc, charTy, buffer);
-          return builder.create<fir::LoadOp>(loc, casted);
+          auto val = builder.create<fir::LoadOp>(loc, casted);
+          return fir::CharBoxValue{val, box.getLen()};
         },
-        [&](const auto &v) -> mlir::Value {
+        [&](const fir::CharArrayBoxValue &v) -> fir::ExtendedValue {
+          TODO("loading character array");
+        },
+        [&](const fir::UnboxedValue &v) -> fir::ExtendedValue {
           return builder.create<fir::LoadOp>(loc, fir::getBase(v));
+        },
+        [&](const auto &v) -> fir::ExtendedValue {
+          TODO("loading array or descriptor");
         });
   }
 
@@ -726,10 +739,14 @@ private:
           getLoc(), llvm::ArrayRef<mlir::Type>{type}, llvm::None, attrs);
     };
 
+    auto lenp = builder.createIntegerConstant(
+        getLoc(),
+        Fortran::lower::CharacterExprHelper{builder, getLoc()}.getLengthType(),
+        len);
     // When in an initializer context, construct the literal op itself and do
     // not construct another constant object in rodata.
     if (exprCtx.inInitializer())
-      return consLit().getResult();
+      return fir::CharBoxValue{consLit().getResult(), lenp};
 
     // Otherwise, the string is in a plain old expression so "outline" the value
     // by hashconsing it to a constant literal object.
@@ -750,10 +767,6 @@ private:
           builder.createLinkOnceLinkage());
     auto addr = builder.create<fir::AddrOfOp>(getLoc(), global.resultType(),
                                               global.getSymbol());
-    auto lenp = builder.createIntegerConstant(
-        getLoc(),
-        Fortran::lower::CharacterExprHelper{builder, getLoc()}.getLengthType(),
-        len);
     return fir::CharBoxValue{addr, lenp};
   }
   /// Helper to call the correct scalar conversion based on category.
@@ -773,6 +786,13 @@ private:
   fir::ExtendedValue genArrayLit(
       const Fortran::evaluate::Constant<Fortran::evaluate::Type<TC, KIND>>
           &con) {
+    llvm::SmallVector<mlir::Value, 8> lbounds;
+    llvm::SmallVector<mlir::Value, 8> extents;
+    auto idxTy = builder.getIndexType();
+    for (const auto &[lb, extent] : llvm::zip(con.lbounds(), con.shape())) {
+      lbounds.push_back(builder.createIntegerConstant(getLoc(), idxTy, lb - 1));
+      extents.push_back(builder.createIntegerConstant(getLoc(), idxTy, extent));
+    }
     if constexpr (TC == Fortran::common::TypeCategory::Character) {
       fir::SequenceType::Shape shape;
       shape.push_back(con.LEN());
@@ -780,7 +800,6 @@ private:
       auto chTy =
           converter.genType(Fortran::common::TypeCategory::Character, KIND);
       auto arrayTy = fir::SequenceType::get(shape, chTy);
-      auto idxTy = builder.getIntegerType(32);
       mlir::Value array = builder.create<fir::UndefOp>(getLoc(), arrayTy);
       Fortran::evaluate::ConstantSubscripts subscripts = con.lbounds();
       do {
@@ -802,14 +821,13 @@ private:
                                                      charVal, idx);
         }
       } while (con.IncrementSubscripts(subscripts));
-      // FIXME: return an ArrayBoxValue
-      return array;
+      auto len = builder.createIntegerConstant(getLoc(), idxTy, con.LEN());
+      return fir::CharArrayBoxValue{array, len, extents, lbounds};
     } else {
       // Convert Ev::ConstantSubs to SequenceType::Shape
       fir::SequenceType::Shape shape(con.shape().begin(), con.shape().end());
       auto eleTy = converter.genType(TC, KIND);
       auto arrayTy = fir::SequenceType::get(shape, eleTy);
-      auto idxTy = builder.getIndexType();
       mlir::Value array = builder.create<fir::UndefOp>(getLoc(), arrayTy);
       Fortran::evaluate::ConstantSubscripts subscripts = con.lbounds();
       do {
@@ -826,8 +844,7 @@ private:
         array = builder.create<fir::InsertValueOp>(getLoc(), arrayTy, array,
                                                    insVal, idx);
       } while (con.IncrementSubscripts(subscripts));
-      // FIXME: return an ArrayBoxValue
-      return array;
+      return fir::ArrayBoxValue{array, extents, lbounds};
     }
   }
 
@@ -1233,7 +1250,13 @@ private:
       }
       auto ty = genSubType(base.getType(), args.size());
       ty = builder.getRefType(ty);
-      return builder.create<fir::CoordinateOp>(loc, ty, base, args);
+      auto addr = builder.create<fir::CoordinateOp>(loc, ty, base, args);
+      // FIXME: return may not be a scalar.
+      return box.match(
+          [&](const fir::CharArrayBoxValue &x) -> fir::ExtendedValue {
+            return fir::CharBoxValue{addr, x.getLen()};
+          },
+          [&](const auto &) -> fir::ExtendedValue { return addr; });
     }
     return genArrayRefComponent(aref);
   }
