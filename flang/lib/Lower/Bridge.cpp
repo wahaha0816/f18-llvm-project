@@ -367,8 +367,8 @@ public:
         &getMLIRContext(), bridge.getDefaultKinds(), data);
   }
   mlir::Type genType(const Fortran::lower::SomeExpr &expr) override final {
-    return Fortran::lower::translateSomeExprToFIRType(
-        &getMLIRContext(), bridge.getDefaultKinds(), &expr);
+    return Fortran::lower::translateSomeExprToFIRType(&getMLIRContext(),
+                                                      foldingContext, &expr);
   }
   mlir::Type genType(const Fortran::lower::pft::Variable &var) override final {
     return Fortran::lower::translateVariableToFIRType(
@@ -1232,7 +1232,7 @@ private:
         Fortran::semantics::GetExpr(std::get<ScalarExpr>(stmt.t)));
     auto selectType = selectExpr.getType();
     Fortran::lower::CharacterExprHelper helper{*builder, loc};
-    if (helper.isCharacter(selectExpr.getType())) {
+    if (helper.isCharacterScalar(selectExpr.getType())) {
       TODO("");
     }
     llvm::SmallVector<mlir::Attribute, 10> attrList;
