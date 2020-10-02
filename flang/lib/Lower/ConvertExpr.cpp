@@ -1309,9 +1309,8 @@ private:
     auto retValBase = fir::getBase(retVal);
     if (fir::isa_ref_type(retValBase.getType()))
       return retVal;
-    auto casted = builder.createConvert(getLoc(), resTy, retValBase);
-    auto mem = builder.create<fir::AllocaOp>(getLoc(), resTy);
-    builder.create<fir::StoreOp>(getLoc(), casted, mem);
+    auto mem = builder.create<fir::AllocaOp>(getLoc(), retValBase.getType());
+    builder.create<fir::StoreOp>(getLoc(), retValBase, mem);
     return fir::substBase(retVal, mem.getResult());
   }
 
@@ -1340,8 +1339,10 @@ private:
     }
     // Let the intrinsic library lower the intrinsic procedure call
     llvm::StringRef name = intrinsic.name;
-    return Fortran::lower::genIntrinsicCall(builder, getLoc(), name, resultType,
-                                            operands);
+    auto res = Fortran::lower::genIntrinsicCall(builder, getLoc(), name,
+                                                resultType, operands);
+    res.dump();
+    return res;
   }
 
   template <typename A>
