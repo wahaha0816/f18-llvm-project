@@ -101,7 +101,7 @@ public:
   /// - fir.boxchar<kind>
   /// - fir.ref<fir.array<len x fir.char<kind>>>
   /// - fir.array<len x fir.char<kind>>
-  static bool isCharacter(mlir::Type type);
+  static bool isCharacterScalar(mlir::Type type);
 
   /// Extract the kind of a character type
   static fir::KindTy getCharacterKind(mlir::Type type);

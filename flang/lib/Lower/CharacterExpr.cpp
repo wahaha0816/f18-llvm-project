@@ -571,7 +571,7 @@ bool Fortran::lower::CharacterExprHelper::isCharacterLiteral(mlir::Type type) {
   return false;
 }
 
-bool Fortran::lower::CharacterExprHelper::isCharacter(mlir::Type type) {
+bool Fortran::lower::CharacterExprHelper::isCharacterScalar(mlir::Type type) {
   if (type.isa<fir::BoxCharType>())
     return true;
   if (auto refType = type.dyn_cast<fir::ReferenceType>())
