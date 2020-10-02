@@ -221,11 +221,13 @@ static mlir::FuncOp getOutputFunc(mlir::Location loc,
     return getIORuntimeFunc<mkIOKey(OutputLogical)>(loc, builder);
   if (type.isa<fir::BoxType>())
     return getIORuntimeFunc<mkIOKey(OutputDescriptor)>(loc, builder);
-  if (Fortran::lower::CharacterExprHelper::isCharacter(type))
+  if (Fortran::lower::CharacterExprHelper::isCharacterScalar(type))
     return getIORuntimeFunc<mkIOKey(OutputAscii)>(loc, builder);
+  // Use descriptors for arrays
   if (auto refTy = type.dyn_cast<fir::ReferenceType>())
-    if (refTy.getEleTy().isa<fir::SequenceType>())
-      return getIORuntimeFunc<mkIOKey(OutputDescriptor)>(loc, builder);
+    type = refTy.getEleTy();
+  if (type.isa<fir::SequenceType>())
+    return getIORuntimeFunc<mkIOKey(OutputDescriptor)>(loc, builder);
   // Any unaccounted for types are to be handled here.
   mlir::emitError(loc, "output for entity type ") << type << " not implemented";
   return {};
@@ -290,10 +292,13 @@ genOutputItemList(Fortran::lower::AbstractConverter &converter,
       auto ty = fir::dyn_cast_ptrEleTy(fir::getBase(exv).getType());
       auto box = genUnformattedBox(builder, loc, exv, ty);
       outputFuncArgs.push_back(builder.createConvert(loc, argType, box));
-    } else if (helper.isCharacter(itemTy)) {
-      // Should this case really come before descriptor ?
+    } else if (helper.isCharacterScalar(itemTy)) {
       auto exv = converter.genExprAddr(expr, loc);
-      assert(exv.getCharBox() && "not a charBox");
+      // scalar allocatable/pointer may also get here, not clear if
+      // genExprAddr will lower them as CharBoxValue or BoxValue.
+      if (!exv.getCharBox())
+        llvm::report_fatal_error(
+            "internal IO lowering: scalar character not in CharBox");
       outputFuncArgs.push_back(builder.createConvert(
           loc, outputFunc.getType().getInput(1), fir::getBase(exv)));
       outputFuncArgs.push_back(builder.createConvert(
@@ -344,7 +349,7 @@ static mlir::FuncOp getInputFunc(mlir::Location loc,
     return getIORuntimeFunc<mkIOKey(InputLogical)>(loc, builder);
   if (type.isa<fir::BoxType>())
     return getIORuntimeFunc<mkIOKey(InputDescriptor)>(loc, builder);
-  if (Fortran::lower::CharacterExprHelper::isCharacter(type))
+  if (Fortran::lower::CharacterExprHelper::isCharacterScalar(type))
     return getIORuntimeFunc<mkIOKey(InputAscii)>(loc, builder);
   if (type.isa<fir::SequenceType>())
     return getIORuntimeFunc<mkIOKey(InputDescriptor)>(loc, builder);
@@ -394,7 +399,7 @@ static void genInputItemList(Fortran::lower::AbstractConverter &converter,
     llvm::SmallVector<mlir::Value, 8> inputFuncArgs = {cookie, itemAddr};
     if (argType.isa<fir::BoxType>()) {
       // do nothing
-    } else if (charHelper.isCharacter(itemTy)) {
+    } else if (charHelper.isCharacterScalar(itemTy)) {
       auto len = fir::getLen(itemBox);
       inputFuncArgs.push_back(
           builder.createConvert(loc, inputFunc.getType().getInput(2), len));
