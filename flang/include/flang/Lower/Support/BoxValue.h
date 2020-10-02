@@ -53,11 +53,10 @@ using UnboxedValue = mlir::Value;
 class AbstractBox {
 public:
   AbstractBox() = delete;
-  AbstractBox(mlir::Value addr) : addr{addr} {
-    assert(isa_passbyref_type(addr.getType()) &&
-           "box values must be references");
-  }
+  AbstractBox(mlir::Value addr) : addr{addr} {}
 
+  /// FIXME: this comment is not true anymore since genLoad
+  /// is loading constant length characters. What is the impact  /// ?
   /// An abstract box always contains a memory reference to a value.
   mlir::Value getAddr() const { return addr; }
 
@@ -234,9 +233,19 @@ public:
   template <typename A, typename = std::enable_if_t<
                             !std::is_same_v<std::decay_t<A>, ExtendedValue>>>
   constexpr ExtendedValue(A &&a) : box{std::forward<A>(a)} {
-    if constexpr (std::is_same_v<std::decay_t<A>, mlir::Value>) {
-      if (a && a.getType().template isa<fir::BoxCharType>())
-        llvm::report_fatal_error("BoxChar should be unboxed");
+    if (auto b = getUnboxed()) {
+      if (*b) {
+        auto type = b->getType();
+        if (type.template isa<fir::BoxCharType>())
+          llvm::report_fatal_error("BoxChar should be unboxed");
+        if (auto refType = type.template dyn_cast<fir::ReferenceType>())
+          type = refType.getEleTy();
+        if (auto seqType = type.template dyn_cast<fir::SequenceType>())
+          type = seqType.getEleTy();
+        if (type.template isa<fir::CharacterType>())
+          llvm::report_fatal_error(
+              "character buffer should be in CharBoxValue");
+      }
     }
   }
 
