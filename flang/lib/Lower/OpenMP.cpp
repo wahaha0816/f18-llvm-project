@@ -48,8 +48,8 @@ static void genObjectList(const Fortran::parser::OmpObjectList &objectList,
 }
 
 template <typename Op>
-static void finalizeRegionOp(Op &op, Fortran::lower::FirOpBuilder &firOpBuilder,
-                             mlir::Location &loc) {
+static void createBodyOfOp(Op &op, Fortran::lower::FirOpBuilder &firOpBuilder,
+                           mlir::Location &loc) {
   firOpBuilder.createBlock(&op.getRegion());
   auto &block = op.getRegion().back();
   firOpBuilder.setInsertionPointToStart(&block);
@@ -185,12 +185,11 @@ genOMP(Fortran::lower::AbstractConverter &converter,
         privateClauseOperands, firstprivateClauseOperands, sharedClauseOperands,
         copyinClauseOperands,
         procBindClauseOperand.dyn_cast_or_null<StringAttr>());
-    finalizeRegionOp<omp::ParallelOp>(parallelOp, firOpBuilder,
-                                      currentLocation);
+    createBodyOfOp<omp::ParallelOp>(parallelOp, firOpBuilder, currentLocation);
   } else if (blockDirective.v == llvm::omp::OMPD_master) {
     auto masterOp =
         firOpBuilder.create<mlir::omp::MasterOp>(currentLocation, argTy);
-    finalizeRegionOp<omp::MasterOp>(masterOp, firOpBuilder, currentLocation);
+    createBodyOfOp<omp::MasterOp>(masterOp, firOpBuilder, currentLocation);
   }
 }
 
