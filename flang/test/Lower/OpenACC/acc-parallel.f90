@@ -14,9 +14,9 @@ program acc_parallel
   logical :: ifCondition = .TRUE.
   real, dimension(10, 10) :: a, b, c
 
-!CHECK: [[A:%.*]] = fir.alloca !fir.array<10x10xf32> {name = "a"}
-!CHECK: [[B:%.*]] = fir.alloca !fir.array<10x10xf32> {name = "b"}
-!CHECK: [[C:%.*]] = fir.alloca !fir.array<10x10xf32> {name = "c"}
+!CHECK: [[A:%.*]] = fir.alloca !fir.array<10x10xf32> {name = "{{.*}}Ea"}
+!CHECK: [[B:%.*]] = fir.alloca !fir.array<10x10xf32> {name = "{{.*}}Eb"}
+!CHECK: [[C:%.*]] = fir.alloca !fir.array<10x10xf32> {name = "{{.*}}Ec"}
 
   !$acc parallel
   !$acc end parallel
@@ -137,9 +137,14 @@ program acc_parallel
 !CHECK:        acc.yield
 !CHECK-NEXT: }{{$}}
 
-! NOT WORKING YET
-!  !$acc parallel if(ifCondition)
-!  !$acc end parallel
+  !$acc parallel if(ifCondition)
+  !$acc end parallel
+
+!CHECK:      [[IFCOND:%.*]] = fir.load %{{.*}} : !fir.ref<!fir.logical<4>>
+!CHECK:      [[IF2:%.*]] = fir.convert [[IFCOND]] : (!fir.logical<4>) -> i1
+!CHECK:      acc.parallel if([[IF2]]) {
+!CHECK:        acc.yield
+!CHECK-NEXT: }{{$}}
 
   !$acc parallel self(.TRUE.)
   !$acc end parallel
@@ -156,9 +161,14 @@ program acc_parallel
 !CHECK:        acc.yield
 !CHECK-NEXT: } attributes {selfAttr}
 
-! NOT WORKING YET
-!  !$acc parallel self(ifCondition)
-!  !$acc end parallel
+  !$acc parallel self(ifCondition)
+  !$acc end parallel
+
+!CHECK:      [[SELFCOND:%.*]] = fir.load %{{.*}} : !fir.ref<!fir.logical<4>>
+!CHECK:      [[SELF2:%.*]] = fir.convert [[SELFCOND]] : (!fir.logical<4>) -> i1
+!CHECK:      acc.parallel self([[SELF2]]) {
+!CHECK:        acc.yield
+!CHECK-NEXT: }{{$}}
 
   !$acc parallel copy(a, b, c)
   !$acc end parallel
