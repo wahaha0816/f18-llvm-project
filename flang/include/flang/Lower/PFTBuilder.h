@@ -21,6 +21,8 @@
 #include "flang/Common/template.h"
 #include "flang/Lower/Utils.h"
 #include "flang/Parser/parse-tree.h"
+#include "flang/Semantics/attr.h"
+#include "flang/Semantics/symbol.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace mlir {
@@ -32,9 +34,11 @@ namespace semantics {
 class SemanticsContext;
 class Scope;
 } // namespace semantics
+
 namespace lower {
 
 bool definedInCommonBlock(const semantics::Symbol &sym);
+bool defaultRecursiveFunctionSetting();
 
 namespace pft {
 
@@ -68,6 +72,10 @@ public:
   template <typename B>
   constexpr BaseType<B> &get() const {
     return std::get<Ref<B>>(u).get();
+  }
+  template <typename B>
+  constexpr BaseType<B> &getStatement() const {
+    return std::get<Ref<parser::Statement<B>>>(u).get().statement;
   }
   template <typename B>
   constexpr BaseType<B> *getIf() const {
@@ -547,6 +555,14 @@ struct FunctionLikeUnit : public ProgramUnit {
   FunctionLikeUnit(FunctionLikeUnit &&) = default;
   FunctionLikeUnit(const FunctionLikeUnit &) = delete;
 
+  bool isRecursive() const {
+    auto sym = getSubprogramSymbol();
+    return !isMainProgram() &&
+           (sym.attrs().test(semantics::Attr::RECURSIVE) ||
+            (!sym.attrs().test(semantics::Attr::NON_RECURSIVE) &&
+             defaultRecursiveFunctionSetting()));
+  }
+
   std::vector<Variable> getOrderedSymbolTable() { return varList[0]; }
 
   bool isMainProgram() const {
@@ -574,6 +590,7 @@ struct FunctionLikeUnit : public ProgramUnit {
     assert(symbol && "not inside a procedure");
     return *symbol;
   }
+
   /// Return a pointer to the current entry point Evaluation.
   /// This is null for a primary entry point.
   Evaluation *getEntryEval() const {
