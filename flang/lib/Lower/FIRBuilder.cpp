@@ -40,8 +40,9 @@ mlir::Type Fortran::lower::FirOpBuilder::getRefType(mlir::Type eleTy) {
   return fir::ReferenceType::get(eleTy);
 }
 
-mlir::Type Fortran::lower::FirOpBuilder::getVarLenSeqTy(mlir::Type eleTy) {
-  fir::SequenceType::Shape shape = {fir::SequenceType::getUnknownExtent()};
+mlir::Type Fortran::lower::FirOpBuilder::getVarLenSeqTy(mlir::Type eleTy,
+                                                        int rank) {
+  fir::SequenceType::Shape shape(rank, fir::SequenceType::getUnknownExtent());
   return fir::SequenceType::get(shape, eleTy);
 }
 
@@ -224,6 +225,8 @@ mlir::Value
 Fortran::lower::FirOpBuilder::createBox(mlir::Location loc,
                                         const fir::ExtendedValue &exv) {
   auto itemAddr = fir::getBase(exv);
+  if (itemAddr.getType().isa<fir::BoxType>())
+    return itemAddr;
   auto elementType = fir::dyn_cast_ptrEleTy(itemAddr.getType());
   if (!elementType)
     mlir::emitError(loc, "internal: expected a memory reference type ")
@@ -232,21 +235,20 @@ Fortran::lower::FirOpBuilder::createBox(mlir::Location loc,
   return exv.match(
       [&](const fir::ArrayBoxValue &box) -> mlir::Value {
         auto s = createShape(loc, exv);
-        return create<fir::EmboxOp>(loc, boxTy, itemAddr, s);
+        return create<fir::EmboxOp>(loc, boxTy, itemAddr, s, box.getSlice());
       },
       [&](const fir::CharArrayBoxValue &box) -> mlir::Value {
         auto s = createShape(loc, exv);
         if (Fortran::lower::CharacterExprHelper::hasConstantLengthInType(exv))
-          return create<fir::EmboxOp>(loc, boxTy, itemAddr, s);
+          return create<fir::EmboxOp>(loc, boxTy, itemAddr, s, box.getSlice());
 
-        mlir::Value emptySlice;
         llvm::SmallVector<mlir::Value, 1> lenParams{box.getLen()};
-        return create<fir::EmboxOp>(loc, boxTy, itemAddr, s, emptySlice,
+        return create<fir::EmboxOp>(loc, boxTy, itemAddr, s, box.getSlice(),
                                     lenParams);
       },
       [&](const fir::BoxValue &box) -> mlir::Value {
         auto s = createShape(loc, exv);
-        return create<fir::EmboxOp>(loc, boxTy, itemAddr, s);
+        return create<fir::EmboxOp>(loc, boxTy, itemAddr, s, box.getSlice());
       },
       [&](const fir::CharBoxValue &box) -> mlir::Value {
         if (Fortran::lower::CharacterExprHelper::hasConstantLengthInType(exv))

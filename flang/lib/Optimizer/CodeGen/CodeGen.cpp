@@ -422,7 +422,8 @@ struct BoxEleSizeOpConversion : public FIROpConversion<fir::BoxEleSizeOp> {
     auto c0 = genConstantOffset(loc, rewriter, 0);
     auto c1 = genConstantOffset(loc, rewriter, 1);
     auto ty = convertType(boxelesz.getType());
-    auto p = genGEP(loc, unwrap(ty), rewriter, a, c0, c1);
+    auto pty = unwrap(ty).getPointerTo();
+    auto p = genGEP(loc, unwrap(pty), rewriter, a, c0, c1);
     rewriter.replaceOpWithNewOp<mlir::LLVM::LoadOp>(boxelesz, ty, p);
     return success();
   }
@@ -1117,9 +1118,11 @@ struct XEmboxOpConversion : public EmboxCommonConversion<fir::XEmboxOp> {
     auto loc = xbox.getLoc();
     mlir::Value zero = genConstantIndex(loc, i64Ty, rewriter, 0);
     mlir::Value one = genConstantIndex(loc, i64Ty, rewriter, 1);
-    mlir::Value prevDim = integerCast(loc, rewriter, i64Ty, eleSize);
+    mlir::Value eleSize64 = integerCast(loc, rewriter, i64Ty, eleSize);
+    mlir::Value prevDim = eleSize64;
     auto c0 = genConstantOffset(loc, rewriter, 0);
     auto boxTy = xbox.getType().dyn_cast<fir::BoxType>();
+    mlir::Value sliceOffset;
     for (unsigned d = 0; d < rank; ++d) {
       // store lower bound (normally 0)
       auto f70p = genGEPToField(loc, i64PtrTy, rewriter, alloca, c0, 7, d, 0);
@@ -1128,9 +1131,20 @@ struct XEmboxOpConversion : public EmboxCommonConversion<fir::XEmboxOp> {
         mlir::Value lb = one;
         if (hasShift)
           lb = operands[shiftOff];
-        if (hasSlice)
-          lb = rewriter.create<mlir::LLVM::SubOp>(loc, i64Ty, lb,
-                                                  operands[sliceOff]);
+        if (hasSlice) {
+          auto boundOffset = rewriter.create<mlir::LLVM::SubOp>(
+              loc, i64Ty, operands[sliceOff], lb);
+          if (d == 0) {
+            sliceOffset = boundOffset;
+          } else {
+            auto scaledBoundOffset = rewriter.create<mlir::LLVM::MulOp>(
+                loc, i64Ty, operands[shapeOff - 1], boundOffset);
+            sliceOffset = rewriter.create<mlir::LLVM::AddOp>(
+                loc, i64Ty, sliceOffset, scaledBoundOffset);
+          }
+          // TODO: I do not follow why array slice lb descriptor are not zero.
+          lb = rewriter.create<mlir::LLVM::AddOp>(loc, i64Ty, boundOffset, one);
+        }
         rewriter.create<mlir::LLVM::StoreOp>(loc, lb, f70p);
       } else {
         rewriter.create<mlir::LLVM::StoreOp>(loc, zero, f70p);
@@ -1168,6 +1182,23 @@ struct XEmboxOpConversion : public EmboxCommonConversion<fir::XEmboxOp> {
       if (hasSlice)
         sliceOff += 3;
     }
+    // If this is an array slice, we need to compute the new base address (add
+    // the offset computed from the slice lower bounds).
+    if (hasSlice) {
+      sliceOffset = rewriter.create<mlir::LLVM::MulOp>(loc, i64Ty, sliceOffset,
+                                                       eleSize64);
+      auto base =
+          rewriter.create<mlir::LLVM::BitcastOp>(loc, voidPtrTy(), operands[0]);
+      auto addrFieldTy =
+          getBoxEleTy(alloca.getType().dyn_cast<LLVM::LLVMType>(), 0);
+      auto newBase = genGEP(loc, unwrap(operands[0].getType()), rewriter, base,
+                            sliceOffset);
+      auto addrField = genGEPToField(loc, addrFieldTy, rewriter, alloca, c0, 0);
+      auto newBaseCast =
+          rewriter.create<mlir::LLVM::BitcastOp>(loc, addrFieldTy, newBase);
+      rewriter.create<mlir::LLVM::StoreOp>(loc, newBaseCast, addrField);
+    }
+
     if (isDerivedType(boxTy))
       TODO("derived type");
     // Convert descriptor to the prefix type for strong typing.
@@ -1420,6 +1451,7 @@ struct XArrayCoorOpConversion
       if (coor.sliceOperands().size()) {
         auto sliceLb = asType(loc, rewriter, idxTy, *sliceOps);
         lb = rewriter.create<mlir::LLVM::SubOp>(loc, idxTy, lb, sliceLb);
+        lb = rewriter.create<mlir::LLVM::AddOp>(loc, idxTy, lb, one);
         step = asType(loc, rewriter, idxTy, *(sliceOps + 2));
       }
       // For each dimension, i, add to the running pointer offset the value of

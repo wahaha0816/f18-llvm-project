@@ -95,9 +95,11 @@ class AbstractArrayBox {
 public:
   AbstractArrayBox() = default;
   AbstractArrayBox(llvm::ArrayRef<mlir::Value> extents,
-                   llvm::ArrayRef<mlir::Value> lbounds)
+                   llvm::ArrayRef<mlir::Value> lbounds, mlir::Value slice,
+                   bool sliceIsOneBased)
       : extents{extents.begin(), extents.end()}, lbounds{lbounds.begin(),
-                                                         lbounds.end()} {}
+                                                         lbounds.end()},
+        slice{slice}, sliceIsOneBased{sliceIsOneBased} {}
 
   // Every array has extents that describe its shape.
   const llvm::SmallVectorImpl<mlir::Value> &getExtents() const {
@@ -110,11 +112,27 @@ public:
     return lbounds;
   }
 
+  mlir::Value getSlice() const { return slice; }
+
   bool lboundsAllOne() const { return lbounds.empty(); }
+  bool isContiguous() const { return !slice; }
+  // We are using slice to handle non contiguous input
+  // descriptor. But in this case we need to apply lbounds
+  // twice (once on the slice indexes, and another time on
+  // coordinate array references).
+  bool applyLboundsBeforeSlice() const { return !sliceIsOneBased; }
 
 protected:
+  // TODO: replace extents and lbounds by:
+  // mlir::Value shape; \\ fir::ShapeType or fir::ShapeShiftType
   llvm::SmallVector<mlir::Value, 4> extents;
   llvm::SmallVector<mlir::Value, 4> lbounds;
+  // If this is not a contiguous array, indicate the slice
+  mlir::Value slice;
+  // If there is a slice, does the ArrayBox is one based or do
+  // lbounds still need to be considered ? This DOES NOT has anything to do with
+  // whether the slice lower bounds are one or not.
+  bool sliceIsOneBased;
 };
 
 /// Expressions with rank > 0 have extents. They may also have lbounds that are
@@ -122,10 +140,15 @@ protected:
 class ArrayBoxValue : public AbstractBox, public AbstractArrayBox {
 public:
   ArrayBoxValue(mlir::Value addr, llvm::ArrayRef<mlir::Value> extents,
-                llvm::ArrayRef<mlir::Value> lbounds = {})
-      : AbstractBox{addr}, AbstractArrayBox{extents, lbounds} {}
+                llvm::ArrayRef<mlir::Value> lbounds = {},
+                mlir::Value slice = {}, bool sliceIsOneBased = true)
+      : AbstractBox{addr}, AbstractArrayBox{extents, lbounds, slice,
+                                            sliceIsOneBased} {}
 
   ArrayBoxValue clone(mlir::Value newBase) const {
+    // TODO: define the meaning of replacing base of slices (we most likely need
+    // to change the extents/lbounds).
+    assert(!slice && "cloning a slice/non contiguous array");
     return {newBase, extents, lbounds};
   }
 
@@ -139,10 +162,15 @@ class CharArrayBoxValue : public CharBoxValue, public AbstractArrayBox {
 public:
   CharArrayBoxValue(mlir::Value addr, mlir::Value len,
                     llvm::ArrayRef<mlir::Value> extents,
-                    llvm::ArrayRef<mlir::Value> lbounds = {})
-      : CharBoxValue{addr, len}, AbstractArrayBox{extents, lbounds} {}
+                    llvm::ArrayRef<mlir::Value> lbounds = {},
+                    mlir::Value slice = {}, bool sliceIsOneBased = false)
+      : CharBoxValue{addr, len}, AbstractArrayBox{extents, lbounds, slice,
+                                                  sliceIsOneBased} {}
 
   CharArrayBoxValue clone(mlir::Value newBase) const {
+    // TODO: define the meaning of replacing base of slices (we most likely need
+    // to change the extents/lbounds).
+    assert(!slice && "cloning a slice/non contiguous array");
     return {newBase, len, extents, lbounds};
   }
 
@@ -180,16 +208,23 @@ public:
   BoxValue(mlir::Value addr, mlir::Value len)
       : AbstractBox{addr}, AbstractArrayBox{}, len{len} {}
   BoxValue(mlir::Value addr, llvm::ArrayRef<mlir::Value> extents,
-           llvm::ArrayRef<mlir::Value> lbounds = {})
-      : AbstractBox{addr}, AbstractArrayBox{extents, lbounds} {}
+           llvm::ArrayRef<mlir::Value> lbounds = {}, mlir::Value slice = {},
+           bool sliceIsOneBased = true)
+      : AbstractBox{addr}, AbstractArrayBox{extents, lbounds, slice,
+                                            sliceIsOneBased} {}
   BoxValue(mlir::Value addr, mlir::Value len,
            llvm::ArrayRef<mlir::Value> params,
            llvm::ArrayRef<mlir::Value> extents,
-           llvm::ArrayRef<mlir::Value> lbounds = {})
-      : AbstractBox{addr}, AbstractArrayBox{extents, lbounds}, len{len},
-        params{params.begin(), params.end()} {}
+           llvm::ArrayRef<mlir::Value> lbounds = {}, mlir::Value slice = {},
+           bool sliceIsOneBased = true)
+      : AbstractBox{addr}, AbstractArrayBox{extents, lbounds, slice,
+                                            sliceIsOneBased},
+        len{len}, params{params.begin(), params.end()} {}
 
   BoxValue clone(mlir::Value newBase) const {
+    // TODO: define the meaning of replacing base of slices (we most likely need
+    // to change the extents/lbounds).
+    assert(!slice && "cloning a slice/non contiguous array");
     return {newBase, len, params, extents, lbounds};
   }
 

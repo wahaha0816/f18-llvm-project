@@ -1996,7 +1996,14 @@ private:
 
     // The origin is not \vec{1}.
     auto populateLBoundsExtents = [&](auto &lbounds, auto &extents,
-                                      const auto &bounds, mlir::Value box) {
+                                      const auto &bounds,
+                                      mlir::Value box) -> mlir::Value {
+      llvm::SmallVector<mlir::Value, 8> slice;
+      mlir::Value elementSize;
+      auto one =
+          builder->createIntegerConstant(loc, builder->getIndexType(), 1);
+      if (box)
+        elementSize = builder->create<fir::BoxEleSizeOp>(loc, idxTy, box);
       for (auto iter : llvm::enumerate(bounds)) {
         auto *spec = iter.value();
         fir::BoxDimsOp dimInfo;
@@ -2006,19 +2013,39 @@ private:
           auto dim = builder->createIntegerConstant(loc, idxTy, iter.index());
           dimInfo = builder->create<fir::BoxDimsOp>(loc, idxTy, idxTy, idxTy,
                                                     box, dim);
-          extents.emplace_back(dimInfo.getResult(1));
+          mlir::Value lb;
           if (auto low = spec->lbound().GetExplicit()) {
             auto expr = Fortran::semantics::SomeExpr{*low};
-            auto lb =
-                builder->createConvert(loc, idxTy, createFIRExpr(loc, &expr));
-            lbounds.emplace_back(lb);
+            lb = builder->createConvert(loc, idxTy, createFIRExpr(loc, &expr));
           } else {
             // FIXME: The front-end is not setting up the implicit lower
             // bounds to 1 for assumed shape array. Do this here for now,
             // but that is absolutely wrong for allocatable and pointers.
-            // lbounds.emplace_back(dimInfo.getResult(0));
-            lbounds.emplace_back(builder->createIntegerConstant(loc, idxTy, 1));
+            // lb = dimInfo.getResult(0);
+            lb = builder->createIntegerConstant(loc, idxTy, 1);
           }
+          lbounds.emplace_back(lb);
+          // FIXME: there is a division by zero risk, and this is wrong in case
+          // the input first stride is not a multiple of the element size (may
+          // happen when passing an array of subcomponent e.eg
+          // foo(aDerivedArray%someComponent).) Having a ByteStrideOp would be
+          // nicer...
+          auto step = builder->create<mlir::SignedDivIOp>(
+              loc, idxTy, dimInfo.getResult(2), elementSize);
+          elementSize = dimInfo.getResult(2);
+          // Since we pretend the descriptor describes a slice, we need to
+          // adjust the extent of the underlying array so that when the slice
+          // step is applied, we get the original extent.
+          auto scaledExtent =
+              builder->create<mlir::MulIOp>(loc, dimInfo.getResult(1), step);
+          mlir::Value ub =
+              builder->create<mlir::AddIOp>(loc, idxTy, lb, scaledExtent);
+          ub = builder->create<mlir::SubIOp>(loc, idxTy, ub, one);
+          slice.emplace_back(lb);
+          slice.emplace_back(ub);
+          slice.emplace_back(step);
+
+          extents.emplace_back(scaledExtent);
         } else {
           if (auto low = spec->lbound().GetExplicit()) {
             auto expr = Fortran::semantics::SomeExpr{*low};
@@ -2040,6 +2067,11 @@ private:
           }
         }
       }
+      if (!slice.empty())
+        return builder->create<fir::SliceOp>(
+            loc, fir::SliceType::get(builder->getContext(), bounds.size()),
+            slice);
+      return mlir::Value{};
     };
 
     if (isHostAssoc)
@@ -2169,7 +2201,9 @@ private:
               replace ? addr : createNewLocal(loc, var, preAlloc, extents);
           assert(replace || Fortran::lower::isExplicitShape(sym) ||
                  Fortran::semantics::IsAllocatableOrPointer(sym));
+          mlir::Value noSlice;
           localSymbols.addSymbolWithBounds(sym, local, extents, lbounds,
+                                           noSlice, /* sliceIsOneBased*/ false,
                                            replace);
         },
 
@@ -2206,9 +2240,11 @@ private:
           // if object is an array process the lower bound and extent values
           llvm::SmallVector<mlir::Value, 8> extents;
           llvm::SmallVector<mlir::Value, 8> lbounds;
-          populateLBoundsExtents(lbounds, extents, x.bounds, argBox);
+          auto slice =
+              populateLBoundsExtents(lbounds, extents, x.bounds, argBox);
           if (isDummy || isResult) {
-            localSymbols.addSymbolWithBounds(sym, addr, extents, lbounds, true);
+            localSymbols.addSymbolWithBounds(sym, addr, extents, lbounds, slice,
+                                             /* sliceIsOneBased */ false, true);
             return;
           }
           // local array with computed bounds

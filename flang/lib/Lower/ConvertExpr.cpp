@@ -1099,6 +1099,38 @@ private:
 
   bool inArrayContext() { return exprCtx.inArrayContext(); }
 
+  fir::ExtendedValue genArraySlice(const Fortran::evaluate::ArrayRef &aref,
+                                   const fir::ArrayBoxValue &base) {
+    // combining slices is more complex
+    if (!base.isContiguous())
+      TODO("slice of non contigous array");
+    // array slice can be assigned to, so do not make copy for now,
+    // make a box instead.
+    auto loc = getLoc();
+    auto idxTy = builder.getIndexType();
+    llvm::SmallVector<mlir::Value, 8> sliceOperands;
+    mlir::Value lb, ub, step;
+    for (auto &subscript : aref.subscript()) {
+      auto subscriptVal = genComponent(subscript);
+      if (auto *triplet = std::get_if<fir::RangeBoxValue>(&subscriptVal)) {
+        lb = builder.createConvert(loc, idxTy, std::get<0>(*triplet));
+        ub = builder.createConvert(loc, idxTy, std::get<1>(*triplet));
+        step = builder.createConvert(loc, idxTy, std::get<2>(*triplet));
+      } else {
+        TODO("dropping a dimension in slice");
+        // Slice op does not allow this.
+      }
+      sliceOperands.emplace_back(lb);
+      sliceOperands.emplace_back(ub);
+      sliceOperands.emplace_back(step);
+    }
+    auto rank = aref.subscript().size();
+    auto slice = builder.create<fir::SliceOp>(
+        loc, fir::SliceType::get(builder.getContext(), rank), sliceOperands);
+    return fir::ArrayBoxValue{base.getAddr(), base.getExtents(),
+                              base.getLBounds(), slice};
+  }
+
   fir::ExtendedValue gen(const Fortran::lower::SymbolBox &si,
                          const Fortran::evaluate::ArrayRef &aref) {
     auto loc = getLoc();
@@ -1155,16 +1187,12 @@ private:
       return builder.create<fir::CoordinateOp>(
           loc, refTy, base, llvm::ArrayRef<mlir::Value>{total});
     };
-    auto genArraySlice = [&](const auto &arr) -> mlir::Value {
-      // FIXME: create a loop nest and copy the array slice into a temp
-      // We need some context here, since we could also box as an argument
-      llvm::report_fatal_error("TODO: array slice not supported");
-    };
     return si.match(
         [&](const Fortran::lower::SymbolBox::FullDim &arr)
             -> fir::ExtendedValue {
-          if (!inArrayContext() && isSlice(aref))
-            return genArraySlice(arr);
+          if (!inArrayContext() && isSlice(aref)) {
+            return genArraySlice(aref, arr);
+          }
           return genFullDim(arr, one);
         },
         [&](const Fortran::lower::SymbolBox::CharFullDim &arr)
@@ -1208,43 +1236,63 @@ private:
       }
       return builder.create<fir::ShapeShiftOp>(loc, shapeType, shapeArgs);
     };
-    auto genWithShape = [&](const auto &arr) -> mlir::Value {
+    auto genWithShape = [&](const auto &arr) -> fir::ExtendedValue {
       auto shape = arrShape(arr);
       llvm::SmallVector<mlir::Value, 8> arrayCoorArgs;
       for (const auto &sub : aref.subscript()) {
         auto subVal = genComponent(sub);
-        if (auto *ev = std::get_if<fir::ExtendedValue>(&subVal)) {
-          if (auto *sval = ev->getUnboxed()) {
-            auto val = builder.createConvert(loc, idxTy, *sval);
-            arrayCoorArgs.push_back(val);
-          } else {
-            TODO("");
-          }
+        auto *ev = std::get_if<fir::ExtendedValue>(&subVal);
+        if (!ev)
+          llvm::report_fatal_error("subsection not handled here");
+        if (auto *sval = ev->getUnboxed()) {
+          auto val = builder.createConvert(loc, idxTy, *sval);
+          arrayCoorArgs.push_back(val);
         } else {
-          // RangedBoxValue
           TODO("");
         }
       }
+      // If the slices implements a non contiguous descriptor, we still need to
+      // apply the lower bounds to the coordinates.
+      if (arr.getSlice() && arr.applyLboundsBeforeSlice() &&
+          !arr.getLBounds().empty()) {
+        auto rank = arrayCoorArgs.size();
+        auto &lbounds = arr.getLBounds();
+        if (lbounds.size() != rank) {
+          mlir::emitError(
+              loc, "number of coordinates and lower bounds are inconsistent");
+        } else {
+          auto one = builder.createIntegerConstant(loc, idxTy, 1);
+          for (unsigned i = 0; i < rank; ++i) {
+            auto lb = builder.createConvert(loc, idxTy, lbounds[i]);
+            auto coor = builder.createConvert(loc, idxTy, arrayCoorArgs[i]);
+            mlir::Value newCoor = builder.create<mlir::SubIOp>(loc, coor, lb);
+            newCoor = builder.create<mlir::AddIOp>(loc, newCoor, one);
+            arrayCoorArgs[i] = newCoor;
+          }
+        }
+      }
       return builder.create<fir::ArrayCoorOp>(
-          loc, refTy, addr, shape, mlir::Value{}, arrayCoorArgs, ValueRange());
+          loc, refTy, addr, shape, arr.getSlice(), arrayCoorArgs, ValueRange());
     };
     return si.match(
-        [&](const Fortran::lower::SymbolBox::FullDim &arr) {
+        [&](const Fortran::lower::SymbolBox::FullDim &arr)
+            -> fir::ExtendedValue {
           if (!inArrayContext() && isSlice(aref)) {
-            TODO("");
-            return mlir::Value{};
+            return genArraySlice(aref, arr);
           }
           return genWithShape(arr);
         },
-        [&](const Fortran::lower::SymbolBox::CharFullDim &arr) {
+        [&](const Fortran::lower::SymbolBox::CharFullDim &arr)
+            -> fir::ExtendedValue {
           TODO("");
           return mlir::Value{};
         },
-        [&](const Fortran::lower::SymbolBox::Derived &arr) {
+        [&](const Fortran::lower::SymbolBox::Derived &arr)
+            -> fir::ExtendedValue {
           TODO("");
           return mlir::Value{};
         },
-        [&](const auto &) {
+        [&](const auto &) -> fir::ExtendedValue {
           TODO("");
           return mlir::Value{};
         });
