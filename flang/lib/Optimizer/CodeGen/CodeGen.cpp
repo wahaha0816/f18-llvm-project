@@ -422,7 +422,8 @@ struct BoxEleSizeOpConversion : public FIROpConversion<fir::BoxEleSizeOp> {
     auto c0 = genConstantOffset(loc, rewriter, 0);
     auto c1 = genConstantOffset(loc, rewriter, 1);
     auto ty = convertType(boxelesz.getType());
-    auto p = genGEP(loc, unwrap(ty), rewriter, a, c0, c1);
+    auto pty = unwrap(ty).getPointerTo();
+    auto p = genGEP(loc, unwrap(pty), rewriter, a, c0, c1);
     rewriter.replaceOpWithNewOp<mlir::LLVM::LoadOp>(boxelesz, ty, p);
     return success();
   }
@@ -1128,9 +1129,11 @@ struct XEmboxOpConversion : public EmboxCommonConversion<fir::XEmboxOp> {
         mlir::Value lb = one;
         if (hasShift)
           lb = operands[shiftOff];
-        if (hasSlice)
-          lb = rewriter.create<mlir::LLVM::SubOp>(loc, i64Ty, lb,
-                                                  operands[sliceOff]);
+        if (hasSlice) {
+          lb = rewriter.create<mlir::LLVM::SubOp>(loc, i64Ty,
+                                                  operands[sliceOff], lb);
+          lb = rewriter.create<mlir::LLVM::AddOp>(loc, i64Ty, lb, one);
+        }
         rewriter.create<mlir::LLVM::StoreOp>(loc, lb, f70p);
       } else {
         rewriter.create<mlir::LLVM::StoreOp>(loc, zero, f70p);
@@ -1420,6 +1423,7 @@ struct XArrayCoorOpConversion
       if (coor.sliceOperands().size()) {
         auto sliceLb = asType(loc, rewriter, idxTy, *sliceOps);
         lb = rewriter.create<mlir::LLVM::SubOp>(loc, idxTy, lb, sliceLb);
+        lb = rewriter.create<mlir::LLVM::AddOp>(loc, idxTy, lb, one);
         step = asType(loc, rewriter, idxTy, *(sliceOps + 2));
       }
       // For each dimension, i, add to the running pointer offset the value of

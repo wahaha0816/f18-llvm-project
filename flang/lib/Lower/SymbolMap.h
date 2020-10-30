@@ -202,8 +202,8 @@ public:
   void addSymbolWithBounds(semantics::SymbolRef sym, mlir::Value value,
                            llvm::ArrayRef<mlir::Value> extents,
                            llvm::ArrayRef<mlir::Value> lbounds,
-                           bool force = false) {
-    makeSym(sym, SymbolBox::FullDim(value, extents, lbounds), force);
+                           mlir::Value slice = {}, bool force = false) {
+    makeSym(sym, SymbolBox::FullDim(value, extents, lbounds, slice), force);
   }
 
   /// Add an array of CHARACTER with bounds notation.

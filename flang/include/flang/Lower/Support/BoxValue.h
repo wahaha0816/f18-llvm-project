@@ -95,9 +95,9 @@ class AbstractArrayBox {
 public:
   AbstractArrayBox() = default;
   AbstractArrayBox(llvm::ArrayRef<mlir::Value> extents,
-                   llvm::ArrayRef<mlir::Value> lbounds)
-      : extents{extents.begin(), extents.end()}, lbounds{lbounds.begin(),
-                                                         lbounds.end()} {}
+                   llvm::ArrayRef<mlir::Value> lbounds, mlir::Value slice)
+      : extents{extents.begin(), extents.end()},
+        lbounds{lbounds.begin(), lbounds.end()}, slice{slice} {}
 
   // Every array has extents that describe its shape.
   const llvm::SmallVectorImpl<mlir::Value> &getExtents() const {
@@ -110,11 +110,18 @@ public:
     return lbounds;
   }
 
+  mlir::Value getSlice() const { return slice; }
+
   bool lboundsAllOne() const { return lbounds.empty(); }
+  bool isContiguous() const { return !slice; }
 
 protected:
+  // TODO: replace extents and lbounds by:
+  // mlir::Value shape; \\ fir::ShapeType or fir::ShapeShiftType
   llvm::SmallVector<mlir::Value, 4> extents;
   llvm::SmallVector<mlir::Value, 4> lbounds;
+  // If this is not a contiguous array, indicate the slice
+  mlir::Value slice;
 };
 
 /// Expressions with rank > 0 have extents. They may also have lbounds that are
@@ -122,10 +129,14 @@ protected:
 class ArrayBoxValue : public AbstractBox, public AbstractArrayBox {
 public:
   ArrayBoxValue(mlir::Value addr, llvm::ArrayRef<mlir::Value> extents,
-                llvm::ArrayRef<mlir::Value> lbounds = {})
-      : AbstractBox{addr}, AbstractArrayBox{extents, lbounds} {}
+                llvm::ArrayRef<mlir::Value> lbounds = {},
+                mlir::Value slice = {})
+      : AbstractBox{addr}, AbstractArrayBox{extents, lbounds, slice} {}
 
   ArrayBoxValue clone(mlir::Value newBase) const {
+    // TODO: define the meaning of replacing base of slices (we most likely need
+    // to change the extents/lbounds).
+    assert(!slice && "cloning a slice/non contiguous array");
     return {newBase, extents, lbounds};
   }
 
@@ -139,10 +150,14 @@ class CharArrayBoxValue : public CharBoxValue, public AbstractArrayBox {
 public:
   CharArrayBoxValue(mlir::Value addr, mlir::Value len,
                     llvm::ArrayRef<mlir::Value> extents,
-                    llvm::ArrayRef<mlir::Value> lbounds = {})
-      : CharBoxValue{addr, len}, AbstractArrayBox{extents, lbounds} {}
+                    llvm::ArrayRef<mlir::Value> lbounds = {},
+                    mlir::Value slice = {})
+      : CharBoxValue{addr, len}, AbstractArrayBox{extents, lbounds, slice} {}
 
   CharArrayBoxValue clone(mlir::Value newBase) const {
+    // TODO: define the meaning of replacing base of slices (we most likely need
+    // to change the extents/lbounds).
+    assert(!slice && "cloning a slice/non contiguous array");
     return {newBase, len, extents, lbounds};
   }
 
@@ -180,16 +195,19 @@ public:
   BoxValue(mlir::Value addr, mlir::Value len)
       : AbstractBox{addr}, AbstractArrayBox{}, len{len} {}
   BoxValue(mlir::Value addr, llvm::ArrayRef<mlir::Value> extents,
-           llvm::ArrayRef<mlir::Value> lbounds = {})
-      : AbstractBox{addr}, AbstractArrayBox{extents, lbounds} {}
+           llvm::ArrayRef<mlir::Value> lbounds = {}, mlir::Value slice = {})
+      : AbstractBox{addr}, AbstractArrayBox{extents, lbounds, slice} {}
   BoxValue(mlir::Value addr, mlir::Value len,
            llvm::ArrayRef<mlir::Value> params,
            llvm::ArrayRef<mlir::Value> extents,
-           llvm::ArrayRef<mlir::Value> lbounds = {})
-      : AbstractBox{addr}, AbstractArrayBox{extents, lbounds}, len{len},
+           llvm::ArrayRef<mlir::Value> lbounds = {}, mlir::Value slice = {})
+      : AbstractBox{addr}, AbstractArrayBox{extents, lbounds, slice}, len{len},
         params{params.begin(), params.end()} {}
 
   BoxValue clone(mlir::Value newBase) const {
+    // TODO: define the meaning of replacing base of slices (we most likely need
+    // to change the extents/lbounds).
+    assert(!slice && "cloning a slice/non contiguous array");
     return {newBase, len, params, extents, lbounds};
   }
 
