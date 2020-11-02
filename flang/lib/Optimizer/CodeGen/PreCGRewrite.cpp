@@ -205,9 +205,6 @@ public:
     auto sliceAttr = rewriter.getIntegerAttr(idxTy, sliceOpers.size());
     attrs.push_back(
         rewriter.getNamedAttr(XArrayCoorOp::sliceAttrName(), sliceAttr));
-    auto shiftAttr = rewriter.getIntegerAttr(idxTy, shiftOpers.size());
-    attrs.push_back(
-        rewriter.getNamedAttr(XArrayCoorOp::shiftAttrName(), shiftAttr));
     auto xArrCoor = rewriter.create<XArrayCoorOp>(
         loc, arrCoor.getType(), arrCoor.memref(), shapeOpers, shiftOpers,
         sliceOpers, arrCoor.indices(), arrCoor.lenParams(), attrs);
