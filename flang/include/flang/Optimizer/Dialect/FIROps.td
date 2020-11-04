@@ -149,38 +149,38 @@ class fir_SimpleOp<string mnemonic, list<OpTrait> traits>
 }
 
 // Base builder for allocate operations
-def fir_AllocateOpBuilder : OpBuilder<
-  "OpBuilder &builder, OperationState &result, Type inType,"
-  "ValueRange lenParams = {}, ValueRange sizes = {},"
-  "ArrayRef<NamedAttribute> attributes = {}",
+def fir_AllocateOpBuilder : OpBuilderDAG<(ins "mlir::Type":$inType,
+  CArg<"mlir::ValueRange", "{}">:$lenParams,
+  CArg<"mlir::ValueRange", "{}">:$sizes,
+  CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attributes),
   [{
-    result.addTypes(getRefTy(inType));
-    result.addAttribute("in_type", TypeAttr::get(inType));
-    result.addOperands(sizes);
-    result.addAttributes(attributes);
+    $_state.addTypes(getRefTy(inType));
+    $_state.addAttribute("in_type", TypeAttr::get(inType));
+    $_state.addOperands(sizes);
+    $_state.addAttributes(attributes);
   }]>;
 
-def fir_NamedAllocateOpBuilder : OpBuilder<
-  "OpBuilder &builder, OperationState &result, Type inType, StringRef name,"
-  "ValueRange lenParams = {}, ValueRange sizes = {},"
-  "ArrayRef<NamedAttribute> attributes = {}",
+def fir_NamedAllocateOpBuilder : OpBuilderDAG<(ins "mlir::Type":$inType,
+  "llvm::StringRef":$name, CArg<"mlir::ValueRange", "{}">:$lenParams,
+  CArg<"mlir::ValueRange","{}">:$sizes,
+  CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attributes),
   [{
-    result.addTypes(getRefTy(inType));
-    result.addAttribute("in_type", TypeAttr::get(inType));
+    $_state.addTypes(getRefTy(inType));
+    $_state.addAttribute("in_type", TypeAttr::get(inType));
     if (!name.empty())
-      result.addAttribute("name", builder.getStringAttr(name));
-    result.addOperands(sizes);
-    result.addAttributes(attributes);
+      $_state.addAttribute("name", $_builder.getStringAttr(name));
+    $_state.addOperands(sizes);
+    $_state.addAttributes(attributes);
   }]>;
 
-def fir_OneResultOpBuilder : OpBuilder<
-  "OpBuilder &, OperationState &result, Type resultType,"
-  "ValueRange operands, ArrayRef<NamedAttribute> attributes = {}",
+def fir_OneResultOpBuilder : OpBuilderDAG<(ins "mlir::Type":$resultType,
+    "mlir::ValueRange":$operands,
+    CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attributes),
   [{
     if (resultType)
-      result.addTypes(resultType);
-    result.addOperands(operands);
-    result.addAttributes(attributes);
+      $_state.addTypes(resultType);
+    $_state.addOperands(operands);
+    $_state.addAttributes(attributes);
   }]>;
 
 // Base class of FIR operations that return 1 result
@@ -195,8 +195,8 @@ class fir_SimpleOneResultOp<string mnemonic, list<OpTrait> traits = []> :
   let builders = [fir_OneResultOpBuilder];
 }
 
-class fir_TwoBuilders<OpBuilder b1, OpBuilder b2> {
-  list<OpBuilder> builders = [b1, b2];
+class fir_TwoBuilders<OpBuilderDAG b1, OpBuilderDAG b2> {
+  list<OpBuilderDAG> builders = [b1, b2];
 }
 
 class fir_AllocatableBaseOp<string mnemonic, list<OpTrait> traits = []> :
@@ -415,20 +415,19 @@ def fir_LoadOp : fir_OneResultOp<"load"> {
 
   let arguments = (ins Arg<AnyReferenceLike, "", [MemRead]>:$memref);
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value refVal",
+  let builders = [OpBuilderDAG<(ins "mlir::Value":$refVal),
     [{
       if (!refVal) {
-        mlir::emitError(result.location, "LoadOp has null argument");
+        mlir::emitError($_state.location, "LoadOp has null argument");
         return;
       }
       auto eleTy = fir::dyn_cast_ptrEleTy(refVal.getType());
       if (!eleTy) {
-        mlir::emitError(result.location, "not a memory reference type");
+        mlir::emitError($_state.location, "not a memory reference type");
         return;
       }
-      result.addOperands(refVal);
-      result.addTypes(eleTy);
+      $_state.addOperands(refVal);
+      $_state.addTypes(eleTy);
     }]
   >];
 
@@ -656,27 +655,27 @@ class fir_IntegralSwitchTerminatorOp<string mnemonic,
     list<OpTrait> traits = []> : fir_SwitchTerminatorOp<mnemonic, traits> {
 
   let skipDefaultBuilders = 1;
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value selector,"
-    "ArrayRef<int64_t> compareOperands, ArrayRef<Block *> destinations,"
-    "ArrayRef<ValueRange> destOperands = {},"
-    "ArrayRef<NamedAttribute> attributes = {}",
+  let builders = [OpBuilderDAG<(ins "mlir::Value":$selector,
+    "llvm::ArrayRef<int64_t>":$compareOperands,
+    "llvm::ArrayRef<mlir::Block *>":$destinations,
+    CArg<"llvm::ArrayRef<mlir::ValueRange>", "{}">:$destOperands,
+    CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attributes),
     [{
-      result.addOperands(selector);
+      $_state.addOperands(selector);
       llvm::SmallVector<mlir::Attribute, 8> ivalues;
       for (auto iv : compareOperands)
-        ivalues.push_back(builder.getI64IntegerAttr(iv));
-      ivalues.push_back(builder.getUnitAttr());
-      result.addAttribute(getCasesAttr(), builder.getArrayAttr(ivalues));
+        ivalues.push_back($_builder.getI64IntegerAttr(iv));
+      ivalues.push_back($_builder.getUnitAttr());
+      $_state.addAttribute(getCasesAttr(), $_builder.getArrayAttr(ivalues));
       const auto count = destinations.size();
       for (auto d : destinations)
-        result.addSuccessors(d);
+        $_state.addSuccessors(d);
       const auto opCount = destOperands.size();
       llvm::SmallVector<int32_t, 8> argOffs;
       int32_t sumArgs = 0;
       for (std::remove_const_t<decltype(count)> i = 0; i != count; ++i) {
         if (i < opCount) {
-          result.addOperands(destOperands[i]);
+          $_state.addOperands(destOperands[i]);
           const auto argSz = destOperands[i].size();
           argOffs.push_back(argSz);
           sumArgs += argSz;
@@ -684,11 +683,11 @@ class fir_IntegralSwitchTerminatorOp<string mnemonic,
           argOffs.push_back(0);
         }
       }
-      result.addAttribute(getOperandSegmentSizeAttr(),
-                          builder.getI32VectorAttr({1, 0, sumArgs}));
-      result.addAttribute(getTargetOffsetAttr(),
-                          builder.getI32VectorAttr(argOffs));
-      result.addAttributes(attributes);
+      $_state.addAttribute(getOperandSegmentSizeAttr(),
+        $_builder.getI32VectorAttr({1, 0, sumArgs}));
+      $_state.addAttribute(getTargetOffsetAttr(),
+        $_builder.getI32VectorAttr(argOffs));
+      $_state.addAttributes(attributes);
     }]
   >];
 
@@ -845,14 +844,18 @@ def fir_SelectCaseOp : fir_SwitchTerminatorOp<"select_case"> {
 
   let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<"OpBuilder &builder, OperationState &result, Value selector,"
-    "ArrayRef<mlir::Attribute> compareAttrs, ArrayRef<ValueRange> cmpOperands,"
-    "ArrayRef<Block *> destinations, ArrayRef<ValueRange> destOperands = {},"
-    "ArrayRef<NamedAttribute> attributes = {}">,
-    OpBuilder<"OpBuilder &builder, OperationState &result, Value selector,"
-    "ArrayRef<mlir::Attribute> compareAttrs, ArrayRef<Value> cmpOpList,"
-    "ArrayRef<Block *> destinations, ArrayRef<ValueRange> destOperands = {},"
-    "ArrayRef<NamedAttribute> attributes = {}">];
+    OpBuilderDAG<(ins "mlir::Value":$selector,
+      "llvm::ArrayRef<mlir::Attribute>":$compareAttrs,
+      "llvm::ArrayRef<mlir::ValueRange>":$cmpOperands,
+      "llvm::ArrayRef<mlir::Block *>":$destinations,
+      CArg<"llvm::ArrayRef<mlir::ValueRange>", "{}">:$destOperands,
+      CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attributes)>,
+    OpBuilderDAG<(ins "mlir::Value":$selector,
+      "llvm::ArrayRef<mlir::Attribute>":$compareAttrs,
+      "llvm::ArrayRef<mlir::Value>":$cmpOpList,
+      "llvm::ArrayRef<mlir::Block *>":$destinations,
+      CArg<"llvm::ArrayRef<mlir::ValueRange>", "{}">:$destOperands,
+      CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attributes)>];
 
   let parser = "return parseSelectCase(parser, result);";
 
@@ -937,23 +940,24 @@ def fir_SelectTypeOp : fir_SwitchTerminatorOp<"select_type"> {
   }];
 
   let skipDefaultBuilders = 1;
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, Value selector,"
-    "ArrayRef<mlir::Attribute> typeOperands,"
-    "ArrayRef<Block *> destinations, ArrayRef<ValueRange> destOperands = {},"
-    "ArrayRef<NamedAttribute> attributes = {}",
+  let builders = [OpBuilderDAG<(ins "mlir::Value":$selector,
+    "llvm::ArrayRef<mlir::Attribute>":$typeOperands,
+    "llvm::ArrayRef<mlir::Block *>":$destinations,
+    CArg<"llvm::ArrayRef<mlir::ValueRange>", "{}">:$destOperands,
+    CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attributes),
     [{
-      result.addOperands(selector);
-      result.addAttribute(getCasesAttr(), builder.getArrayAttr(typeOperands));
+      $_state.addOperands(selector);
+      $_state.addAttribute(getCasesAttr(),
+        $_builder.getArrayAttr(typeOperands));
       const auto count = destinations.size();
       for (auto d : destinations)
-        result.addSuccessors(d);
+        $_state.addSuccessors(d);
       const auto opCount = destOperands.size();
       llvm::SmallVector<int32_t, 8> argOffs;
       int32_t sumArgs = 0;
       for (std::remove_const_t<decltype(count)> i = 0; i != count; ++i) {
         if (i < opCount) {
-          result.addOperands(destOperands[i]);
+          $_state.addOperands(destOperands[i]);
           const auto argSz = destOperands[i].size();
           argOffs.push_back(argSz);
           sumArgs += argSz;
@@ -961,11 +965,11 @@ def fir_SelectTypeOp : fir_SwitchTerminatorOp<"select_type"> {
           argOffs.push_back(0);
         }
       }
-      result.addAttribute(getOperandSegmentSizeAttr(),
-                          builder.getI32VectorAttr({1, 0, sumArgs}));
-      result.addAttribute(getTargetOffsetAttr(),
-                          builder.getI32VectorAttr(argOffs));
-      result.addAttributes(attributes);
+      $_state.addAttribute(getOperandSegmentSizeAttr(),
+        $_builder.getI32VectorAttr({1, 0, sumArgs}));
+      $_state.addAttribute(getTargetOffsetAttr(),
+        $_builder.getI32VectorAttr(argOffs));
+      $_state.addAttributes(attributes);
     }]
   >];
 
@@ -1101,12 +1105,12 @@ def fir_EmboxOp : fir_Op<"embox", [NoSideEffect, AttrSizedOperandSegments]> {
   let results = (outs fir_BoxType);
 
   let builders = [
-    OpBuilder<"mlir::OpBuilder &builder, mlir::OperationState &state,"
-      "llvm::ArrayRef<mlir::Type> resultTypes, mlir::Value memref,"
-      "mlir::Value shape = {}, mlir::Value slice = {},"
-      "mlir::ValueRange lenParams = {}", [{
-        return build(builder, state, resultTypes, memref, shape, slice,
-            lenParams, mlir::AffineMapAttr{}); }]>
+    OpBuilderDAG<(ins "llvm::ArrayRef<mlir::Type>":$resultTypes,
+      "mlir::Value":$memref, CArg<"mlir::Value", "{}">:$shape,
+      CArg<"mlir::Value", "{}">:$slice,
+      CArg<"mlir::ValueRange", "{}">:$lenParams),
+    [{ return build($_builder, $_state, resultTypes, memref, shape, slice,
+                    lenParams, mlir::AffineMapAttr{}); }]>
   ];
 
   let assemblyFormat = [{
@@ -1724,12 +1728,11 @@ def fir_CoordinateOp : fir_Op<"coordinate_of", [NoSideEffect]> {
 
   let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<"mlir::OpBuilder &builder, OperationState &result,"
-              "Type type, Value ref, ValueRange coor,"
-	      "ArrayRef<NamedAttribute> attrs = {}">,
-    OpBuilder<"mlir::OpBuilder &builder, OperationState &result,"
-              "Type type, ValueRange operands,"
-	      "ArrayRef<NamedAttribute> attrs = {}">];
+    OpBuilderDAG<(ins "mlir::Type":$type, "mlir::Value":$ref,
+      "mlir::ValueRange":$coor,
+      CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attrs)>,
+    OpBuilderDAG<(ins "mlir::Type":$type, "mlir::ValueRange":$operands,
+      CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attrs)>];
 
   let extraClassDeclaration = [{
     static constexpr llvm::StringRef baseType() { return "base_type"; }
@@ -1835,13 +1838,13 @@ def fir_FieldIndexOp : fir_OneResultOp<"field_index", [NoSideEffect]> {
     }
   }];
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, StringRef fieldName,"
-    "Type recTy, ValueRange operands = {}",
+  let builders = [OpBuilderDAG<(ins "llvm::StringRef":$fieldName,
+      "mlir::Type":$recTy, CArg<"mlir::ValueRange","{}">:$operands),
     [{
-      result.addAttribute(fieldAttrName(), builder.getStringAttr(fieldName));
-      result.addAttribute(typeAttrName(), TypeAttr::get(recTy));
-      result.addOperands(operands);
+      $_state.addAttribute(fieldAttrName(),
+        $_builder.getStringAttr(fieldName));
+      $_state.addAttribute(typeAttrName(), TypeAttr::get(recTy));
+      $_state.addOperands(operands);
     }]
   >];
 
@@ -2056,11 +2059,11 @@ def fir_LenParamIndexOp : fir_OneResultOp<"len_param_index", [NoSideEffect]> {
       << getAttr(typeAttrName());
   }];
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, StringRef fieldName, Type recTy",
+  let builders = [OpBuilderDAG<(ins "llvm::StringRef":$fieldName,
+      "mlir::Type":$recTy),
     [{
-      result.addAttribute(fieldAttrName(), builder.getStringAttr(fieldName));
-      result.addAttribute(typeAttrName(), TypeAttr::get(recTy));
+      $_state.addAttribute(fieldAttrName(), $_builder.getStringAttr(fieldName));
+      $_state.addAttribute(typeAttrName(), TypeAttr::get(recTy));
     }]
   >];
 
@@ -2090,9 +2093,7 @@ def fir_ResultOp : fir_Op<"result",
   }];
 
   let arguments = (ins Variadic<AnyType>:$results);
-  let builders = [
-    OpBuilder<"OpBuilder &builder, OperationState &result", "/* do nothing */">
-  ];
+  let builders = [OpBuilderDAG<(ins), [{ /* do nothing */ }]>];
 
   let assemblyFormat = "($results^ `:` type($results))? attr-dict";
 
@@ -2145,11 +2146,11 @@ def fir_DoLoopOp : region_Op<"do_loop",
 
   let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<"mlir::OpBuilder &builder, OperationState &result,"
-              "mlir::Value lowerBound, mlir::Value upperBound,"
-              "mlir::Value step, bool unordered = false,"
-              "bool finalCountValue = false, ValueRange iterArgs = llvm::None,"
-              "ArrayRef<NamedAttribute> attributes = {}">
+    OpBuilderDAG<(ins "mlir::Value":$lowerBound, "mlir::Value":$upperBound,
+      "mlir::Value":$step, CArg<"bool", "false">:$unordered,
+      CArg<"bool", "false">:$finalCountValue,
+      CArg<"mlir::ValueRange", "llvm::None">:$iterArgs,
+      CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attributes)>
   ];
 
   let extraClassDeclaration = [{
@@ -2225,10 +2226,9 @@ def fir_IfOp : region_Op<"if", [NoRegionArguments]> {
 
   let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<"OpBuilder &builder, OperationState &result, "
-              "Value cond, bool withElseRegion">,
-    OpBuilder<"OpBuilder &builder, OperationState &result, "
-              "TypeRange resultTypes, Value cond, bool withElseRegion">
+    OpBuilderDAG<(ins "mlir::Value":$cond, "bool":$withElseRegion)>,
+    OpBuilderDAG<(ins "mlir::TypeRange":$resultTypes, "mlir::Value":$cond,
+        "bool":$withElseRegion)>
   ];
 
   let extraClassDeclaration = [{
@@ -2288,11 +2288,11 @@ def fir_IterWhileOp : region_Op<"iterate_while",
 
   let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<"mlir::OpBuilder &builder, OperationState &result,"
-              "mlir::Value lowerBound, mlir::Value upperBound,"
-	      "mlir::Value step, mlir::Value iterate,"
-              "bool finalCountValue = false, ValueRange iterArgs = llvm::None,"
-              "ArrayRef<NamedAttribute> attributes = {}">
+    OpBuilderDAG<(ins "mlir::Value":$lowerBound, "mlir::Value":$upperBound,
+      "mlir::Value":$step, "mlir::Value":$iterate,
+      CArg<"bool", "false">:$finalCountValue,
+      CArg<"mlir::ValueRange", "llvm::None">:$iterArgs,
+      CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attributes)>
   ];
 
   let extraClassDeclaration = [{
@@ -2361,24 +2361,30 @@ def fir_CallOp : fir_Op<"call", [CallOpInterface]> {
   let parser = "return parseCallOp(parser, result);";
   let printer = "printCallOp(p, *this);";
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, FuncOp callee,"
-    "ValueRange operands = {}", [{
-      result.addOperands(operands);
-      result.addAttribute(calleeAttrName(), builder.getSymbolRefAttr(callee));
-      result.addTypes(callee.getType().getResults());
-  }]>, OpBuilder<
-    "OpBuilder &builder, OperationState &result, SymbolRefAttr callee,"
-    "ArrayRef<Type> results, ValueRange operands = {}", [{
-      result.addOperands(operands);
-      result.addAttribute(calleeAttrName(), callee);
-      result.addTypes(results);
-  }]>, OpBuilder<
-    "OpBuilder &builder, OperationState &result, StringRef callee,"
-    "ArrayRef<Type> results, ValueRange operands = {}", [{
-      build(builder, result, builder.getSymbolRefAttr(callee), results,
+  let builders = [
+    OpBuilderDAG<(ins "mlir::FuncOp":$callee,
+        CArg<"mlir::ValueRange", "{}">:$operands),
+    [{
+      $_state.addOperands(operands);
+      $_state.addAttribute(calleeAttrName(),
+        $_builder.getSymbolRefAttr(callee));
+      $_state.addTypes(callee.getType().getResults());
+    }]>,
+    OpBuilderDAG<(ins "mlir::SymbolRefAttr":$callee,
+        "llvm::ArrayRef<mlir::Type>":$results,
+        CArg<"mlir::ValueRange", "{}">:$operands),
+    [{
+      $_state.addOperands(operands);
+      $_state.addAttribute(calleeAttrName(), callee);
+      $_state.addTypes(results);
+    }]>,
+    OpBuilderDAG<(ins "llvm::StringRef":$callee,
+        "llvm::ArrayRef<mlir::Type>":$results,
+        CArg<"mlir::ValueRange", "{}">:$operands),
+    [{
+      build($_builder, $_state, $_builder.getSymbolRefAttr(callee), results,
             operands);
-  }]>];
+    }]>];
 
   let extraClassDeclaration = [{
     static constexpr StringRef calleeAttrName() { return "callee"; }
@@ -2646,10 +2652,9 @@ def fir_CmpfOp : fir_Op<"cmpf",
 
   let results = (outs AnyLogicalLike);
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, CmpFPredicate predicate,"
-    "Value lhs, Value rhs", [{
-      buildCmpFOp(builder, result, predicate, lhs, rhs);
+  let builders = [OpBuilderDAG<(ins "mlir::CmpFPredicate":$predicate,
+    "mlir::Value":$lhs, "mlir::Value":$rhs), [{
+      buildCmpFOp($_builder, $_state, predicate, lhs, rhs);
   }]>];
 
   let parser = [{ return parseCmpfOp(parser, result); }];
@@ -2755,10 +2760,9 @@ def fir_CmpcOp : fir_Op<"cmpc",
 
   let printer = "printCmpcOp(p, *this);";
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, CmpFPredicate predicate,"
-    "Value lhs, Value rhs", [{
-      buildCmpCOp(builder, result, predicate, lhs, rhs);
+  let builders = [OpBuilderDAG<(ins "mlir::CmpFPredicate":$predicate,
+    "mlir::Value":$lhs, "mlir::Value":$rhs), [{
+      buildCmpCOp($_builder, $_state, predicate, lhs, rhs);
   }]>];
 
   let extraClassDeclaration = [{
@@ -2889,9 +2893,7 @@ def fir_GenTypeDescOp : fir_OneResultOp<"gentypedesc", [NoSideEffect]> {
     p.printOptionalAttrDict(getAttrs(), {"in_type"});
   }];
 
-  let builders = [
-    OpBuilder<"OpBuilder &, OperationState &result, mlir::TypeAttr inty">
-  ];
+  let builders = [OpBuilderDAG<(ins "mlir::TypeAttr":$inty)>];
 
   let verifier = [{
     mlir::Type resultTy = getType();
@@ -2995,26 +2997,24 @@ def fir_GlobalOp : fir_Op<"global", [IsolatedFromAbove, Symbol]> {
 
   let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<"mlir::OpBuilder &builder, OperationState &result,"
-              "StringRef name, Type type, ArrayRef<NamedAttribute> attrs = {}">,
-    OpBuilder<"mlir::OpBuilder &builder, OperationState &result,"
-              "StringRef name, bool isConstant, Type type,"
-	      "ArrayRef<NamedAttribute> attrs = {}">,
-    OpBuilder<"mlir::OpBuilder &builder, OperationState &result,"
-              "StringRef name, Type type, StringAttr linkage = {},"
-	      "ArrayRef<NamedAttribute> attrs = {}">,
-    OpBuilder<"mlir::OpBuilder &builder, OperationState &result,"
-              "StringRef name, bool isConstant, Type type,"
-	      "StringAttr linkage = {},"
-	      "ArrayRef<NamedAttribute> attrs = {}">,
-    OpBuilder<"mlir::OpBuilder &builder, OperationState &result,"
-              "StringRef name, Type type, Attribute initVal,"
-	      "StringAttr linkage = {},"
-	      "ArrayRef<NamedAttribute> attrs = {}">,
-    OpBuilder<"mlir::OpBuilder &builder, OperationState &result,"
-              "StringRef name, bool isConstant, Type type,"
-	      "Attribute initVal, StringAttr linkage = {},"
-	      "ArrayRef<NamedAttribute> attrs = {}">,
+    OpBuilderDAG<(ins "llvm::StringRef":$name, "mlir::Type":$type,
+      CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attrs)>,
+    OpBuilderDAG<(ins "llvm::StringRef":$name, "bool":$isConstant,
+      "mlir::Type":$type,
+      CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attrs)>,
+    OpBuilderDAG<(ins "llvm::StringRef":$name, "mlir::Type":$type,
+      CArg<"mlir::StringAttr", "{}">:$linkage,
+      CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attrs)>,
+    OpBuilderDAG<(ins "llvm::StringRef":$name, "bool":$isConstant,
+      "mlir::Type":$type, CArg<"mlir::StringAttr", "{}">:$linkage,
+      CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attrs)>,
+    OpBuilderDAG<(ins "llvm::StringRef":$name, "mlir::Type":$type,
+      "mlir::Attribute":$initVal, CArg<"mlir::StringAttr", "{}">:$linkage,
+      CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attrs)>,
+    OpBuilderDAG<(ins "llvm::StringRef":$name, "bool":$isConstant,
+      "mlir::Type":$type, "mlir::Attribute":$initVal,
+      CArg<"mlir::StringAttr", "{}">:$linkage,
+      CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attrs)>,
   ];
 
   let extraClassDeclaration = [{
@@ -3173,12 +3173,12 @@ def fir_DispatchTableOp : fir_Op<"dispatch_table",
 
   let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<"mlir::OpBuilder &builder, OperationState *result,"
-              "StringRef name, Type type, ArrayRef<NamedAttribute> attrs = {}",
+    OpBuilderDAG<(ins "llvm::StringRef":$name, "mlir::Type":$type,
+      CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attrs),
     [{
-      result->addAttribute(mlir::SymbolTable::getSymbolAttrName(),
-                           builder.getStringAttr(name));
-      result->addAttributes(attrs);
+      $_state.addAttribute(mlir::SymbolTable::getSymbolAttrName(),
+                           $_builder.getStringAttr(name));
+      $_state.addAttributes(attrs);
     }]>
   ];
 
@@ -3265,10 +3265,10 @@ def fir_XEmboxOp : fir_Op<"ext_embox", []> {
   }];
 
   let skipDefaultBuilders = 1;
-  let builders = [OpBuilder<"OpBuilder &builder, OperationState &result,"
-    "mlir::Type type, mlir::Value memref, mlir::ValueRange shape,"
-    "mlir::ValueRange shift, mlir::ValueRange slice,"
-    "mlir::ValueRange lenParams, llvm::ArrayRef<mlir::NamedAttribute> attrs">];
+  let builders = [OpBuilderDAG<(ins "mlir::Type":$type, "mlir::Value":$memref,
+    "mlir::ValueRange":$shape,"mlir::ValueRange":$shift,
+    "mlir::ValueRange":$slice, "mlir::ValueRange":$lenParams,
+    "llvm::ArrayRef<mlir::NamedAttribute>":$attrs)>];
 
   let arguments = (ins Variadic<AnyType>);
   let results = (outs fir_BoxType);
@@ -3307,10 +3307,10 @@ def fir_XArrayCoorOp : fir_Op<"ext_array_coor", []> {
   }];
 
 let skipDefaultBuilders = 1;
-  let builders = [OpBuilder<"OpBuilder &builder, OperationState &result,"
-    "mlir::Type type, mlir::Value memref, mlir::ValueRange shape,"
-    "mlir::ValueRange shift, mlir::ValueRange slice, mlir::ValueRange indices,"
-    "mlir::ValueRange lenParams, llvm::ArrayRef<mlir::NamedAttribute> attrs">];
+  let builders = [OpBuilderDAG<(ins "mlir::Type":$type, "mlir::Value":$memref,
+    "mlir::ValueRange":$shape, "mlir::ValueRange":$shift, "mlir::ValueRange":
+    $slice, "mlir::ValueRange":$indices, "mlir::ValueRange":$lenParams,
+    "llvm::ArrayRef<mlir::NamedAttribute>":$attrs)>];
 
   let arguments = (ins Variadic<AnyType>);
   let results = (outs fir_ReferenceType);
