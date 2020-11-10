@@ -1403,6 +1403,7 @@ private:
     // optional/alternate return arguments. Statement functions cannot be
     // recursive (directly or indirectly) so it is safe to add dummy symbols to
     // the local map here.
+    symMap.pushScope();
     for (auto [arg, bind] :
          llvm::zip(details.dummyArgs(), procRef.arguments())) {
       assert(arg && "alternate return in statement function");
@@ -1418,9 +1419,7 @@ private:
     }
     auto result = genval(details.stmtFunction().value());
     LLVM_DEBUG(llvm::dbgs() << "stmt-function: " << result << '\n');
-    // Remove dummy local arguments from the map.
-    for (const auto *dummySymbol : details.dummyArgs())
-      symMap.erase(*dummySymbol);
+    symMap.popScope();
     return result;
   }
 
@@ -1701,118 +1700,4 @@ fir::ExtendedValue Fortran::lower::createStringLiteral(
   Fortran::lower::ExpressionContext unused2;
   LLVM_DEBUG(llvm::dbgs() << "string-lit: \"" << str << "\"\n");
   return ExprLowering{loc, converter, unused1, unused2}.genStringLit(str, len);
-}
-
-//===----------------------------------------------------------------------===//
-// Support functions (implemented here for now)
-//===----------------------------------------------------------------------===//
-
-mlir::Value fir::getBase(const fir::ExtendedValue &exv) {
-  return exv.match([](const fir::UnboxedValue &x) { return x; },
-                   [](const auto &x) { return x.getAddr(); });
-}
-
-mlir::Value fir::getLen(const fir::ExtendedValue &exv) {
-  return exv.match([](const fir::CharBoxValue &x) { return x.getLen(); },
-                   [](const fir::CharArrayBoxValue &x) { return x.getLen(); },
-                   [](const fir::BoxValue &x) { return x.getLen(); },
-                   [](const auto &) { return mlir::Value{}; });
-}
-
-fir::ExtendedValue fir::substBase(const fir::ExtendedValue &exv,
-                                  mlir::Value base) {
-  return exv.match(
-      [=](const fir::UnboxedValue &x) { return fir::ExtendedValue(base); },
-      [=](const auto &x) { return fir::ExtendedValue(x.clone(base)); });
-}
-
-llvm::raw_ostream &fir::operator<<(llvm::raw_ostream &os,
-                                   const fir::CharBoxValue &box) {
-  os << "boxchar { addr: " << box.getAddr() << ", len: " << box.getLen()
-     << " }";
-  return os;
-}
-
-llvm::raw_ostream &fir::operator<<(llvm::raw_ostream &os,
-                                   const fir::ArrayBoxValue &box) {
-  os << "boxarray { addr: " << box.getAddr();
-  if (box.getLBounds().size()) {
-    os << ", lbounds: [";
-    llvm::interleaveComma(box.getLBounds(), os);
-    os << "]";
-  } else {
-    os << ", lbounds: all-ones";
-  }
-  os << ", shape: [";
-  llvm::interleaveComma(box.getExtents(), os);
-  os << "]}";
-  return os;
-}
-
-llvm::raw_ostream &fir::operator<<(llvm::raw_ostream &os,
-                                   const fir::CharArrayBoxValue &box) {
-  os << "boxchararray { addr: " << box.getAddr() << ", len : " << box.getLen();
-  if (box.getLBounds().size()) {
-    os << ", lbounds: [";
-    llvm::interleaveComma(box.getLBounds(), os);
-    os << "]";
-  } else {
-    os << " lbounds: all-ones";
-  }
-  os << ", shape: [";
-  llvm::interleaveComma(box.getExtents(), os);
-  os << "]}";
-  return os;
-}
-
-llvm::raw_ostream &fir::operator<<(llvm::raw_ostream &os,
-                                   const fir::BoxValue &box) {
-  os << "box { addr: " << box.getAddr();
-  if (box.getLen())
-    os << ", size: " << box.getLen();
-  if (box.params.size()) {
-    os << ", type params: [";
-    llvm::interleaveComma(box.params, os);
-    os << "]";
-  }
-  if (box.getLBounds().size()) {
-    os << ", lbounds: [";
-    llvm::interleaveComma(box.getLBounds(), os);
-    os << "]";
-  }
-  if (box.getExtents().size()) {
-    os << ", shape: [";
-    llvm::interleaveComma(box.getExtents(), os);
-    os << "]";
-  }
-  os << "}";
-  return os;
-}
-
-llvm::raw_ostream &fir::operator<<(llvm::raw_ostream &os,
-                                   const fir::ProcBoxValue &box) {
-  os << "boxproc: { addr: " << box.getAddr() << ", context: " << box.hostContext
-     << "}";
-  return os;
-}
-
-llvm::raw_ostream &fir::operator<<(llvm::raw_ostream &os,
-                                   const fir::ExtendedValue &ex) {
-  std::visit([&](const auto &value) { os << value; }, ex.box);
-  return os;
-}
-
-void Fortran::lower::SymMap::dump() const {
-  auto &os = llvm::errs();
-  for (auto iter : symbolMap) {
-    os << "symbol [" << *iter.first << "] ->\n\t";
-    iter.second.match(
-        [&](const Fortran::lower::SymbolBox::None &box) {
-          os << "** symbol not properly mapped **\n";
-        },
-        [&](const Fortran::lower::SymbolBox::Intrinsic &val) {
-          os << val.getAddr() << '\n';
-        },
-        [&](const auto &box) { os << box << '\n'; });
-  }
 }
