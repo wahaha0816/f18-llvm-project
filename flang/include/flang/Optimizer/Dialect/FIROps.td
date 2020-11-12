@@ -389,6 +389,8 @@ def fir_AllocaOp :
     mlir::Type outType = getType();
     if (!outType.isa<fir::ReferenceType>())
       return emitOpError("must be a !fir.ref type");
+    if (fir::isa_unknown_size_box(fir::dyn_cast_ptrEleTy(outType)))
+      return emitOpError("cannot allocate !fir.box of unknown rank or type");
     return mlir::success();
   }];
 
@@ -508,6 +510,8 @@ def fir_StoreOp : fir_Op<"store", []> {
   let verifier = [{
     if (value().getType() != fir::dyn_cast_ptrEleTy(memref().getType()))
       return emitOpError("store value type must match memory reference type");
+    if (fir::isa_box_type(value().getType()))
+      return emitOpError("!fir.box cannot be stored");
     return mlir::success();
   }];
 
@@ -562,6 +566,8 @@ def fir_AllocMemOp : fir_AllocatableOp<"allocmem", DefaultResource> {
     mlir::Type outType = getType();
     if (!outType.dyn_cast<fir::HeapType>())
       return emitOpError("must be a !fir.heap type");
+    if (fir::isa_unknown_size_box(fir::dyn_cast_ptrEleTy(outType)))
+      return emitOpError("cannot allocate !fir.box of unknown rank or type");
     return mlir::success();
   }];
 
