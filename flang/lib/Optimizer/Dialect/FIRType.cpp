@@ -695,9 +695,9 @@ struct BoxCharTypeStorage : public mlir::TypeStorage {
 
   KindTy getFKind() const { return kind; }
 
-  // a !fir.boxchar<k> always wraps a !fir.char<k>
+  // a !fir.boxchar<k> always wraps a !fir.char<k, ?>
   CharacterType getElementType(mlir::MLIRContext *ctxt) const {
-    return CharacterType::get(ctxt, getFKind());
+    return CharacterType::get(ctxt, getFKind(), CharacterType::unknownLen());
   }
 
 protected:

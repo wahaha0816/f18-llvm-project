@@ -76,7 +76,8 @@ static mlir::Type genLogicalType(mlir::MLIRContext *context, int KIND) {
   return {};
 }
 
-static mlir::Type genCharacterType(mlir::MLIRContext *context, int KIND, int len = fir::CharacterType::unknownLen()) {
+static mlir::Type genCharacterType(mlir::MLIRContext *context, int KIND,
+                                   int len = fir::CharacterType::unknownLen()) {
   if (Fortran::evaluate::IsValidKindOfIntrinsicType(
           Fortran::common::TypeCategory::Character, KIND))
     return fir::CharacterType::get(context, KIND, len);
@@ -139,10 +140,12 @@ struct TypeBuilder {
       TODO("Assumed rank expression type lowering");
 
     // LOGICAL, INTEGER, REAL, COMPLEX, CHARACTER
-    auto baseType = category == Fortran::common::TypeCategory::Character ?
-      genCharacterType(context, dynamicType->kind(), getCharacterLength(expr)) :
-      genFIRType(context, category, dynamicType->kind());
+    auto baseType = category == Fortran::common::TypeCategory::Character
+                        ? genCharacterType(context, dynamicType->kind(),
+                                           getCharacterLength(expr))
+                        : genFIRType(context, category, dynamicType->kind());
     fir::SequenceType::Shape shape;
+    translateShape(shape, std::move(*shapeExpr));
     if (!shape.empty())
       return fir::SequenceType::get(shape, baseType);
     return baseType;

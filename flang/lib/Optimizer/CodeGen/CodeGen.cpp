@@ -1007,19 +1007,6 @@ struct EmboxCommonConversion : public FIROpConversion<OP> {
     if (auto ty = boxEleTy.dyn_cast<fir::LogicalType>())
       return doLogical(getKindMap().getLogicalBitsize(ty.getFKind()));
     if (auto seqTy = boxEleTy.dyn_cast<fir::SequenceType>()) {
-      if (auto charTy = seqTy.getEleTy().dyn_cast<fir::CharacterType>()) {
-        // TODO: assumes the row is the length of the CHARACTER. This is true by
-        // construction, but it may not hold after optimizations have run.
-        auto rowSize = seqTy.getShape()[0];
-        if (rowSize == fir::SequenceType::getUnknownExtent()) {
-          auto [_, tyCode] =
-              getSizeAndTypeCode(loc, rewriter, seqTy.getEleTy());
-          return {lenParams[0], tyCode};
-        }
-        auto strTy = fir::CharacterType::get(rewriter.getContext(),
-                                             charTy.getFKind(), rowSize);
-        return getSizeAndTypeCode(loc, rewriter, strTy);
-      }
       return getSizeAndTypeCode(loc, rewriter, seqTy.getEleTy());
     }
     if (boxEleTy.isa<fir::RecordType>()) {
