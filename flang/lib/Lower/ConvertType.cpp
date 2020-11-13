@@ -76,10 +76,10 @@ static mlir::Type genLogicalType(mlir::MLIRContext *context, int KIND) {
   return {};
 }
 
-static mlir::Type genCharacterType(mlir::MLIRContext *context, int KIND) {
+static mlir::Type genCharacterType(mlir::MLIRContext *context, int KIND, int len = fir::CharacterType::unknownLen()) {
   if (Fortran::evaluate::IsValidKindOfIntrinsicType(
           Fortran::common::TypeCategory::Character, KIND))
-    return fir::CharacterType::get(context, KIND);
+    return fir::CharacterType::get(context, KIND, len);
   return {};
 }
 
@@ -139,11 +139,10 @@ struct TypeBuilder {
       TODO("Assumed rank expression type lowering");
 
     // LOGICAL, INTEGER, REAL, COMPLEX, CHARACTER
-    auto baseType = genFIRType(context, category, dynamicType->kind());
+    auto baseType = category == Fortran::common::TypeCategory::Character ?
+      genCharacterType(context, dynamicType->kind(), getCharacterLength(expr)) :
+      genFIRType(context, category, dynamicType->kind());
     fir::SequenceType::Shape shape;
-    if (category == Fortran::common::TypeCategory::Character)
-      shape.push_back(getCharacterLength(expr));
-    translateShape(shape, std::move(*shapeExpr));
     if (!shape.empty())
       return fir::SequenceType::get(shape, baseType);
     return baseType;
@@ -199,7 +198,10 @@ struct TypeBuilder {
     if (auto *type{symbol.GetType()}) {
       if (auto *tySpec{type->AsIntrinsic()}) {
         int kind = toInt64(Fortran::common::Clone(tySpec->kind())).value();
-        ty = genFIRType(context, tySpec->category(), kind);
+        if (tySpec->category() == Fortran::common::TypeCategory::Character)
+          ty = genCharacterType(context, kind, getCharacterLength(symbol));
+        else
+          ty = genFIRType(context, tySpec->category(), kind);
       } else if (auto *tySpec = type->AsDerived()) {
         std::vector<std::pair<std::string, mlir::Type>> ps;
         std::vector<std::pair<std::string, mlir::Type>> cs;
@@ -225,16 +227,7 @@ struct TypeBuilder {
       if (!shapeExpr)
         TODO("assumed rank symbol type lowering");
       fir::SequenceType::Shape shape;
-      if (symbol.GetType()->category() ==
-          Fortran::semantics::DeclTypeSpec::Character)
-        shape.push_back(getCharacterLength(symbol));
       translateShape(shape, std::move(*shapeExpr));
-      ty = fir::SequenceType::get(shape, ty);
-    }
-
-    if (ty.isa<fir::CharacterType>()) {
-      auto charLen = getCharacterLength(symbol);
-      fir::SequenceType::Shape shape = {charLen};
       ty = fir::SequenceType::get(shape, ty);
     }
 

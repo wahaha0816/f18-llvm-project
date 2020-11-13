@@ -737,8 +737,7 @@ private:
   genScalarLit(const Fortran::evaluate::Scalar<Fortran::evaluate::Type<
                    Fortran::common::TypeCategory::Character, KIND>> &value,
                int64_t len) {
-    auto type = fir::SequenceType::get(
-        {len}, fir::CharacterType::get(builder.getContext(), KIND));
+    auto type = fir::CharacterType::get(builder.getContext(), KIND, len);
     auto consLit = [&]() -> fir::StringLitOp {
       auto context = builder.getContext();
       mlir::Attribute strAttr;
