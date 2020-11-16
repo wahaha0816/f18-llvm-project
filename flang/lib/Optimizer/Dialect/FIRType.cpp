@@ -1571,3 +1571,20 @@ bool fir::isa_unknown_size_box(mlir::Type t) {
   }
   return false;
 }
+
+fir::CharacterType fir::unwrap_char(mlir::Type t) {
+  if (auto boxType = t.dyn_cast<fir::BoxCharType>())
+    return boxType.getEleTy();
+  auto type = t;
+  if (auto pointedType = fir::dyn_cast_ptrEleTy(t))
+    type = pointedType;
+  if (auto boxTy = type.dyn_cast<fir::BoxType>())
+    type = boxTy.getEleTy();
+  if (auto pointedType = fir::dyn_cast_ptrEleTy(t))
+    type = pointedType;
+  if (auto seqType = type.dyn_cast<fir::SequenceType>())
+    type = seqType.getEleTy();
+  if (auto charType = type.dyn_cast<fir::CharacterType>())
+    return charType;
+  return {};
+}

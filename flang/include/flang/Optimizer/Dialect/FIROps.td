@@ -1133,15 +1133,11 @@ def fir_EmboxOp : fir_Op<"embox", [NoSideEffect, AttrSizedOperandSegments]> {
         if (lenPs != rt.getNumLenParams())
           return emitOpError("number of LEN params does not correspond"
                              " to the !fir.type type");
+      } else if (auto strTy = fir::unwrap_char(eleTy)) {
+        if (strTy.getLen() != fir::CharacterType::unknownLen())
+          return emitOpError("CHARACTER already has static LEN");
       } else {
-        if (auto strTy = eleTy.dyn_cast<fir::SequenceType>()) {
-          if (!strTy.getEleTy().isa<fir::CharacterType>())
-            return emitOpError("LEN parameters require CHARACTER type");
-          if (strTy.getShape()[0] != fir::SequenceType::getUnknownExtent())
-            return emitOpError("CHARACTER already has static LEN");
-        } else {
-          return emitOpError("LEN parameters require !fir.type type");
-        }
+          return emitOpError("LEN parameters require CHARACTER or derived type");
       }
       for (auto lp : lenParams())
         if (!fir::isa_integer(lp.getType()))

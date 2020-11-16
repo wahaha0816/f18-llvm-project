@@ -466,6 +466,10 @@ inline bool isa_char_string(mlir::Type t) {
 /// of unknown rank or type.
 bool isa_unknown_size_box(mlir::Type t);
 
+/// If type is character type, potentially wrapped in fir.ref, fir.ptr,
+/// fir.heap, fir.array, or fir.box types, return the character type.
+fir::CharacterType unwrap_char(mlir::Type t);
+
 } // namespace fir
 
 #endif // OPTIMIZER_DIALECT_FIRTYPE_H
