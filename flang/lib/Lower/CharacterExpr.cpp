@@ -207,7 +207,7 @@ Fortran::lower::CharacterExprHelper::createEmbox(const fir::CharBoxValue &box) {
   auto charTy = recoverCharacterType(box.getBuffer().getType());
   auto boxCharType =
       fir::BoxCharType::get(builder.getContext(), charTy.getFKind());
-  auto refType = fir::ReferenceType::get(charTy);
+  auto refType = fir::ReferenceType::get(boxCharType.getEleTy());
   auto buff = builder.createConvert(loc, refType, box.getBuffer());
   // Convert in case the provided length is not of the integer type that must
   // be used in boxchar.
@@ -535,7 +535,20 @@ mlir::Value Fortran::lower::CharacterExprHelper::createBlankConstantCode(
 
 mlir::Value Fortran::lower::CharacterExprHelper::createBlankConstant(
     fir::CharacterType type) {
+  auto context = builder.getContext();
   auto singTy = getSingletonCharType(builder.getContext(), type);
+  auto bits = builder.getKindMap().getCharacterBitsize(type.getFKind());
+  auto intType = builder.getIntegerType(bits);
+  auto shape = mlir::VectorType::get(llvm::ArrayRef<std::int64_t>{1}, intType);
+  mlir::Attribute codeAttr = mlir::IntegerAttr::get(intType, ' ');
+  auto strAttr = mlir::DenseIntElementsAttr::get(shape, {codeAttr});
+  auto valTag = mlir::Identifier::get(fir::StringLitOp::value(), context);
+  mlir::NamedAttribute dataAttr(valTag, strAttr);
+  auto sizeTag = mlir::Identifier::get(fir::StringLitOp::size(), context);
+  mlir::NamedAttribute sizeAttr(sizeTag, builder.getI64IntegerAttr(1));
+  llvm::SmallVector<mlir::NamedAttribute, 2> attrs{dataAttr, sizeAttr};
+  return builder.create<fir::StringLitOp>(
+      loc, llvm::ArrayRef<mlir::Type>{singTy}, llvm::None, attrs);
   return builder.createConvert(loc, singTy, createBlankConstantCode(type));
 }
 

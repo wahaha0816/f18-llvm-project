@@ -187,10 +187,8 @@ public:
   mlir::LLVM::LLVMType convertCharType(fir::CharacterType charTy) {
     auto iTy = mlir::LLVM::LLVMType::getIntNTy(&getContext(),
                                                characterBitsize(charTy));
-    if (charTy.getLen() == fir::CharacterType::singleton())
-      return iTy;
     if (charTy.getLen() == fir::CharacterType::unknownLen())
-      return iTy;
+      return iTy.getPointerTo();
     return mlir::LLVM::LLVMType::getArrayTy(iTy, charTy.getLen());
   }
 
@@ -273,7 +271,7 @@ public:
     auto baseTy = unwrap(convertType(seq.getEleTy()));
     if (auto charTy = seq.getEleTy().dyn_cast<fir::CharacterType>())
       if (charTy.getLen() == fir::CharacterType::unknownLen())
-        return baseTy.getPointerTo();
+        return baseTy;
     auto shape = seq.getShape();
     auto constRows = seq.getConstantRows();
     if (constRows) {

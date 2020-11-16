@@ -561,18 +561,17 @@ struct StringLitOpConversion : public FIROpConversion<fir::StringLitOp> {
     } else {
       // convert the array attr to a dense elements attr
       // LLVMIR dialect knows how to lower the latter to LLVM IR
-      auto arr = attr.cast<mlir::ArrayAttr>();
+      auto arr = attr.cast<mlir::DenseIntElementsAttr>();
       auto size = constop.getSize().cast<mlir::IntegerAttr>().getInt();
-      auto eleTy = constop.getType().cast<fir::SequenceType>().getEleTy();
-      auto bits = lowerTy().characterBitsize(eleTy.cast<fir::CharacterType>());
+      auto bits =
+          lowerTy().characterBitsize(fir::unwrap_char(constop.getType()));
       auto charTy = rewriter.getIntegerType(bits);
       auto det = mlir::VectorType::get({size}, charTy);
       // convert each character to a precise bitsize
       SmallVector<mlir::Attribute, 64> vec;
-      for (auto a : arr.getValue())
-        vec.push_back(mlir::IntegerAttr::get(
-            charTy, a.cast<mlir::IntegerAttr>().getValue().sextOrTrunc(bits)));
-      auto dea = mlir::DenseElementsAttr::get(det, vec);
+      for (auto a : arr)
+        vec.push_back(mlir::IntegerAttr::get(charTy, a.sextOrTrunc(bits)));
+      auto dea = mlir::DenseIntElementsAttr::get(det, vec);
       rewriter.replaceOpWithNewOp<mlir::LLVM::ConstantOp>(constop, ty, dea);
     }
     return success();
@@ -1215,7 +1214,8 @@ struct ValueOpCommon {
       if (auto seq = ty.dyn_cast<mlir::LLVM::LLVMArrayType>()) {
         const auto dim = getDimension(seq);
         if (dim > 1) {
-          std::reverse(attrs.begin() + i, attrs.begin() + i + dim);
+          auto ub = std::min(i + dim, end);
+          std::reverse(attrs.begin() + i, attrs.begin() + ub);
           i += dim - 1;
         }
         ty = getArrayElementType(seq);
