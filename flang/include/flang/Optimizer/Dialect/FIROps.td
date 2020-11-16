@@ -2757,7 +2757,7 @@ def fir_StringLitOp : fir_Op<"string_lit", [NoSideEffect]> {
     ```
   }];
 
-  let results = (outs fir_SequenceType);
+  let results = (outs AnyType);
 
   let parser = [{
     auto &builder = parser.getBuilder();
@@ -2779,10 +2779,11 @@ def fir_StringLitOp : fir_Op<"string_lit", [NoSideEffect]> {
         parser.parseRParen() ||
         parser.parseColonType(type))
       return mlir::failure();
-    if (!(type.isa<fir::CharacterType>() || type.isa<mlir::IntegerType>()))
+    auto charTy = type.dyn_cast<fir::CharacterType>();
+    if (!charTy)
       return parser.emitError(parser.getCurrentLocation(),
                               "must have character type");
-    type = fir::SequenceType::get({sz.getInt()}, type);
+    type = fir::CharacterType::get(builder.getContext(), charTy.getFKind(), sz.getInt());
     if (!type || parser.addTypesToList(type, result.types))
       return mlir::failure();
     return mlir::success();
@@ -2791,14 +2792,13 @@ def fir_StringLitOp : fir_Op<"string_lit", [NoSideEffect]> {
   let printer = [{
     p << getOperationName() << ' ' << getValue() << '(';
     p << getSize().cast<mlir::IntegerAttr>().getValue() << ") : ";
-    p.printType(getType().cast<fir::SequenceType>().getEleTy());
+    p.printType(getType());
   }];
 
   let verifier = [{
     if (getSize().cast<mlir::IntegerAttr>().getValue().isNegative())
       return emitOpError("size must be non-negative");
-    auto eleTy = getType().cast<fir::SequenceType>().getEleTy();
-    if (!eleTy.isa<fir::CharacterType>())
+    if (!getType().isa<fir::CharacterType>())
       return emitOpError("must have !fir.char type");
     if (auto xl = getAttr(xlist())) {
       auto xList = xl.cast<mlir::ArrayAttr>();
