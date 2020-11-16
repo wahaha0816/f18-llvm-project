@@ -1105,6 +1105,10 @@ IntrinsicLibrary::genChar(mlir::Type type,
   auto eleType = helper.getCharacterType(type);
   auto charType =
       fir::CharacterType::get(builder.getContext(), eleType.getFKind(), 1);
+  auto undef = builder.create<fir::UndefOp>(loc, charType);
+  auto zero = builder.createIntegerConstant(loc, builder.getIndexType(), 0);
+  // auto cast = builder.create<fir::InsertValueOp>(loc, charType, undef, *arg,
+  // zero);
   auto cast = builder.createConvert(loc, charType, *arg);
   auto len = builder.createIntegerConstant(loc, helper.getLengthType(), 1);
   return fir::CharBoxValue{cast, len};

@@ -750,7 +750,7 @@ private:
         auto shape = mlir::VectorType::get(
             llvm::ArrayRef<std::int64_t>{size},
             mlir::IntegerType::get(sizeof(ET) * 8, builder.getContext()));
-        strAttr = mlir::DenseElementsAttr::get(
+        strAttr = mlir::DenseIntElementsAttr::get(
             shape, llvm::ArrayRef<ET>{value.data(), value.size()});
       }
       auto valTag = mlir::Identifier::get(fir::StringLitOp::value(), context);
@@ -818,28 +818,22 @@ private:
     }
     if constexpr (TC == Fortran::common::TypeCategory::Character) {
       fir::SequenceType::Shape shape;
-      shape.push_back(con.LEN());
       shape.append(con.shape().begin(), con.shape().end());
       auto chTy =
-          converter.genType(Fortran::common::TypeCategory::Character, KIND);
+          fir::CharacterType::get(builder.getContext(), KIND, con.LEN());
       auto arrayTy = fir::SequenceType::get(shape, chTy);
       mlir::Value array = builder.create<fir::UndefOp>(getLoc(), arrayTy);
       Fortran::evaluate::ConstantSubscripts subscripts = con.lbounds();
       do {
-        auto constant = fir::getBase(
+        auto charVal = fir::getBase(
             genScalarLit<Fortran::common::TypeCategory::Character, KIND>(
                 con.At(subscripts), con));
-        for (std::int64_t i = 0, L = con.LEN(); i < L; ++i) {
-          llvm::SmallVector<mlir::Value, 8> idx;
-          idx.push_back(builder.createIntegerConstant(getLoc(), idxTy, i));
-          auto charVal = builder.create<fir::ExtractValueOp>(getLoc(), chTy,
-                                                             constant, idx);
-          for (auto [dim, lb] : llvm::zip(subscripts, con.lbounds()))
-            idx.push_back(
-                builder.createIntegerConstant(getLoc(), idxTy, dim - lb));
-          array = builder.create<fir::InsertValueOp>(getLoc(), arrayTy, array,
-                                                     charVal, idx);
-        }
+        llvm::SmallVector<mlir::Value, 8> idx;
+        for (auto [dim, lb] : llvm::zip(subscripts, con.lbounds()))
+          idx.push_back(
+              builder.createIntegerConstant(getLoc(), idxTy, dim - lb));
+        array = builder.create<fir::InsertValueOp>(getLoc(), arrayTy, array,
+                                                   charVal, idx);
       } while (con.IncrementSubscripts(subscripts));
       auto len = builder.createIntegerConstant(getLoc(), idxTy, con.LEN());
       return fir::CharArrayBoxValue{array, len, extents, lbounds};
