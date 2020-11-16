@@ -18,54 +18,8 @@
 
 using namespace Fortran::runtime;
 
-#define NAMIFY_HELPER(X) #X
-#define NAMIFY(X) NAMIFY_HELPER(IONAME(X))
-#define mkRTKey(X) mkKey(RTNAME(X))
-
-namespace Fortran::lower {
-/// Static table of CHARACTER runtime calls
-///
-/// This logical map contains the name and type builder function for each
-/// runtime function listed in the tuple. This table is fully constructed at
-/// compile-time. Use the `mkRTKey` macro to access the table.
-static constexpr std::tuple<
-    mkRTKey(CharacterCompareScalar), mkRTKey(CharacterCompareScalar1),
-    mkRTKey(CharacterCompareScalar2), mkRTKey(CharacterCompareScalar4),
-    mkRTKey(CharacterCompare)>
-    newCharRTTable;
-} // namespace Fortran::lower
-
-using namespace Fortran::lower;
-
-/// Helper function to retrieve the name of the IO function given the key `A`
-template <typename A>
-static constexpr const char *getName() {
-  return std::get<A>(newCharRTTable).name;
-}
-
-/// Helper function to retrieve the type model signature builder of the IO
-/// function as defined by the key `A`
-template <typename A>
-static constexpr FuncTypeBuilderFunc getTypeModel() {
-  return std::get<A>(newCharRTTable).getTypeModel();
-}
-
-inline int64_t getLength(mlir::Type argTy) {
+static inline int64_t getLength(mlir::Type argTy) {
   return argTy.cast<fir::SequenceType>().getShape()[0];
-}
-
-/// Get (or generate) the MLIR FuncOp for a given runtime function.
-template <typename E>
-static mlir::FuncOp getRuntimeFunc(mlir::Location loc,
-                                   Fortran::lower::FirOpBuilder &builder) {
-  auto name = getName<E>();
-  auto func = builder.getNamedFunction(name);
-  if (func)
-    return func;
-  auto funTy = getTypeModel<E>()(builder.getContext());
-  func = builder.createFunction(loc, name, funTy);
-  func.setAttr("fir.runtime", builder.getUnitAttr());
-  return func;
 }
 
 /// Helper function to recover the KIND from the FIR type.

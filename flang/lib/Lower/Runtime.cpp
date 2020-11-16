@@ -20,36 +20,6 @@
 #define DEBUG_TYPE "flang-lower-runtime"
 
 using namespace Fortran::runtime;
-#define mkRTKey(X) mkKey(RTNAME(X))
-
-static constexpr std::tuple<mkRTKey(DateAndTime), mkRTKey(FailImageStatement),
-                            mkRTKey(PauseStatement),
-                            mkRTKey(ProgramEndStatement),
-                            mkRTKey(StopStatement), mkRTKey(StopStatementText)>
-    newRTTable;
-
-template <typename A>
-static constexpr const char *getName() {
-  return std::get<A>(newRTTable).name;
-}
-
-template <typename A>
-static constexpr Fortran::lower::FuncTypeBuilderFunc getTypeModel() {
-  return std::get<A>(newRTTable).getTypeModel();
-}
-
-template <typename RuntimeEntry>
-static mlir::FuncOp genRuntimeFunction(mlir::Location loc,
-                                       Fortran::lower::FirOpBuilder &builder) {
-  auto name = getName<RuntimeEntry>();
-  auto func = builder.getNamedFunction(name);
-  if (func)
-    return func;
-  auto funTy = getTypeModel<RuntimeEntry>()(builder.getContext());
-  func = builder.createFunction(loc, name, funTy);
-  func.setAttr("fir.runtime", builder.getUnitAttr());
-  return func;
-}
 
 // TODO: We don't have runtime library support for various features. When they
 // are encountered, we emit an error message and exit immediately.
@@ -88,7 +58,7 @@ void Fortran::lower::genStopStatement(
                llvm::dbgs() << '\n');
     expr.match(
         [&](const fir::CharBoxValue &x) {
-          callee = genRuntimeFunction<mkRTKey(StopStatementText)>(loc, builder);
+          callee = getRuntimeFunc<mkRTKey(StopStatementText)>(loc, builder);
           calleeType = callee.getType();
           // Creates a pair of operands for the CHARACTER and its LEN.
           operands.push_back(
@@ -97,7 +67,7 @@ void Fortran::lower::genStopStatement(
               builder.createConvert(loc, calleeType.getInput(1), x.getLen()));
         },
         [&](fir::UnboxedValue x) {
-          callee = genRuntimeFunction<mkRTKey(StopStatement)>(loc, builder);
+          callee = getRuntimeFunc<mkRTKey(StopStatement)>(loc, builder);
           calleeType = callee.getType();
           auto cast = builder.createConvert(loc, calleeType.getInput(0), x);
           operands.push_back(cast);
@@ -107,7 +77,7 @@ void Fortran::lower::genStopStatement(
           std::exit(1);
         });
   } else {
-    callee = genRuntimeFunction<mkRTKey(StopStatement)>(loc, builder);
+    callee = getRuntimeFunc<mkRTKey(StopStatement)>(loc, builder);
     calleeType = callee.getType();
     operands.push_back(
         builder.createIntegerConstant(loc, calleeType.getInput(0), 0));
@@ -140,7 +110,7 @@ void Fortran::lower::genFailImageStatement(
     Fortran::lower::AbstractConverter &converter) {
   auto &builder = converter.getFirOpBuilder();
   auto loc = converter.getCurrentLocation();
-  auto callee = genRuntimeFunction<mkRTKey(FailImageStatement)>(loc, builder);
+  auto callee = getRuntimeFunc<mkRTKey(FailImageStatement)>(loc, builder);
   builder.create<fir::CallOp>(loc, callee, llvm::None);
   genUnreachable(builder, loc);
 }
@@ -206,7 +176,7 @@ void Fortran::lower::genPauseStatement(
     const Fortran::parser::PauseStmt &) {
   auto &builder = converter.getFirOpBuilder();
   auto loc = converter.getCurrentLocation();
-  auto callee = genRuntimeFunction<mkRTKey(PauseStatement)>(loc, builder);
+  auto callee = getRuntimeFunc<mkRTKey(PauseStatement)>(loc, builder);
   builder.create<fir::CallOp>(loc, callee, llvm::None);
 }
 
@@ -215,7 +185,7 @@ void Fortran::lower::genDateAndTime(Fortran::lower::FirOpBuilder &builder,
                                     llvm::Optional<fir::CharBoxValue> date,
                                     llvm::Optional<fir::CharBoxValue> time,
                                     llvm::Optional<fir::CharBoxValue> zone) {
-  auto callee = genRuntimeFunction<mkRTKey(DateAndTime)>(loc, builder);
+  auto callee = getRuntimeFunc<mkRTKey(DateAndTime)>(loc, builder);
   mlir::Type idxTy = builder.getIndexType();
   mlir::Value zero;
   auto splitArg = [&](llvm::Optional<fir::CharBoxValue> arg,
@@ -243,7 +213,7 @@ void Fortran::lower::genDateAndTime(Fortran::lower::FirOpBuilder &builder,
   llvm::SmallVector<mlir::Value, 8> args{dateBuffer, timeBuffer, zoneBuffer,
                                          dateLen,    timeLen,    zoneLen};
   llvm::SmallVector<mlir::Value, 8> operands;
-  for (auto [fst,snd] : llvm::zip(args, callee.getType().getInputs()))
-    operands.emplace_back(builder.convertWithSemantics(loc, snd, fst));
+  for (auto [fst, snd] : llvm::zip(args, callee.getType().getInputs()))
+    operands.emplace_back(builder.createConvert(loc, snd, fst));
   builder.create<fir::CallOp>(loc, callee, operands);
 }

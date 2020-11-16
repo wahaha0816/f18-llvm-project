@@ -132,6 +132,9 @@ public:
     // (buffer*, ele-size, rank, type-descriptor, attribute, [dims])
     SmallVector<mlir::LLVM::LLVMType, 6> parts;
     mlir::Type ele = box.getEleTy();
+    // remove fir.heap/fir.ref/fir.ptr
+    if (auto removeIndirection = fir::dyn_cast_ptrEleTy(ele))
+      ele = removeIndirection;
     auto eleTy = unwrap(convertType(ele));
     // buffer*
     if (ele.isa<SequenceType>() && eleTy.isPointerTy())
@@ -237,6 +240,15 @@ public:
         eleTy = seqTy.getEleTy();
       }
     }
+    // fir.ref<fir.box> is a special case because fir.box type is already
+    // a pointer to a Fortran descriptor at the LLVM IR level. This implies
+    // that a fir.ref<fir.box>, that is the address of fir.box is actually
+    // the same as a fir.box at the LLVM level.
+    // The distinction is kept in fir to denote when a descriptor is expected
+    // to be mutable (fir.ref<fir.box>) and when it is not (fir.box).
+    if (eleTy.isa<fir::BoxType>())
+      return unwrap(convertType(eleTy));
+
     return unwrap(convertType(eleTy)).getPointerTo();
   }
 
