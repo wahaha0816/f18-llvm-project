@@ -149,18 +149,7 @@ public:
     parts.push_back(getDescFieldTypeModel<6>()(&getContext()));
     if (rank == unknownRank()) {
       if (auto seqTy = ele.dyn_cast<SequenceType>()) {
-        if (seqTy.getEleTy().isa<CharacterType>()) {
-          auto dim = seqTy.getDimension();
-          if (dim == 0) {
-            emitError(UnknownLoc::get(&getContext()))
-                << "missing length in character sequence type :" << eleTy;
-            rank = 0;
-          } else {
-            rank = dim - 1;
-          }
-        } else {
-          rank = seqTy.getDimension();
-        }
+        rank = seqTy.getDimension();
       } else {
         rank = 0;
       }
@@ -196,8 +185,13 @@ public:
 
   // fir.char<n>  -->  llvm<"ix*">   where ix is scaled by kind mapping
   mlir::LLVM::LLVMType convertCharType(fir::CharacterType charTy) {
-    return mlir::LLVM::LLVMType::getIntNTy(&getContext(),
-                                           characterBitsize(charTy));
+    auto iTy = mlir::LLVM::LLVMType::getIntNTy(&getContext(),
+                                               characterBitsize(charTy));
+    if (charTy.getLen() == fir::CharacterType::singleton())
+      return iTy;
+    if (charTy.getLen() == fir::CharacterType::unknownLen())
+      return iTy;
+    return mlir::LLVM::LLVMType::getArrayTy(iTy, charTy.getLen());
   }
 
   // Convert a complex value's element type based on its Fortran kind.
@@ -277,6 +271,9 @@ public:
   // fir.array<c ... :any>  -->  llvm<"[...[c x any]]">
   mlir::LLVM::LLVMType convertSequenceType(SequenceType seq) {
     auto baseTy = unwrap(convertType(seq.getEleTy()));
+    if (auto charTy = seq.getEleTy().dyn_cast<fir::CharacterType>())
+      if (charTy.getLen() == fir::CharacterType::unknownLen())
+        return baseTy.getPointerTo();
     auto shape = seq.getShape();
     auto constRows = seq.getConstantRows();
     if (constRows) {
