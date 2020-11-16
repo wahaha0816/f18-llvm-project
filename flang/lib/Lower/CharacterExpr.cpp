@@ -24,15 +24,9 @@
 //===----------------------------------------------------------------------===//
 
 static fir::CharacterType recoverCharacterType(mlir::Type type) {
-  if (auto boxType = type.dyn_cast<fir::BoxCharType>())
-    return boxType.getEleTy();
-  if (auto pointedType = fir::dyn_cast_ptrEleTy(type))
-    type = pointedType;
-  if (auto seqType = type.dyn_cast<fir::SequenceType>())
-    type = seqType.getEleTy();
-  if (auto charType = type.dyn_cast<fir::CharacterType>())
-    return charType;
-  llvm_unreachable("Invalid character value type");
+  auto charTy = fir::unwrap_char(type);
+  assert(charTy && "not a character type");
+  return charTy;
 }
 
 /// Get fir.char<kind> type with the same kind as inside str.
