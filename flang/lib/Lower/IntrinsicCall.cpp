@@ -1102,14 +1102,8 @@ IntrinsicLibrary::genChar(mlir::Type type,
   if (!arg)
     mlir::emitError(loc, "CHAR intrinsic argument not unboxed");
   Fortran::lower::CharacterExprHelper helper{builder, loc};
-  auto eleType = helper.getCharacterType(type);
-  auto charType =
-      fir::CharacterType::get(builder.getContext(), eleType.getFKind(), 1);
-  auto undef = builder.create<fir::UndefOp>(loc, charType);
-  auto zero = builder.createIntegerConstant(loc, builder.getIndexType(), 0);
-  // auto cast = builder.create<fir::InsertValueOp>(loc, charType, undef, *arg,
-  // zero);
-  auto cast = builder.createConvert(loc, charType, *arg);
+  auto kind = helper.getCharacterType(type).getFKind();
+  auto cast = helper.createSingletonFromCode(*arg, kind);
   auto len = builder.createIntegerConstant(loc, helper.getLengthType(), 1);
   return fir::CharBoxValue{cast, len};
 }
@@ -1204,6 +1198,7 @@ IntrinsicLibrary::genIchar(mlir::Type resultType,
   if (!charBox)
     llvm::report_fatal_error("expected character scalar");
 
+  Fortran::lower::CharacterExprHelper helper{builder, loc};
   auto buffer = charBox->getBuffer();
   auto bufferTy = buffer.getType();
   mlir::Value charVal;
@@ -1217,7 +1212,6 @@ IntrinsicLibrary::genIchar(mlir::Type resultType,
       llvm::report_fatal_error("expected memory type");
     // The length of in the character type may be unknown. Casting
     // to a singleton ref is required before loading.
-    Fortran::lower::CharacterExprHelper helper{builder, loc};
     auto eleType = helper.getCharacterType(ty);
     auto charType =
         fir::CharacterType::get(builder.getContext(), eleType.getFKind(), 1);
@@ -1226,7 +1220,8 @@ IntrinsicLibrary::genIchar(mlir::Type resultType,
     charVal = builder.create<fir::LoadOp>(loc, cast);
   }
   LLVM_DEBUG(llvm::dbgs() << "ichar(" << charVal << ")\n");
-  return builder.createConvert(loc, resultType, charVal);
+  auto code = helper.extractCodeFromSingleton(charVal);
+  return builder.createConvert(loc, resultType, code);
 }
 
 // IEOR

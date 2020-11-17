@@ -159,15 +159,19 @@ public:
   /// above instead of fixing it when needed.
   fir::ExtendedValue cleanUpCharacterExtendedValue(const fir::ExtendedValue &);
 
+  /// Create fir.char<k> singleton from \p code integer value.
+  mlir::Value createSingletonFromCode(mlir::Value code, int kind);
+  /// Returns integer value hold in a character singleton.
+  mlir::Value extractCodeFromSingleton(mlir::Value singleton);
+
 private:
   /// FIXME: the implementation also needs a clean-up now that
   /// CharBoxValue are better propagated.
   fir::CharBoxValue materializeValue(mlir::Value str);
-  mlir::Type getReferenceType(const fir::CharBoxValue &c) const;
-  mlir::Type getReferenceType(mlir::Value str) const;
-  mlir::Type getSeqTy(const fir::CharBoxValue &c) const;
-  mlir::Type getSeqTy(mlir::Value str) const;
+  mlir::Type getUnknownLenType(const fir::CharBoxValue &c) const;
+  mlir::Type getUnknownLenType(mlir::Value str) const;
   mlir::Value getCharBoxBuffer(const fir::CharBoxValue &box);
+  mlir::Value createElementAddr(mlir::Value buffer, mlir::Value index);
   mlir::Value createLoadCharAt(mlir::Value buff, mlir::Value index);
   void createStoreCharAt(mlir::Value str, mlir::Value index, mlir::Value c);
   void createLengthOneAssign(const fir::CharBoxValue &lhs,
