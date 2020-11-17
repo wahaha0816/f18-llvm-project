@@ -1203,8 +1203,13 @@ private:
         },
         [&](const Fortran::lower::SymbolBox::CharFullDim &arr)
             -> fir::ExtendedValue {
-          auto len = arr.getLen();
-          return fir::CharBoxValue(genFullDim(arr, len), len);
+          auto delta = arr.getLen();
+          // If the length is not unknown in the type, coordinate of will
+          // already take the length into account.
+          if (auto charTy = fir::unwrap_char(arr.getBuffer().getType()))
+            if (charTy.getLen() != fir::CharacterType::unknownLen())
+              delta = one;
+          return fir::CharBoxValue(genFullDim(arr, delta), arr.getLen());
         },
         [&](const Fortran::lower::SymbolBox::Derived &arr)
             -> fir::ExtendedValue {
