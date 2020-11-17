@@ -64,7 +64,8 @@ def fir_SequenceType : Type<CPred<"$_self.isa<fir::SequenceType>()">,
 // Composable types
 def AnyCompositeLike : TypeConstraint<Or<[fir_RecordType.predicate,
     fir_SequenceType.predicate, fir_ComplexType.predicate,
-    fir_VectorType.predicate, IsTupleTypePred]>, "any composite">;
+    fir_VectorType.predicate, IsTupleTypePred, fir_CharacterType.predicate]>,
+      "any composite">;
 
 // Reference to an entity type
 def fir_ReferenceType : Type<CPred<"$_self.isa<fir::ReferenceType>()">,
@@ -1985,6 +1986,8 @@ def fir_ExtractValueOp : fir_OneResultOp<"extract_value", [NoSideEffect]> {
     Extract a value from an entity with a type composed of tuples, arrays,
     and/or derived types. Returns the value from entity with the type of the
     specified component. Cannot be used on values of `!fir.box` type.
+    It can also be used to access complex parts and elements of a character
+    string.
 
     Note that the entity ssa-value must be of compile-time known size in order
     to use this operation.
@@ -2223,6 +2226,8 @@ def fir_InsertValueOp : fir_OneResultOp<"insert_value", [NoSideEffect]> {
     Insert a value into an entity with a type composed of tuples, arrays,
     and/or derived types. Returns a new ssa value with the same type as the
     original entity. Cannot be used on values of `!fir.box` type.
+    It can also be used to set complex parts and elements of a character
+    string.
 
     Note that the entity ssa-value must be of compile-time known size in order
     to use this operation.
