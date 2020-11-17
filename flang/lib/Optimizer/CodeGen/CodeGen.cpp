@@ -561,7 +561,7 @@ struct StringLitOpConversion : public FIROpConversion<fir::StringLitOp> {
     } else {
       // convert the array attr to a dense elements attr
       // LLVMIR dialect knows how to lower the latter to LLVM IR
-      auto arr = attr.cast<mlir::DenseIntElementsAttr>();
+      auto arr = attr.cast<mlir::ArrayAttr>();
       auto size = constop.getSize().cast<mlir::IntegerAttr>().getInt();
       auto bits =
           lowerTy().characterBitsize(fir::unwrap_char(constop.getType()));
@@ -569,9 +569,10 @@ struct StringLitOpConversion : public FIROpConversion<fir::StringLitOp> {
       auto det = mlir::VectorType::get({size}, charTy);
       // convert each character to a precise bitsize
       SmallVector<mlir::Attribute, 64> vec;
-      for (auto a : arr)
-        vec.push_back(mlir::IntegerAttr::get(charTy, a.sextOrTrunc(bits)));
-      auto dea = mlir::DenseIntElementsAttr::get(det, vec);
+      for (auto a : arr.getValue())
+        vec.push_back(mlir::IntegerAttr::get(
+            charTy, a.cast<mlir::IntegerAttr>().getValue().sextOrTrunc(bits)));
+      auto dea = mlir::DenseElementsAttr::get(det, vec);
       rewriter.replaceOpWithNewOp<mlir::LLVM::ConstantOp>(constop, ty, dea);
     }
     return success();
@@ -970,10 +971,17 @@ struct EmboxCommonConversion : public FIROpConversion<OP> {
     };
     auto doCharacter =
         [&](unsigned width,
-            int64_t len) -> std::tuple<mlir::Value, mlir::Value> {
+            mlir::Value len) -> std::tuple<mlir::Value, mlir::Value> {
       auto typeCode = fir::characterBitsToTypeCode(width);
-      return {this->genConstantOffset(loc, rewriter, len),
-              this->genConstantOffset(loc, rewriter, typeCode)};
+      auto typeCodeVal = this->genConstantOffset(loc, rewriter, typeCode);
+      if (width == 8)
+        return {len, typeCodeVal};
+      auto byteWidth = this->genConstantOffset(loc, rewriter, width / 8);
+      auto i64Ty =
+          mlir::LLVM::LLVMType::getInt64Ty(&this->lowerTy().getContext());
+      auto size =
+          rewriter.create<mlir::LLVM::MulOp>(loc, i64Ty, byteWidth, len);
+      return {size, typeCodeVal};
     };
     auto getKindMap = [&]() -> fir::KindMapping & {
       return this->lowerTy().getKindMap();
@@ -1000,13 +1008,19 @@ struct EmboxCommonConversion : public FIROpConversion<OP> {
       auto ty = boxEleTy.cast<fir::ComplexType>();
       return doComplex(getKindMap().getRealBitsize(ty.getFKind()));
     }
-    if (auto ty = boxEleTy.dyn_cast<fir::CharacterType>())
-      return doCharacter(getKindMap().getCharacterBitsize(ty.getFKind()),
-                         ty.getLen());
+    if (auto ty = boxEleTy.dyn_cast<fir::CharacterType>()) {
+      auto charWidth = getKindMap().getCharacterBitsize(ty.getFKind());
+      if (ty.getLen() != fir::CharacterType::unknownLen()) {
+        auto len = this->genConstantOffset(loc, rewriter, ty.getLen());
+        return doCharacter(charWidth, len);
+      }
+      assert(!lenParams.empty());
+      return doCharacter(charWidth, lenParams[0]);
+    }
     if (auto ty = boxEleTy.dyn_cast<fir::LogicalType>())
       return doLogical(getKindMap().getLogicalBitsize(ty.getFKind()));
     if (auto seqTy = boxEleTy.dyn_cast<fir::SequenceType>()) {
-      return getSizeAndTypeCode(loc, rewriter, seqTy.getEleTy());
+      return getSizeAndTypeCode(loc, rewriter, seqTy.getEleTy(), lenParams);
     }
     if (boxEleTy.isa<fir::RecordType>()) {
       TODO("");

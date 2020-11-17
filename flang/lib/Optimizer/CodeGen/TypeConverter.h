@@ -218,6 +218,12 @@ public:
         kindMapping.getIntegerBitsize(kindMapping.defaultIntegerKind()));
   }
 
+  static bool hasDynamicSize(mlir::Type type) {
+    if (auto charTy = type.dyn_cast<fir::CharacterType>())
+      return charTy.getLen() == fir::CharacterType::unknownLen();
+    return false;
+  }
+
   template <typename A>
   mlir::LLVM::LLVMType convertPointerLike(A &ty) {
     mlir::Type eleTy = ty.getEleTy();
@@ -226,7 +232,7 @@ public:
     // degenerate the array and do not want a the type to become `T**` but
     // merely `T*`.
     if (auto seqTy = eleTy.dyn_cast<fir::SequenceType>()) {
-      if (!seqTy.hasConstantShape()) {
+      if (!seqTy.hasConstantShape() || hasDynamicSize(seqTy.getEleTy())) {
         if (seqTy.hasConstantInterior())
           return unwrap(convertType(seqTy));
         eleTy = seqTy.getEleTy();
@@ -269,9 +275,8 @@ public:
   // fir.array<c ... :any>  -->  llvm<"[...[c x any]]">
   mlir::LLVM::LLVMType convertSequenceType(SequenceType seq) {
     auto baseTy = unwrap(convertType(seq.getEleTy()));
-    if (auto charTy = seq.getEleTy().dyn_cast<fir::CharacterType>())
-      if (charTy.getLen() == fir::CharacterType::unknownLen())
-        return baseTy.getPointerTo();
+    if (hasDynamicSize(seq.getEleTy()))
+      return baseTy.getPointerTo();
     auto shape = seq.getShape();
     auto constRows = seq.getConstantRows();
     if (constRows) {

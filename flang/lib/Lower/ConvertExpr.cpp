@@ -750,7 +750,7 @@ private:
         auto shape = mlir::VectorType::get(
             llvm::ArrayRef<std::int64_t>{size},
             mlir::IntegerType::get(sizeof(ET) * 8, builder.getContext()));
-        strAttr = mlir::DenseIntElementsAttr::get(
+        strAttr = mlir::DenseElementsAttr::get(
             shape, llvm::ArrayRef<ET>{value.data(), value.size()});
       }
       auto valTag = mlir::Identifier::get(fir::StringLitOp::value(), context);
