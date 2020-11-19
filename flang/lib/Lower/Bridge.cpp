@@ -1974,7 +1974,7 @@ private:
     auto boxTy = fir::BoxType::get(varType);
     auto boxAlloc = builder->allocateLocal(
         loc, boxTy, mangleName(var.getSymbol()), llvm::None, var.isTarget());
-    localSymbols.addSymbol(var.getSymbol(), boxAlloc);
+    localSymbols.addAllocatableOrPointer(var.getSymbol(), boxAlloc);
     // TODO Note: for globals, we want to init desc only once, so ideally we
     // probably want to avoid a runtime call to do this.
     Fortran::lower::genAllocatableInit(*this, var, boxAlloc);

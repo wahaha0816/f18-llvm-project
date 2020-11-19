@@ -27,12 +27,14 @@ class ArrayBoxValue;
 class CharArrayBoxValue;
 class BoxValue;
 class ProcBoxValue;
+class BoxAddressValue;
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &, const CharBoxValue &);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &, const ArrayBoxValue &);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &, const CharArrayBoxValue &);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &, const BoxValue &);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &, const ProcBoxValue &);
+llvm::raw_ostream &operator<<(llvm::raw_ostream &, const BoxAddressValue &);
 
 //===----------------------------------------------------------------------===//
 //
@@ -208,6 +210,39 @@ protected:
 
 /// Used for triple notation (array slices)
 using RangeBoxValue = std::tuple<mlir::Value, mlir::Value, mlir::Value>;
+
+/// BoxAddressValue is used for entities that are represented by the address to
+/// a box. These is intended to be used for entities whose base address, shape
+/// and type are not constant in the entity lifetime (e.g Allocatables and
+/// Pointers).
+class BoxAddressValue : public AbstractBox {
+public:
+  // Currently only accepts fir.(ref/ptr/heap)<fir.box<type>> mlir::Value for
+  // the address. This may change if we accept
+  // fir.(ref/ptr/heap)<fir.heap<type>> for allocatables.
+  BoxAddressValue(mlir::Value addr) : AbstractBox(addr) {
+    assert(verify() &&
+           "BoxAddressValue requires mem ref to fir.box<fir.[heap|ptr]<type>>");
+  }
+  bool isPointer() const {
+    return fir::dyn_cast_ptrEleTy(getAddr().getType())
+        .dyn_cast<fir::BoxType>()
+        .getEleTy()
+        .isa<fir::PointerType>();
+  }
+  bool isAllocatable() const {
+    return fir::dyn_cast_ptrEleTy(getAddr().getType())
+        .dyn_cast<fir::BoxType>()
+        .getEleTy()
+        .isa<fir::PointerType>();
+  }
+  /// Is the entity an array or an assumed rank.
+  bool hasRank() const;
+
+private:
+  /// validate the address type form.
+  bool verify() const;
+};
 
 class ExtendedValue;
 

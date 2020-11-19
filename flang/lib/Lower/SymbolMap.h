@@ -63,7 +63,10 @@ struct SymbolBox : public fir::details::matcher<SymbolBox> {
   // Generalized derived type variable
   using Derived = fir::BoxValue;
 
-  using VT = std::variant<Intrinsic, FullDim, Char, CharFullDim, Derived, None>;
+  using PointerOrAllocatable = fir::BoxAddressValue;
+
+  using VT = std::variant<Intrinsic, FullDim, Char, CharFullDim, Derived,
+                          PointerOrAllocatable, None>;
 
   //===--------------------------------------------------------------------===//
   // Constructors
@@ -81,6 +84,13 @@ struct SymbolBox : public fir::details::matcher<SymbolBox> {
             -> fir::ExtendedValue { return box.getAddr(); },
         [](const Fortran::lower::SymbolBox::None &) -> fir::ExtendedValue {
           llvm::report_fatal_error("symbol not mapped");
+        },
+        [](const Fortran::lower::SymbolBox::PointerOrAllocatable &)
+            -> fir::ExtendedValue {
+          // Until there is a use case, PointerOrAllocatable are not
+          // ExtendedValue.
+          llvm::report_fatal_error(
+              "Pointer and Allocatable to exv needs unboxing");
         },
         [](const auto &box) -> fir::ExtendedValue { return box; });
   }
@@ -117,6 +127,7 @@ struct SymbolBox : public fir::details::matcher<SymbolBox> {
     return match([](const Intrinsic &) { return false; },
                  [](const Char &) { return false; },
                  [](const None &) { return false; },
+                 [](const PointerOrAllocatable &x) { return x.hasRank(); },
                  [](const auto &x) { return x.getExtents().size() > 0; });
   }
 
@@ -243,6 +254,11 @@ public:
                         bool force = false) {
     makeSym(sym, SymbolBox::Derived(value, size, params, extents, lbounds),
             force);
+  }
+
+  void addAllocatableOrPointer(semantics::SymbolRef sym, mlir::Value boxAddress,
+                               bool force = false) {
+    makeSym(sym, SymbolBox::PointerOrAllocatable(boxAddress));
   }
 
   /// Find `symbol` and return its value if it appears in the current mappings.
