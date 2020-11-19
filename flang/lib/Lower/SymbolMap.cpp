@@ -106,6 +106,11 @@ llvm::raw_ostream &fir::operator<<(llvm::raw_ostream &os,
 }
 
 llvm::raw_ostream &fir::operator<<(llvm::raw_ostream &os,
+                                   const fir::BoxAddressValue &box) {
+  return os << "boxaddress: { box: " << box.getAddr() << "}";
+}
+
+llvm::raw_ostream &fir::operator<<(llvm::raw_ostream &os,
                                    const fir::ExtendedValue &exv) {
   exv.match([&](const auto &value) { os << value; });
   return os;
@@ -167,4 +172,21 @@ Fortran::lower::operator<<(llvm::raw_ostream &os,
     os << " }>\n";
   }
   return os;
+}
+
+bool fir::BoxAddressValue::verify() const {
+  auto type = fir::dyn_cast_ptrEleTy(getAddr().getType());
+  if (!type)
+    return false;
+  if (auto box = type.dyn_cast<fir::BoxType>()) {
+    auto eleTy = box.getEleTy();
+    return eleTy.isa<fir::PointerType>() || eleTy.isa<fir::HeapType>();
+  }
+  return false;
+}
+
+bool fir::BoxAddressValue::hasRank() const {
+  auto type =
+      fir::dyn_cast_ptrEleTy(getAddr().getType()).dyn_cast<fir::BoxType>();
+  return fir::dyn_cast_ptrEleTy(type).isa<fir::SequenceType>();
 }
