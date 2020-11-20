@@ -2116,8 +2116,35 @@ struct StoreOpConversion : public FIROpConversion<fir::StoreOp> {
   mlir::LogicalResult
   matchAndRewrite(fir::StoreOp store, OperandTy operands,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<mlir::LLVM::StoreOp>(store, operands[0],
-                                                     operands[1]);
+    if (store.value().getType().isa<fir::BoxType>()) {
+      // The box value is in memory, load it first before storing it into
+      // the destination address.
+      auto loc = store.getLoc();
+      auto voidTy = getVoidPtrType(store.getContext());
+      auto src =
+          rewriter.create<mlir::LLVM::BitcastOp>(loc, voidTy, operands[0]);
+      auto dst =
+          rewriter.create<mlir::LLVM::BitcastOp>(loc, voidTy, operands[1]);
+      auto falseAttr = rewriter.getBoolAttr(false);
+      auto i1Ty = mlir::LLVM::LLVMType::getInt1Ty(store.getContext());
+      auto isVolatile =
+          rewriter.create<mlir::LLVM::ConstantOp>(loc, i1Ty, falseAttr);
+      auto i64Ty = mlir::LLVM::LLVMType::getInt64Ty(store.getContext());
+      // Get the length of descriptor type by using getelementPtr. This assumes
+      // The descriptor type provided to LLVM is accurate (e.g if there is an
+      // addendum, it must be visible in llvm type).
+      // TODO: is there a nicer way to querry a type size in mlir/llvm ?
+      auto boxPtrTy = unwrap(operands[0].getType());
+      auto null = rewriter.create<mlir::LLVM::NullOp>(loc, boxPtrTy);
+      auto one = genConstantIndex(loc, i64Ty, rewriter, 1);
+      auto sizePtr = genGEP(loc, boxPtrTy, rewriter, null, one);
+      auto len = rewriter.create<mlir::LLVM::PtrToIntOp>(loc, i64Ty, sizePtr);
+      rewriter.replaceOpWithNewOp<mlir::LLVM::MemcpyOp>(store, dst, src, len,
+                                                        isVolatile);
+    } else {
+      rewriter.replaceOpWithNewOp<mlir::LLVM::StoreOp>(store, operands[0],
+                                                       operands[1]);
+    }
     return success();
   }
 };
