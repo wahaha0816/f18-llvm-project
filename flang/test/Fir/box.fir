@@ -103,3 +103,14 @@ func @b4(%arg0 : !fir.ref<!fir.array<7x!fir.char<1,?>>>, %arg1 : index) -> !fir.
   %x = fir.embox %arg0(%1) typeparams %arg1 : (!fir.ref<!fir.array<7x!fir.char<1,?>>>, !fir.shape<1>, index) -> !fir.box<!fir.array<7x!fir.char<1,?>>>
   return %x : !fir.box<!fir.array<7x!fir.char<1,?>>>
 }
+
+// Storing a fir.box into a fir.ref<fir.box> (modifying descriptors).
+// CHECK-LABEL: define void @b5(
+// CHECK-SAME: { float*, i64, i32, i8, i8, i8, i8, [2 x [3 x i64]] }* %[[arg0:.*]], { float*, i64, i32, i8, i8, i8, i8, [2 x [3 x i64]] }* %[[arg1:.*]])
+func @b5(%arg0 : !fir.ref<!fir.box<!fir.heap<!fir.array<?x?xf32>>>>, %arg1 : !fir.box<!fir.heap<!fir.array<?x?xf32>>>) {
+  // CHECK-DAG: %[[arg0Cast:.*]] = bitcast {{.*}} %[[arg0]] to i8*
+  // CHECK-DAG: %[[arg1Cast:.*]] = bitcast {{.*}} %[[arg1]] to i8*
+  // CHECK: call void @llvm.memcpy.p0i8.p0i8.i64(i8* %[[arg0Cast]], i8* %[[arg1Cast]]
+  fir.store %arg1 to %arg0 : !fir.ref<!fir.box<!fir.heap<!fir.array<?x?xf32>>>>
+  return
+}
