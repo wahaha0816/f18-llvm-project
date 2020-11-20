@@ -1977,7 +1977,8 @@ private:
     localSymbols.addAllocatableOrPointer(var.getSymbol(), boxAlloc);
     // TODO Note: for globals, we want to init desc only once, so ideally we
     // probably want to avoid a runtime call to do this.
-    Fortran::lower::genAllocatableInit(*this, var, boxAlloc);
+    fir::BoxAddressValue boxAddress{boxAlloc};
+    Fortran::lower::genAllocatableInit(*this, var, boxAddress);
   }
 
   void mapSymbolAttributes(const Fortran::lower::pft::Variable &var,

@@ -239,6 +239,20 @@ public:
   /// Is the entity an array or an assumed rank.
   bool hasRank() const;
 
+  /// Return the part of the address type after memory and box types.
+  mlir::Type getEleTy() const {
+    auto type = getAddr().getType();
+    while (type) {
+      if (auto pointedTy = fir::dyn_cast_ptrEleTy(type))
+        type = pointedTy;
+      else if (auto boxTy = type.dyn_cast<fir::BoxType>())
+        type = boxTy.getEleTy();
+      else
+        break;
+    }
+    return type;
+  }
+
 private:
   /// validate the address type form.
   bool verify() const;

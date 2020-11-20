@@ -20,6 +20,10 @@ struct AllocateStmt;
 struct DeallocateStmt;
 } // namespace Fortran::parser
 
+namespace fir {
+class BoxAddressValue;
+}
+
 namespace Fortran::lower {
 class AbstractConverter;
 namespace pft {
@@ -33,7 +37,7 @@ struct Variable;
 /// input.
 void genAllocatableInit(Fortran::lower::AbstractConverter &,
                         const Fortran::lower::pft::Variable &,
-                        mlir::Value boxAddress);
+                        fir::BoxAddressValue boxAddress);
 
 /// Lower an allocate statement to fir.
 void genAllocateStmt(Fortran::lower::AbstractConverter &,

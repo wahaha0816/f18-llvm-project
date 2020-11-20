@@ -24,19 +24,29 @@
 #include "flang/Semantics/tools.h"
 #include "flang/Semantics/type.h"
 
-/// Runtime call generators
+/// Runtime call generators (ending in RtCall)
 using namespace Fortran::runtime;
-static void genAllocatableInitIntrinsic(Fortran::lower::FirOpBuilder &builder,
-                                        mlir::Location loc,
-                                        mlir::Value boxAddress,
-                                        mlir::Value typeCategory,
-                                        mlir::Value kind, mlir::Value rank,
-                                        mlir::Value corank) {
+static void genAllocInitIntrinsicRtCall(
+    Fortran::lower::AbstractConverter &converter, mlir::Location loc,
+    mlir::Value boxAddress,
+    const Fortran::semantics::IntrinsicTypeSpec &typeSpec, int rank,
+    int corank) {
+  // TODO: add a way to extract kind and cat from fir type to remove the
+  // IntrinsicTypeSpec argument.
+  auto &builder = converter.getFirOpBuilder();
   auto callee =
       Fortran::lower::getRuntimeFunc<mkRTKey(AllocatableInitIntrinsic)>(
           loc, builder);
-  llvm::SmallVector<mlir::Value, 5> args = {boxAddress, typeCategory, kind,
-                                            rank, corank};
+  auto i32ty = builder.getIntegerType(32);
+  int catCode = static_cast<int>(typeSpec.category());
+  auto cat = builder.createIntegerConstant(loc, i32ty, catCode);
+  auto kindExpr =
+      Fortran::evaluate::AsGenericExpr(Fortran::common::Clone(typeSpec.kind()));
+  auto kindVal = fir::getBase(converter.genExprValue(kindExpr));
+  auto rankVal = builder.createIntegerConstant(loc, i32ty, rank);
+  auto corankVal = builder.createIntegerConstant(loc, i32ty, corank);
+  llvm::SmallVector<mlir::Value, 5> args = {boxAddress, cat, kindVal, rankVal,
+                                            corankVal};
   llvm::SmallVector<mlir::Value, 5> operands;
   for (auto [fst, snd] : llvm::zip(args, callee.getType().getInputs()))
     operands.emplace_back(builder.createConvert(loc, snd, fst));
@@ -358,11 +368,36 @@ void Fortran::lower::genDeallocateStmt(
   }
 }
 
+static mlir::Value createUnallocatedBox(Fortran::lower::FirOpBuilder &builder,
+                                        mlir::Location loc,
+                                        fir::BoxAddressValue boxAddress) {
+  auto varType = boxAddress.getEleTy();
+  auto heapType = fir::HeapType::get(varType);
+  auto boxType = fir::BoxType::get(heapType);
+  auto nullAddr = builder.createNullConstant(loc, heapType);
+  mlir::Value shape;
+  if (auto seqTy = varType.dyn_cast<fir::SequenceType>()) {
+    auto zero = builder.createIntegerConstant(loc, builder.getIndexType(), 0);
+    llvm::SmallVector<mlir::Value, 2> extents(seqTy.getDimension(), zero);
+    llvm::ArrayRef<mlir::Value> lbounds = llvm::None;
+    shape = builder.createShape(loc,
+                                fir::ArrayBoxValue{nullAddr, extents, lbounds});
+  }
+  return builder.create<fir::EmboxOp>(loc, boxType, nullAddr, shape);
+}
+
 void Fortran::lower::genAllocatableInit(
     Fortran::lower::AbstractConverter &converter,
-    const Fortran::lower::pft::Variable &var, mlir::Value boxAddress) {
+    const Fortran::lower::pft::Variable &var, fir::BoxAddressValue boxAddress) {
   auto loc = converter.genLocation(var.getSymbol().name());
   auto &builder = converter.getFirOpBuilder();
+  // inlined descriptor initialization
+  if (auto box = createUnallocatedBox(builder, loc, boxAddress)) {
+    builder.create<fir::StoreOp>(loc, box, boxAddress.getAddr());
+    return;
+  }
+
+  // runtime path (depreciated)
   auto declType = var.getSymbol().GetType();
   if (!declType)
     TODO("Is this possible ?");
@@ -370,17 +405,9 @@ void Fortran::lower::genAllocatableInit(
     if (intrinsic->category() == Fortran::common::TypeCategory::Character) {
       TODO("character alloctable init");
     } else {
-      auto i32ty = builder.getIntegerType(32);
-      int catCode = static_cast<int>(intrinsic->category());
-      auto cat = builder.createIntegerConstant(loc, i32ty, catCode);
-      auto kindExpr = Fortran::evaluate::AsGenericExpr(
-          Fortran::common::Clone(intrinsic->kind()));
-      auto kind = fir::getBase(converter.genExprValue(kindExpr));
-      auto rank =
-          builder.createIntegerConstant(loc, i32ty, var.getSymbol().Rank());
-      auto corank = builder.createIntegerConstant(loc, i32ty, 0);
-      genAllocatableInitIntrinsic(builder, loc, boxAddress, cat, kind, rank,
-                                  corank);
+      int corank = 0;
+      genAllocInitIntrinsicRtCall(converter, loc, boxAddress.getAddr(),
+                                  *intrinsic, var.getSymbol().Rank(), corank);
     }
   } else {
     TODO("derived type allocatable init");
