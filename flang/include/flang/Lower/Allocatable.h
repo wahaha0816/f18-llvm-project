@@ -26,6 +26,7 @@ class BoxAddressValue;
 
 namespace Fortran::lower {
 class AbstractConverter;
+class FirOpBuilder;
 namespace pft {
 struct Variable;
 }
@@ -35,8 +36,7 @@ struct Variable;
 /// lifetime.
 /// The memory address of the box to be initialized must be provided as an
 /// input.
-void genAllocatableInit(Fortran::lower::AbstractConverter &,
-                        const Fortran::lower::pft::Variable &,
+void genAllocatableInit(Fortran::lower::FirOpBuilder &, mlir::Location loc,
                         fir::BoxAddressValue boxAddress);
 
 /// Lower an allocate statement to fir.

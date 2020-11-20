@@ -24,35 +24,8 @@
 #include "flang/Semantics/tools.h"
 #include "flang/Semantics/type.h"
 
-/// Runtime call generators (ending in RtCall)
+/// Runtime call generators
 using namespace Fortran::runtime;
-static void genAllocInitIntrinsicRtCall(
-    Fortran::lower::AbstractConverter &converter, mlir::Location loc,
-    mlir::Value boxAddress,
-    const Fortran::semantics::IntrinsicTypeSpec &typeSpec, int rank,
-    int corank) {
-  // TODO: add a way to extract kind and cat from fir type to remove the
-  // IntrinsicTypeSpec argument.
-  auto &builder = converter.getFirOpBuilder();
-  auto callee =
-      Fortran::lower::getRuntimeFunc<mkRTKey(AllocatableInitIntrinsic)>(
-          loc, builder);
-  auto i32ty = builder.getIntegerType(32);
-  int catCode = static_cast<int>(typeSpec.category());
-  auto cat = builder.createIntegerConstant(loc, i32ty, catCode);
-  auto kindExpr =
-      Fortran::evaluate::AsGenericExpr(Fortran::common::Clone(typeSpec.kind()));
-  auto kindVal = fir::getBase(converter.genExprValue(kindExpr));
-  auto rankVal = builder.createIntegerConstant(loc, i32ty, rank);
-  auto corankVal = builder.createIntegerConstant(loc, i32ty, corank);
-  llvm::SmallVector<mlir::Value, 5> args = {boxAddress, cat, kindVal, rankVal,
-                                            corankVal};
-  llvm::SmallVector<mlir::Value, 5> operands;
-  for (auto [fst, snd] : llvm::zip(args, callee.getType().getInputs()))
-    operands.emplace_back(builder.createConvert(loc, snd, fst));
-  builder.create<fir::CallOp>(loc, callee, operands);
-}
-
 static void genAllocatableSetBounds(Fortran::lower::FirOpBuilder &builder,
                                     mlir::Location loc, mlir::Value boxAddress,
                                     mlir::Value dimIndex, mlir::Value lowerBoud,
@@ -386,30 +359,19 @@ static mlir::Value createUnallocatedBox(Fortran::lower::FirOpBuilder &builder,
   return builder.create<fir::EmboxOp>(loc, boxType, nullAddr, shape);
 }
 
-void Fortran::lower::genAllocatableInit(
-    Fortran::lower::AbstractConverter &converter,
-    const Fortran::lower::pft::Variable &var, fir::BoxAddressValue boxAddress) {
-  auto loc = converter.genLocation(var.getSymbol().name());
-  auto &builder = converter.getFirOpBuilder();
-  // inlined descriptor initialization
+void Fortran::lower::genAllocatableInit(Fortran::lower::FirOpBuilder &builder,
+                                        mlir::Location loc,
+                                        fir::BoxAddressValue boxAddress) {
+  auto type = boxAddress.getEleTy();
+  if (auto seqType = type.dyn_cast<fir::SequenceType>())
+    type = seqType.getEleTy();
+  if (type.isa<fir::CharacterType>() || type.isa<fir::RecordType>()) {
+    mlir::emitError(
+        loc, "TODO: Character or derived type allocatable initialization");
+    return;
+  }
   if (auto box = createUnallocatedBox(builder, loc, boxAddress)) {
     builder.create<fir::StoreOp>(loc, box, boxAddress.getAddr());
     return;
-  }
-
-  // runtime path (depreciated)
-  auto declType = var.getSymbol().GetType();
-  if (!declType)
-    TODO("Is this possible ?");
-  if (auto intrinsic = declType->AsIntrinsic()) {
-    if (intrinsic->category() == Fortran::common::TypeCategory::Character) {
-      TODO("character alloctable init");
-    } else {
-      int corank = 0;
-      genAllocInitIntrinsicRtCall(converter, loc, boxAddress.getAddr(),
-                                  *intrinsic, var.getSymbol().Rank(), corank);
-    }
-  } else {
-    TODO("derived type allocatable init");
   }
 }

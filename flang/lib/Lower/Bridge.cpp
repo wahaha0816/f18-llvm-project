@@ -1978,7 +1978,7 @@ private:
     // TODO Note: for globals, we want to init desc only once, so ideally we
     // probably want to avoid a runtime call to do this.
     fir::BoxAddressValue boxAddress{boxAlloc};
-    Fortran::lower::genAllocatableInit(*this, var, boxAddress);
+    Fortran::lower::genAllocatableInit(*builder, loc, boxAddress);
   }
 
   void mapSymbolAttributes(const Fortran::lower::pft::Variable &var,
