@@ -5,31 +5,22 @@
 subroutine foo()
   real, allocatable :: x(:), y(:, :), z
   ! CHECK: %[[xBoxAddr:.*]] = fir.alloca !fir.box<!fir.heap<!fir.array<?xf32>>> {name = "_QFfooEx"}
-  ! CHECK-DAG: %[[xTypeCat:.*]] = constant 1 : i32
-  ! CHECK-DAG: %[[xKind:.*]] = constant 4 : i64
-  ! CHECK-DAG: %[[xRank:.*]] = constant 1 : i32
-  ! CHECK-DAG: %[[xCorank:.*]] = constant 0 : i32
-  ! CHECK-DAG: %[[xBoxCast:.*]] = fir.convert %[[xBoxAddr]] : (!fir.ref<!fir.box<!fir.heap<!fir.array<?xf32>>>>) -> !fir.ref<!fir.box<none>>
-  ! CHECK-DAG: %[[xKindCast:.*]] = fir.convert %[[xKind]] : (i64) -> i32
-  ! CHECK: fir.call @{{.*}}AllocatableInitIntrinsic(%[[xBoxCast]], %[[xTypeCat]], %[[xKindCast]], %[[xRank]], %[[xCorank]]) : (!fir.ref<!fir.box<none>>, i32, i32, i32, i32) -> none
+  ! CHECK-DAG: %[[xNullAddr:.*]] = fir.convert %c0{{.*}} : (index) -> !fir.heap<!fir.array<?xf32>>
+  ! CHECK-DAG: %[[xNullShape:.*]] = fir.shape %c0{{.*}} : (index) -> !fir.shape<1>
+  ! CHECK: %[[xInitEmbox:.*]] = fir.embox %[[xNullAddr]](%[[xNullShape]]) : (!fir.heap<!fir.array<?xf32>>, !fir.shape<1>) -> !fir.box<!fir.heap<!fir.array<?xf32>>>
+  ! CHECK: fir.store %[[xInitEmbox]] to %[[xBoxAddr]] : !fir.ref<!fir.box<!fir.heap<!fir.array<?xf32>>>>
 
   ! CHECK: %[[yBoxAddr:.*]] = fir.alloca !fir.box<!fir.heap<!fir.array<?x?xf32>>> {name = "_QFfooEy"}
-  ! CHECK-DAG: %[[yTypeCat:.*]] = constant 1 : i32
-  ! CHECK-DAG: %[[yKind:.*]] = constant 4 : i64
-  ! CHECK-DAG: %[[yRank:.*]] = constant 2 : i32
-  ! CHECK-DAG: %[[yCorank:.*]] = constant 0 : i32
-  ! CHECK-DAG: %[[yBoxCast:.*]] = fir.convert %[[yBoxAddr]] : (!fir.ref<!fir.box<!fir.heap<!fir.array<?x?xf32>>>>) -> !fir.ref<!fir.box<none>>
-  ! CHECK-DAG: %[[yKindCast:.*]] = fir.convert %[[yKind]] : (i64) -> i32
-  ! CHECK: fir.call @{{.*}}AllocatableInitIntrinsic(%[[yBoxCast]], %[[yTypeCat]], %[[yKindCast]], %[[yRank]], %[[yCorank]]) : (!fir.ref<!fir.box<none>>, i32, i32, i32, i32) -> none
+  ! CHECK-DAG: %[[yNullAddr:.*]] = fir.convert %c0{{.*}} : (index) -> !fir.heap<!fir.array<?x?xf32>>
+  ! CHECK-DAG: %[[yNullShape:.*]] = fir.shape %c0{{.*}}, %c0{{.*}} : (index, index) -> !fir.shape<2>
+  ! CHECK: %[[yInitEmbox:.*]] = fir.embox %[[yNullAddr]](%[[yNullShape]]) : (!fir.heap<!fir.array<?x?xf32>>, !fir.shape<2>) -> !fir.box<!fir.heap<!fir.array<?x?xf32>>>
+  ! CHECK: fir.store %[[yInitEmbox]] to %[[yBoxAddr]] : !fir.ref<!fir.box<!fir.heap<!fir.array<?x?xf32>>>>
 
   ! CHECK: %[[zBoxAddr:.*]] = fir.alloca !fir.box<!fir.heap<f32>> {name = "_QFfooEz"}
-  ! CHECK-DAG: %[[zTypeCat:.*]] = constant 1 : i32
-  ! CHECK-DAG: %[[zKind:.*]] = constant 4 : i64
-  ! CHECK-DAG: %[[zRank:.*]] = constant 0 : i32
-  ! CHECK-DAG: %[[zCorank:.*]] = constant 0 : i32
-  ! CHECK-DAG: %[[zBoxCast:.*]] = fir.convert %[[zBoxAddr]] : (!fir.ref<!fir.box<!fir.heap<f32>>>) -> !fir.ref<!fir.box<none>>
-  ! CHECK-DAG: %[[zKindCast:.*]] = fir.convert %[[zKind]] : (i64) -> i32
-  ! CHECK: fir.call @{{.*}}AllocatableInitIntrinsic(%[[zBoxCast]], %[[zTypeCat]], %[[zKindCast]], %[[zRank]], %[[zCorank]]) : (!fir.ref<!fir.box<none>>, i32, i32, i32, i32) -> none
+  ! CHECK: %[[zNullAddr:.*]] = fir.convert %c0{{.*}} : (index) -> !fir.heap<f32>
+  ! CHECK: %[[zInitEmbox:.*]] = fir.embox %[[zNullAddr]] : (!fir.heap<f32>) -> !fir.box<!fir.heap<f32>>
+  ! CHECK: fir.store %[[zInitEmbox]] to %[[zBoxAddr]] : !fir.ref<!fir.box<!fir.heap<f32>>>
+
 
   allocate(x(42:100), y(43:50, 51), z)
   ! CHECK-DAG: %[[xlb:.*]] = constant 42 : i32
@@ -67,3 +58,24 @@ subroutine foo()
   ! CHECK: %[[zBoxCast4:.*]] = fir.convert %[[zBoxAddr]] : (!fir.ref<!fir.box<!fir.heap<f32>>>) -> !fir.ref<!fir.box<none>>
   ! CHECK: fir.call @{{.*}}AllocatableDeallocate(%[[zBoxCast4]], {{.*}})
 end subroutine
+
+! CHECK-LABEL: func @_QPtest_globals()
+subroutine test_globals()
+  ! CHECK-DAG: fir.address_of(@_QFtest_globalsEgx) : !fir.ref<!fir.box<!fir.heap<i32>>>
+  ! CHECK-DAG: fir.address_of(@_QFtest_globalsEgy) : !fir.ref<!fir.box<!fir.heap<!fir.array<?x?xi32>>>>
+  integer, allocatable :: gx, gy(:, :)
+  save :: gx, gy
+  allocate(gx, gy(20, 30))
+end subroutine
+
+! CHECK-LABEL: fir.global internal @_QFtest_globalsEgx : !fir.box<!fir.heap<i32>>
+  ! CHECK: %[[gxNullAddr:.*]] = fir.convert %c0{{.*}} : (index) -> !fir.heap<i32>
+  ! CHECK: %[[gxInitBox:.*]] = fir.embox %0 : (!fir.heap<i32>) -> !fir.box<!fir.heap<i32>>
+  ! CHECK: fir.has_value %[[gxInitBox]] : !fir.box<!fir.heap<i32>>
+
+! CHECK-LABEL: fir.global internal @_QFtest_globalsEgy : !fir.box<!fir.heap<!fir.array<?x?xi32>>> {
+  ! CHECK-DAG: %[[gyNullAddr:.*]] = fir.convert %c0{{.*}} : (index) -> !fir.heap<!fir.array<?x?xi32>>
+  ! CHECK-DAG: %[[gyShape:.*]] = fir.shape %c0{{.*}}, %c0{{.*}} : (index, index) -> !fir.shape<2>
+  ! CHECK: %[[gyInitBox:.*]] = fir.embox %[[gyNullAddr]](%[[gyShape]]) : (!fir.heap<!fir.array<?x?xi32>>, !fir.shape<2>) -> !fir.box<!fir.heap<!fir.array<?x?xi32>>>
+  ! CHECK: fir.has_value %[[gyInitBox]] : !fir.box<!fir.heap<!fir.array<?x?xi32>>>
+

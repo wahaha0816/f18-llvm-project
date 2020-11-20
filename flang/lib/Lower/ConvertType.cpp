@@ -239,9 +239,9 @@ struct TypeBuilder {
     }
 
     if (isPtr || Fortran::semantics::IsPointer(symbol))
-      ty = fir::PointerType::get(ty);
+      ty = fir::BoxType::get(fir::PointerType::get(ty));
     else if (isAlloc || Fortran::semantics::IsAllocatable(symbol))
-      ty = fir::HeapType::get(ty);
+      ty = fir::BoxType::get(fir::HeapType::get(ty));
     return ty;
   }
 

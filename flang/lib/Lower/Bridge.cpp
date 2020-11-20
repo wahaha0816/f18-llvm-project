@@ -1765,10 +1765,26 @@ private:
       }
       return;
     }
+    // FIXME: an exported module variable will have external linkage.
+    auto linkage = builder->createInternalLinkage();
+    if (Fortran::semantics::IsAllocatableOrPointer(sym)) {
+      auto symTy = genType(var);
+      // Pointers may have an initial target
+      if (Fortran::semantics::IsPointer(sym))
+        mlir::emitError(loc, "TODO: global pointer initialization");
+      auto init = [&](Fortran::lower::FirOpBuilder &b) {
+        auto box = Fortran::lower::createUnallocatedBox(b, loc, symTy);
+        b.create<fir::HasValueOp>(loc, box);
+      };
+      auto global =
+          builder->createGlobal(loc, symTy, globalName, isConst, init, linkage);
+      auto addrOf = builder->create<fir::AddrOfOp>(loc, global.resultType(),
+                                                   global.getSymbol());
+      mapSymbolAttributes(var, storeMap, addrOf);
+      return;
+    }
     if (const auto *details =
             sym.detailsIf<Fortran::semantics::ObjectEntityDetails>()) {
-      // FIXME: an exported module variable will have external linkage.
-      auto linkage = builder->createInternalLinkage();
       if (details->init()) {
         if (!sym.GetType()->AsIntrinsic()) {
           TODO(""); // Derived type / polymorphic
@@ -1968,16 +1984,14 @@ private:
     mapSymbolAttributes(var, storeMap, preAlloc);
   }
 
-  void createLocalAllocatable(mlir::Location loc,
-                              const Fortran::lower::pft::Variable &var,
-                              mlir::Type varType) {
-    auto boxTy = fir::BoxType::get(varType);
+  mlir::Value createLocalAllocatable(mlir::Location loc,
+                                     const Fortran::lower::pft::Variable &var,
+                                     mlir::Type boxTy) {
     auto boxAlloc = builder->allocateLocal(
         loc, boxTy, mangleName(var.getSymbol()), llvm::None, var.isTarget());
-    localSymbols.addAllocatableOrPointer(var.getSymbol(), boxAlloc);
-    // TODO Note: for globals, we want to init desc only once, so ideally we
-    // probably want to avoid a runtime call to do this.
-    Fortran::lower::genAllocatableInit(*this, var, boxAlloc);
+    auto box = Fortran::lower::createUnallocatedBox(*builder, loc, boxTy);
+    builder->create<fir::StoreOp>(loc, box, boxAlloc);
+    return boxAlloc;
   }
 
   void mapSymbolAttributes(const Fortran::lower::pft::Variable &var,
@@ -1994,6 +2008,22 @@ private:
     Fortran::lower::CharacterExprHelper charHelp{*builder, loc};
     Fortran::lower::BoxAnalyzer sba;
     sba.analyze(sym);
+
+    // First deal with pointers an allocatables, because their handling here
+    // is the same regardless of their rank.
+    if (Fortran::semantics::IsAllocatableOrPointer(sym)) {
+      // global
+      auto boxAlloc = preAlloc;
+      // dummy or passed result
+      if (!boxAlloc)
+        if (auto symbox = lookupSymbol(sym))
+          boxAlloc = symbox.getAddr();
+      // local
+      if (!boxAlloc)
+        boxAlloc = createLocalAllocatable(loc, var, genType(var));
+      localSymbols.addAllocatableOrPointer(var.getSymbol(), boxAlloc, replace);
+      return;
+    }
 
     // compute extent from lower and upper bound.
     auto computeExtent = [&](mlir::Value lb, mlir::Value ub) -> mlir::Value {
@@ -2036,6 +2066,8 @@ private:
         fir::BoxDimsOp dimInfo;
         mlir::Value ub, lb;
         if (spec->lbound().isDeferred() || spec->ubound().isDeferred()) {
+          // This is an assumed shape because allocatables and pointers extents
+          // are not constant in the scope and are not read here.
           assert(box && "deferred bounds require a descriptor");
           auto dim = builder->createIntegerConstant(loc, idxTy, iter.index());
           dimInfo = builder->create<fir::BoxDimsOp>(loc, idxTy, idxTy, idxTy,
@@ -2047,10 +2079,7 @@ private:
                 builder->createConvert(loc, idxTy, createFIRExpr(loc, &expr));
             lbounds.emplace_back(lb);
           } else {
-            // FIXME: The front-end is not setting up the implicit lower
-            // bounds to 1 for assumed shape array. Do this here for now,
-            // but that is absolutely wrong for allocatable and pointers.
-            // lbounds.emplace_back(dimInfo.getResult(0));
+            // Implict lower bound is 1 (Fortan 2018 section 8.5.8.3 point 3.)
             lbounds.emplace_back(builder->createIntegerConstant(loc, idxTy, 1));
           }
         } else {
@@ -2084,14 +2113,6 @@ private:
         // Trivial case.
         //===--------------------------------------------------------------===//
         [&](const Fortran::lower::details::ScalarSym &) {
-          if (Fortran::semantics::IsAllocatable(sym)) {
-            if (lookupSymbol(sym))
-              TODO("allocatable dummy or result");
-            if (var.isGlobal())
-              TODO("global allocatable");
-            createLocalAllocatable(loc, var, genType(var));
-            return;
-          }
           if (isDummy) {
             // This is an argument.
             if (!lookupSymbol(sym))
@@ -2222,14 +2243,6 @@ private:
           auto varType = genType(var);
           mlir::Value addr = lookupSymbol(sym).getAddr();
           mlir::Value argBox;
-          if (Fortran::semantics::IsAllocatable(sym)) {
-            if (addr)
-              TODO("allocatable dummy or result");
-            if (var.isGlobal())
-              TODO("global allocatable");
-            createLocalAllocatable(loc, var, varType);
-            return;
-          }
           auto castTy = builder->getRefType(varType);
           if (addr) {
             if (auto boxTy = addr.getType().dyn_cast<fir::BoxType>()) {
