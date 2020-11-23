@@ -341,12 +341,11 @@ void Fortran::lower::genDeallocateStmt(
   }
 }
 
-static mlir::Value createUnallocatedBox(Fortran::lower::FirOpBuilder &builder,
-                                        mlir::Location loc,
-                                        fir::BoxAddressValue boxAddress) {
-  auto varType = boxAddress.getEleTy();
-  auto heapType = fir::HeapType::get(varType);
-  auto boxType = fir::BoxType::get(heapType);
+mlir::Value
+Fortran::lower::createUnallocatedBox(Fortran::lower::FirOpBuilder &builder,
+                                     mlir::Location loc, mlir::Type boxType) {
+  auto heapType = boxType.dyn_cast<fir::BoxType>().getEleTy();
+  auto varType = fir::dyn_cast_ptrEleTy(heapType);
   auto nullAddr = builder.createNullConstant(loc, heapType);
   mlir::Value shape;
   if (auto seqTy = varType.dyn_cast<fir::SequenceType>()) {
@@ -370,7 +369,8 @@ void Fortran::lower::genAllocatableInit(Fortran::lower::FirOpBuilder &builder,
         loc, "TODO: Character or derived type allocatable initialization");
     return;
   }
-  if (auto box = createUnallocatedBox(builder, loc, boxAddress)) {
+  auto boxType = fir::dyn_cast_ptrEleTy(boxAddress.getAddr().getType());
+  if (auto box = createUnallocatedBox(builder, loc, boxType)) {
     builder.create<fir::StoreOp>(loc, box, boxAddress.getAddr());
     return;
   }

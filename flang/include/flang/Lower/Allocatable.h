@@ -12,6 +12,7 @@
 
 namespace mlir {
 class Value;
+class Type;
 class Location;
 } // namespace mlir
 
@@ -38,6 +39,8 @@ struct Variable;
 /// input.
 void genAllocatableInit(Fortran::lower::FirOpBuilder &, mlir::Location loc,
                         fir::BoxAddressValue boxAddress);
+mlir::Value createUnallocatedBox(Fortran::lower::FirOpBuilder &builder,
+                                 mlir::Location loc, mlir::Type boxType);
 
 /// Lower an allocate statement to fir.
 void genAllocateStmt(Fortran::lower::AbstractConverter &,

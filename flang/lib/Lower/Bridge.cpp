@@ -1765,10 +1765,26 @@ private:
       }
       return;
     }
+    // FIXME: an exported module variable will have external linkage.
+    auto linkage = builder->createInternalLinkage();
+    if (Fortran::semantics::IsAllocatableOrPointer(sym)) {
+      // TODO: stick the fir box inside genType ?
+      auto symTy = fir::BoxType::get(genType(var));
+      if (Fortran::semantics::IsPointer(sym))
+        TODO("Pointers globals");
+      auto init = [&](Fortran::lower::FirOpBuilder &b) {
+        auto box = Fortran::lower::createUnallocatedBox(b, loc, symTy);
+        b.create<fir::HasValueOp>(loc, box);
+      };
+      auto global =
+          builder->createGlobal(loc, symTy, globalName, isConst, init, linkage);
+      auto box = builder->create<fir::AddrOfOp>(loc, global.resultType(),
+                                                global.getSymbol());
+      localSymbols.addAllocatableOrPointer(var.getSymbol(), box);
+      return;
+    }
     if (const auto *details =
             sym.detailsIf<Fortran::semantics::ObjectEntityDetails>()) {
-      // FIXME: an exported module variable will have external linkage.
-      auto linkage = builder->createInternalLinkage();
       if (details->init()) {
         if (!sym.GetType()->AsIntrinsic()) {
           TODO(""); // Derived type / polymorphic
