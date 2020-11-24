@@ -58,3 +58,24 @@ subroutine foo()
   ! CHECK: %[[zBoxCast4:.*]] = fir.convert %[[zBoxAddr]] : (!fir.ref<!fir.box<!fir.heap<f32>>>) -> !fir.ref<!fir.box<none>>
   ! CHECK: fir.call @{{.*}}AllocatableDeallocate(%[[zBoxCast4]], {{.*}})
 end subroutine
+
+! CHECK-LABEL: func @_QPtest_globals()
+subroutine test_globals()
+  ! CHECK-DAG: fir.address_of(@_QFtest_globalsEgx) : !fir.ref<!fir.box<!fir.heap<i32>>>
+  ! CHECK-DAG: fir.address_of(@_QFtest_globalsEgy) : !fir.ref<!fir.box<!fir.heap<!fir.array<?x?xi32>>>>
+  integer, allocatable :: gx, gy(:, :)
+  save :: gx, gy
+  allocate(gx, gy(20, 30))
+end subroutine
+
+! CHECK-LABEL: fir.global internal @_QFtest_globalsEgx : !fir.box<!fir.heap<i32>>
+  ! CHECK: %[[gxNullAddr:.*]] = fir.convert %c0{{.*}} : (index) -> !fir.heap<i32>
+  ! CHECK: %[[gxInitBox:.*]] = fir.embox %0 : (!fir.heap<i32>) -> !fir.box<!fir.heap<i32>>
+  ! CHECK: fir.has_value %[[gxInitBox]] : !fir.box<!fir.heap<i32>>
+
+! CHECK-LABEL: fir.global internal @_QFtest_globalsEgy : !fir.box<!fir.heap<!fir.array<?x?xi32>>> {
+  ! CHECK-DAG: %[[gyNullAddr:.*]] = fir.convert %c0{{.*}} : (index) -> !fir.heap<!fir.array<?x?xi32>>
+  ! CHECK-DAG: %[[gyShape:.*]] = fir.shape %c0{{.*}}, %c0{{.*}} : (index, index) -> !fir.shape<2>
+  ! CHECK: %[[gyInitBox:.*]] = fir.embox %[[gyNullAddr]](%[[gyShape]]) : (!fir.heap<!fir.array<?x?xi32>>, !fir.shape<2>) -> !fir.box<!fir.heap<!fir.array<?x?xi32>>>
+  ! CHECK: fir.has_value %[[gyInitBox]] : !fir.box<!fir.heap<!fir.array<?x?xi32>>>
+
