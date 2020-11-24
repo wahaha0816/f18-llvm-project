@@ -345,10 +345,17 @@ mlir::Value
 Fortran::lower::createUnallocatedBox(Fortran::lower::FirOpBuilder &builder,
                                      mlir::Location loc, mlir::Type boxType) {
   auto heapType = boxType.dyn_cast<fir::BoxType>().getEleTy();
-  auto varType = fir::dyn_cast_ptrEleTy(heapType);
+  auto type = fir::dyn_cast_ptrEleTy(heapType);
+  auto eleTy = type;
+  if (auto seqType = eleTy.dyn_cast<fir::SequenceType>())
+    eleTy = seqType.getEleTy();
+  if (eleTy.isa<fir::CharacterType>() || eleTy.isa<fir::RecordType>()) {
+    mlir::emitError(
+        loc, "TODO: Character or derived type allocatable initialization");
+  }
   auto nullAddr = builder.createNullConstant(loc, heapType);
   mlir::Value shape;
-  if (auto seqTy = varType.dyn_cast<fir::SequenceType>()) {
+  if (auto seqTy = type.dyn_cast<fir::SequenceType>()) {
     auto zero = builder.createIntegerConstant(loc, builder.getIndexType(), 0);
     llvm::SmallVector<mlir::Value, 2> extents(seqTy.getDimension(), zero);
     llvm::ArrayRef<mlir::Value> lbounds = llvm::None;
@@ -356,22 +363,4 @@ Fortran::lower::createUnallocatedBox(Fortran::lower::FirOpBuilder &builder,
                                 fir::ArrayBoxValue{nullAddr, extents, lbounds});
   }
   return builder.create<fir::EmboxOp>(loc, boxType, nullAddr, shape);
-}
-
-void Fortran::lower::genAllocatableInit(Fortran::lower::FirOpBuilder &builder,
-                                        mlir::Location loc,
-                                        fir::BoxAddressValue boxAddress) {
-  auto type = boxAddress.getEleTy();
-  if (auto seqType = type.dyn_cast<fir::SequenceType>())
-    type = seqType.getEleTy();
-  if (type.isa<fir::CharacterType>() || type.isa<fir::RecordType>()) {
-    mlir::emitError(
-        loc, "TODO: Character or derived type allocatable initialization");
-    return;
-  }
-  auto boxType = fir::dyn_cast_ptrEleTy(boxAddress.getAddr().getType());
-  if (auto box = createUnallocatedBox(builder, loc, boxType)) {
-    builder.create<fir::StoreOp>(loc, box, boxAddress.getAddr());
-    return;
-  }
 }

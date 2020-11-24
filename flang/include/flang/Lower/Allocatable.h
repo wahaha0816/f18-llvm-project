@@ -32,13 +32,10 @@ namespace pft {
 struct Variable;
 }
 
-/// Generate fir to initialize the box (descriptor) of an allocatable variable.
-/// Initialization of such box has to be done at the beginning of the variable
-/// lifetime.
-/// The memory address of the box to be initialized must be provided as an
-/// input.
-void genAllocatableInit(Fortran::lower::FirOpBuilder &, mlir::Location loc,
-                        fir::BoxAddressValue boxAddress);
+/// Create a fir.box of type \p boxType that can be used to initialize an
+/// allocatable  variable. Initialization of such variable has to be done at the
+/// beginning of the variable lifetime by storing the created box in the memory
+/// for the variable box.
 mlir::Value createUnallocatedBox(Fortran::lower::FirOpBuilder &builder,
                                  mlir::Location loc, mlir::Type boxType);
 

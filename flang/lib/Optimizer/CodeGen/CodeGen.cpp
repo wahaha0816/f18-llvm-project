@@ -1224,7 +1224,7 @@ struct XEmboxOpConversion : public EmboxCommonConversion<fir::XEmboxOp> {
       if (hasSlice)
         step = rewriter.create<mlir::LLVM::MulOp>(loc, i64Ty, step,
                                                   operands[sliceOff + 2]);
-      dest = storeOrInsert(dest, {7, d, 2}, extent, intCast);
+      dest = storeOrInsert(dest, {7, d, 2}, step, intCast);
       // compute the stride for the next natural dimension
       prevDim =
           rewriter.create<mlir::LLVM::MulOp>(loc, i64Ty, prevDim, outerExtent);
