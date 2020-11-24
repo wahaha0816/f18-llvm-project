@@ -2620,7 +2620,6 @@ struct FIRToLLVMLoweringPass
 
     // required NOPs for applying a full conversion
     target.addLegalOp<mlir::ModuleOp, mlir::ModuleTerminatorOp>();
-    target.addLegalOp<fir::ShapeOp>();
 
     // apply the patterns
     if (mlir::failed(mlir::applyFullConversion(getModule(), target,
