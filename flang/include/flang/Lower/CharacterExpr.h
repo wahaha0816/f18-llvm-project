@@ -113,8 +113,8 @@ public:
   static fir::CharacterType getCharacterType(mlir::Value str);
 
   /// Return the integer type that must be used to manipulate
-  /// Character lengths. TODO: move this to FirOpBuilder?
-  mlir::Type getLengthType() { return builder.getIndexType(); }
+  /// Character lengths.
+  mlir::Type getLengthType() { return builder.getCharacterLengthType(); }
 
   /// Create an extended value from a value of type:
   /// - fir.boxchar<kind>

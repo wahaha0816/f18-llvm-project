@@ -2189,9 +2189,8 @@ private:
               // since we are lowering all function unit statements regardless
               // of whether the execution will reach them or not, we need to
               // fill a value for the length here.
-              auto helper = Fortran::lower::CharacterExprHelper{*builder, loc};
-              len = builder->createIntegerConstant(loc, helper.getLengthType(),
-                                                   1);
+              len = builder->createIntegerConstant(
+                  loc, builder->getCharacterLengthType(), 1);
             }
             // Override LEN with an expression
             if (charLen)

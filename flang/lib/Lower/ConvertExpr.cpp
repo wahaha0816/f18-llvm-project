@@ -271,27 +271,18 @@ private:
   }
 
   fir::ExtendedValue
-  genAllocatableOrPointerUnbox(Fortran::semantics::SymbolRef sym) {
-    auto boxAddr = symMap.lookupSymbol(sym).getAddr();
-    if (Fortran::semantics::IsAssumedRankArray(sym))
+  genAllocatableOrPointerUnbox(fir::BoxAddressValue boxAddr) {
+    if (boxAddr.hasAssumedRank())
       TODO("Assumed rank allocatables or pointers");
-    if (Fortran::semantics::IsPointer(sym))
+    if (boxAddr.isPointer())
       TODO("pointer"); // deal with non contiguity;
-    auto rank = sym->Rank();
-    // TODO: only intrinsic types other than CHARACTER
-    if (!boxAddr)
-      TODO("Allocatable type not lowered yet");
-    auto boxType = fir::dyn_cast_ptrEleTy(boxAddr.getType());
-    if (!boxType || !boxType.isa<fir::BoxType>())
-      llvm_unreachable("bad allocatable or pointer type in symbol map");
+    auto rank = boxAddr.rank();
 
-    auto varAddrType = boxType.cast<fir::BoxType>().getEleTy();
+    auto addrType = boxAddr.getBoxTy().getEleTy();
     auto loc = getLoc();
 
-    auto box = builder.create<fir::LoadOp>(loc, boxAddr);
-    auto addr = builder.create<fir::BoxAddrOp>(loc, varAddrType, box);
-    if (rank == 0)
-      return addr;
+    auto box = builder.create<fir::LoadOp>(loc, boxAddr.getAddr());
+    auto addr = builder.create<fir::BoxAddrOp>(loc, addrType, box);
     auto idxTy = builder.getIndexType();
     llvm::SmallVector<mlir::Value, 4> lbounds;
     llvm::SmallVector<mlir::Value, 4> extents;
@@ -302,16 +293,31 @@ private:
       lbounds.push_back(dimInfo.getResult(0));
       extents.push_back(dimInfo.getResult(1));
     }
-    return fir::ArrayBoxValue{addr, extents, lbounds};
+
+    if (boxAddr.isCharacter()) {
+      // FIXME: divide by width if needed !
+      auto lenTy = builder.getCharacterLengthType();
+      auto len = builder.create<fir::BoxEleSizeOp>(loc, lenTy, box);
+      if (rank)
+        return fir::CharArrayBoxValue{addr, len, extents, lbounds};
+      return fir::CharBoxValue{addr, len};
+    }
+    if (boxAddr.isDerived())
+      TODO("derived type boxAddress opening");
+    if (rank)
+      return fir::ArrayBoxValue{addr, extents, lbounds};
+    return addr;
   }
 
   /// Returns a reference to a symbol or its box/boxChar descriptor if it has
   /// one.
   fir::ExtendedValue gen(Fortran::semantics::SymbolRef sym) {
-    if (Fortran::semantics::IsAllocatableOrPointer(sym))
-      return genAllocatableOrPointerUnbox(sym);
     if (auto val = symMap.lookupSymbol(sym))
-      return val.toExtendedValue();
+      return val.match(
+          [&](const Fortran::lower::SymbolBox::PointerOrAllocatable &boxAddr) {
+            return genAllocatableOrPointerUnbox(boxAddr);
+          },
+          [&val](auto &) { return val.toExtendedValue(); });
     llvm_unreachable("all symbols should be in the map");
     auto addr = builder.createTemporary(getLoc(), converter.genType(sym),
                                         sym->name().ToString());
@@ -763,9 +769,7 @@ private:
     };
 
     auto lenp = builder.createIntegerConstant(
-        getLoc(),
-        Fortran::lower::CharacterExprHelper{builder, getLoc()}.getLengthType(),
-        len);
+        getLoc(), builder.getCharacterLengthType(), len);
     // When in an initializer context, construct the literal op itself and do
     // not construct another constant object in rodata.
     if (exprCtx.inInitializer())

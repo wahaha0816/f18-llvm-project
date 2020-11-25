@@ -239,6 +239,13 @@ public:
         .isa<fir::PointerType>();
   }
 
+  fir::BoxType getBoxTy() const {
+    auto type = getAddr().getType();
+    if (auto pointedTy = fir::dyn_cast_ptrEleTy(type))
+      type = pointedTy;
+    return type.cast<fir::BoxType>();
+  }
+
   /// Return the part of the address type after memory and box types. That is
   /// the element type maybe wrapped in a fir.array type.
   mlir::Type getBaseTy() const {
@@ -264,6 +271,16 @@ public:
 
   /// Is the entity an array or an assumed rank.
   bool hasRank() const { return getBaseTy().isa<fir::SequenceType>(); }
+  bool hasAssumedRank() const {
+    auto seqTy = getBaseTy().dyn_cast<fir::SequenceType>();
+    return seqTy && seqTy.hasUnknownShape();
+  }
+  unsigned rank() const {
+    auto seqTy = getBaseTy().dyn_cast<fir::SequenceType>();
+    if (seqTy)
+      return seqTy.getDimension();
+    return 0;
+  }
   bool isCharacter() const { return getEleTy().isa<fir::CharacterType>(); };
   bool isDerived() const { return getEleTy().isa<fir::RecordType>(); };
   bool hasNonDeferredLenParams() const {
