@@ -16,6 +16,11 @@ class Type;
 class Location;
 } // namespace mlir
 
+namespace llvm {
+template <typename T>
+class ArrayRef;
+}
+
 namespace Fortran::parser {
 struct AllocateStmt;
 struct DeallocateStmt;
@@ -36,8 +41,12 @@ struct Variable;
 /// allocatable  variable. Initialization of such variable has to be done at the
 /// beginning of the variable lifetime by storing the created box in the memory
 /// for the variable box.
+/// \p nonDeferredParams must provide the non deferred length parameters so that
+/// they can already be placed in the unallocated box (inquiries about these
+/// parameters are legal even in unallocated state).
 mlir::Value createUnallocatedBox(Fortran::lower::FirOpBuilder &builder,
-                                 mlir::Location loc, mlir::Type boxType);
+                                 mlir::Location loc, mlir::Type boxType,
+                                 llvm::ArrayRef<mlir::Value> nonDeferredParams);
 
 /// Lower an allocate statement to fir.
 void genAllocateStmt(Fortran::lower::AbstractConverter &,

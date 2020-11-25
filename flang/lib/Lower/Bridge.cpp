@@ -1773,7 +1773,8 @@ private:
       if (Fortran::semantics::IsPointer(sym))
         mlir::emitError(loc, "TODO: global pointer initialization");
       auto init = [&](Fortran::lower::FirOpBuilder &b) {
-        auto box = Fortran::lower::createUnallocatedBox(b, loc, symTy);
+        auto box =
+            Fortran::lower::createUnallocatedBox(b, loc, symTy, llvm::None);
         b.create<fir::HasValueOp>(loc, box);
       };
       auto global =
@@ -1984,12 +1985,13 @@ private:
     mapSymbolAttributes(var, storeMap, preAlloc);
   }
 
-  mlir::Value createLocalAllocatable(mlir::Location loc,
-                                     const Fortran::lower::pft::Variable &var,
-                                     mlir::Type boxTy) {
+  mlir::Value createLocalAllocatable(
+      mlir::Location loc, const Fortran::lower::pft::Variable &var,
+      mlir::Type boxTy, llvm::ArrayRef<mlir::Value> nonDeferredParams) {
     auto boxAlloc = builder->allocateLocal(
         loc, boxTy, mangleName(var.getSymbol()), llvm::None, var.isTarget());
-    auto box = Fortran::lower::createUnallocatedBox(*builder, loc, boxTy);
+    auto box = Fortran::lower::createUnallocatedBox(*builder, loc, boxTy,
+                                                    nonDeferredParams);
     builder->create<fir::StoreOp>(loc, box, boxAlloc);
     return boxAlloc;
   }
@@ -2012,6 +2014,15 @@ private:
     // First deal with pointers an allocatables, because their handling here
     // is the same regardless of their rank.
     if (Fortran::semantics::IsAllocatableOrPointer(sym)) {
+      llvm::SmallVector<mlir::Value, 1> nonDeferredLenParams;
+      if (sba.isChar()) {
+        auto lenParam = sym.GetType()->characterTypeSpec().length();
+        if (auto lenExpr = lenParam.GetExplicit()) {
+          Fortran::semantics::SomeExpr lenEx{*lenExpr};
+          nonDeferredLenParams.push_back(createFIRExpr(loc, &lenEx));
+        }
+      }
+      // TODO: derived type length parameters
       // global
       auto boxAlloc = preAlloc;
       // dummy or passed result
@@ -2020,8 +2031,10 @@ private:
           boxAlloc = symbox.getAddr();
       // local
       if (!boxAlloc)
-        boxAlloc = createLocalAllocatable(loc, var, genType(var));
-      localSymbols.addAllocatableOrPointer(var.getSymbol(), boxAlloc, replace);
+        boxAlloc = createLocalAllocatable(loc, var, genType(var),
+                                          nonDeferredLenParams);
+      localSymbols.addAllocatableOrPointer(var.getSymbol(), boxAlloc,
+                                           nonDeferredLenParams, replace);
       return;
     }
 

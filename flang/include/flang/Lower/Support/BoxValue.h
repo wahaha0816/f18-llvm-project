@@ -220,7 +220,9 @@ public:
   // Currently only accepts fir.(ref/ptr/heap)<fir.box<type>> mlir::Value for
   // the address. This may change if we accept
   // fir.(ref/ptr/heap)<fir.heap<type>> for allocatables.
-  BoxAddressValue(mlir::Value addr) : AbstractBox(addr) {
+  BoxAddressValue(mlir::Value addr, llvm::ArrayRef<mlir::Value> lenParameters)
+      : AbstractBox(addr), lenParams{lenParameters.begin(),
+                                     lenParameters.end()} {
     assert(verify() &&
            "BoxAddressValue requires mem ref to fir.box<fir.[heap|ptr]<type>>");
   }
@@ -236,11 +238,10 @@ public:
         .getEleTy()
         .isa<fir::PointerType>();
   }
-  /// Is the entity an array or an assumed rank.
-  bool hasRank() const;
 
-  /// Return the part of the address type after memory and box types.
-  mlir::Type getEleTy() const {
+  /// Return the part of the address type after memory and box types. That is
+  /// the element type maybe wrapped in a fir.array type.
+  mlir::Type getBaseTy() const {
     auto type = getAddr().getType();
     while (type) {
       if (auto pointedTy = fir::dyn_cast_ptrEleTy(type))
@@ -253,9 +254,32 @@ public:
     return type;
   }
 
-private:
+  /// Get the scalar type related to the described entity
+  mlir::Type getEleTy() const {
+    auto type = getBaseTy();
+    if (auto seqTy = type.dyn_cast<fir::SequenceType>())
+      return seqTy.getEleTy();
+    return type;
+  }
+
+  /// Is the entity an array or an assumed rank.
+  bool hasRank() const { return getBaseTy().isa<fir::SequenceType>(); }
+  bool isCharacter() const { return getEleTy().isa<fir::CharacterType>(); };
+  bool isDerived() const { return getEleTy().isa<fir::RecordType>(); };
+  bool hasNonDeferredLenParams() const {
+    // FIXME: what if length in type ?
+    return !lenParams.empty();
+  }
+
+  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &,
+                                       const BoxAddressValue &);
+  LLVM_DUMP_METHOD void dump() const { operator<<(llvm::errs(), *this); }
+
+protected:
   /// validate the address type form.
   bool verify() const;
+  /// hold the non-deferred length parameters (both for characters and derived).
+  llvm::SmallVector<mlir::Value, 2> lenParams;
 };
 
 class ExtendedValue;
