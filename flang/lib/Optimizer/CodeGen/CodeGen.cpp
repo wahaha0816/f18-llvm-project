@@ -426,7 +426,8 @@ struct BoxEleSizeOpConversion : public FIROpConversion<fir::BoxEleSizeOp> {
     auto c0 = genConstantOffset(loc, rewriter, 0);
     auto c1 = genConstantOffset(loc, rewriter, 1);
     auto ty = convertType(boxelesz.getType());
-    auto p = genGEP(loc, unwrap(ty), rewriter, a, c0, c1);
+    auto pty = unwrap(ty).getPointerTo();
+    auto p = genGEP(loc, unwrap(pty), rewriter, a, c0, c1);
     rewriter.replaceOpWithNewOp<mlir::LLVM::LoadOp>(boxelesz, ty, p);
     return success();
   }
