@@ -113,6 +113,11 @@ genAllocatableDeallocate(Fortran::lower::FirOpBuilder &builder,
   return builder.create<fir::CallOp>(loc, callee, operands).getResult(0);
 }
 
+// TODO: the front-end needs to store the AllocateObject as an expressions.
+// When derived type are supported, the allocatable can be describe by a non
+// trivial expression that would need to be computed e.g `A(foo(B+C),
+// 1)%alloc_component` For now, getting the last name symbol is OK since there
+// is only one name.
 /// Helper to get symbol from AllocateObject.
 static const Fortran::semantics::Symbol &
 unwrapSymbol(const Fortran::parser::AllocateObject &allocObj) {
