@@ -91,6 +91,21 @@ public:
     return builder.create<fir::ShapeShiftOp>(loc, shapeType, shapeArgs);
   }
 
+  fir::BoxAddressValue genBoxAddress(const Fortran::lower::SomeExpr &expr) {
+    // TODO: GetLastSymbol is not the right thing to do if expr if an
+    // allocatable or pointer derived type component.
+    auto *sym = Fortran::evaluate::GetLastSymbol(expr);
+    if (!sym)
+      mlir::emitError(getLoc(), "trying to get descriptor address of an "
+                                "expression that is not a variable");
+    return symMap.lookupSymbol(*sym).match(
+        [&](const Fortran::lower::SymbolBox::PointerOrAllocatable &boxAddr)
+            -> fir::BoxAddressValue { return boxAddr; },
+        [](auto &) -> fir::BoxAddressValue {
+          llvm::report_fatal_error("symbol is not a BoxAddressValue");
+        });
+  }
+
 private:
   mlir::Location location;
   Fortran::lower::AbstractConverter &converter;
@@ -1501,10 +1516,7 @@ private:
       }
 
       if (arg.passBy == PassBy::BoxAddress) {
-        // FIXME: that does not fly for derived types
-        auto *sym = Fortran::evaluate::GetLastSymbol(*expr);
-        assert(sym);
-        caller.placeInput(arg, symMap.lookupSymbol(*sym).getAddr());
+        caller.placeInput(arg, genBoxAddress(*expr).getAddr());
         continue;
       }
 
@@ -1838,4 +1850,13 @@ Fortran::lower::createShape(mlir::Location loc,
         mlir::emitError(loc, "not an array");
         return {};
       });
+}
+
+fir::BoxAddressValue Fortran::lower::createSomeBoxAddress(
+    mlir::Location loc, Fortran::lower::AbstractConverter &converter,
+    const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &expr,
+    Fortran::lower::SymMap &symMap) {
+  // Box address inquiry is not an array expression.
+  Fortran::lower::ExpressionContext unused;
+  return ExprLowering{loc, converter, symMap, unused}.genBoxAddress(expr);
 }

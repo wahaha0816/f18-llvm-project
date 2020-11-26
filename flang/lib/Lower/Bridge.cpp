@@ -262,6 +262,13 @@ public:
     return createSomeExtendedExpression(loc ? *loc : toLocation(), *this, expr,
                                         localSymbols, context);
   }
+  fir::BoxAddressValue
+  genExprBoxAddr(const Fortran::lower::SomeExpr &expr,
+                 mlir::Location *loc = nullptr) override final {
+    return createSomeBoxAddress(loc ? *loc : toLocation(), *this, expr,
+                                localSymbols);
+  }
+
   Fortran::evaluate::FoldingContext &getFoldingContext() override final {
     return foldingContext;
   }

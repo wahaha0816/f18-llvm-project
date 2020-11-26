@@ -91,6 +91,19 @@ public:
     return genExprValue(*someExpr, &loc);
   }
 
+  /// Generate the address of the box describing the variable designated
+  /// by the expression. The expression must be an allocatable or pointer
+  /// designator.
+  virtual fir::BoxAddressValue
+  genExprBoxAddr(const SomeExpr &, mlir::Location *loc = nullptr) = 0;
+
+  /// Generate the address of the box describing the variable designated
+  /// by the expression. The expression must be an allocatable or pointer
+  /// designator.
+  fir::BoxAddressValue genExprBoxAddr(const SomeExpr *someExpr,
+                                      mlir::Location loc) {
+    return genExprBoxAddr(*someExpr, &loc);
+  }
   /// Get FoldingContext that is required for some expression
   /// analysis.
   virtual Fortran::evaluate::FoldingContext &getFoldingContext() = 0;
