@@ -1500,6 +1500,14 @@ private:
         continue;
       }
 
+      if (arg.passBy == PassBy::BoxAddress) {
+        // FIXME: that does not fly for derived types
+        auto *sym = Fortran::evaluate::GetLastSymbol(*expr);
+        assert(sym);
+        caller.placeInput(arg, symMap.lookupSymbol(*sym).getAddr());
+        continue;
+      }
+
       auto argRef = genExtAddr(*expr);
 
       auto helper = Fortran::lower::CharacterExprHelper{builder, getLoc()};
