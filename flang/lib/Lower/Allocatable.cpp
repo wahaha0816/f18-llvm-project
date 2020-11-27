@@ -168,7 +168,7 @@ public:
 
   void lower() {
     visitAllocateOptions();
-    lowerAllocateLenghtParameters();
+    lowerAllocateLengthParameters();
     errorManagement.lower(converter, loc, statExpr, errMsgExpr);
     // Create a landing block after all allocations so that
     // we can jump there in case of error.
@@ -303,7 +303,7 @@ private:
 
   /// Lower the length parameters that may be specified in the optional
   /// type specification.
-  void lowerAllocateLenghtParameters() {
+  void lowerAllocateLengthParameters() {
     const auto *typeSpec = getAllocateStmtTypeSpec();
     if (!typeSpec)
       return;
