@@ -2022,13 +2022,14 @@ private:
     // is the same regardless of their rank.
     if (Fortran::semantics::IsAllocatableOrPointer(sym)) {
       llvm::SmallVector<mlir::Value, 1> nonDeferredLenParams;
-      if (sba.isChar()) {
-        auto lenParam = sym.GetType()->characterTypeSpec().length();
-        if (auto lenExpr = lenParam.GetExplicit()) {
-          Fortran::semantics::SomeExpr lenEx{*lenExpr};
-          nonDeferredLenParams.push_back(createFIRExpr(loc, &lenEx));
+      auto lenTy = builder->getCharacterLengthType();
+      if (sba.isChar())
+        if (auto len = sba.getCharLenConst()) {
+          nonDeferredLenParams.push_back(
+              builder->createIntegerConstant(loc, lenTy, *len));
+        } else if (auto lenExpr = sba.getCharLenExpr()) {
+          nonDeferredLenParams.push_back(createFIRExpr(loc, &*lenExpr));
         }
-      }
       // TODO: derived type length parameters
       // global
       auto boxAlloc = preAlloc;
@@ -2513,14 +2514,11 @@ private:
               argBox = actualArg;
               auto refTy = builder->getRefType(boxTy.getEleTy());
               addr = builder->create<fir::BoxAddrOp>(loc, refTy, argBox);
-              if (charLen) {
-                // Set/override LEN with an expression
+              // Set LEN with an expression if the length is not deferred.
+              if (charLen)
                 len = createFIRExpr(loc, &*charLen);
-              } else {
-                // FIXME: that is not correct with kind > 1 character, we need
-                // to divide by the character width.
-                len = builder->create<fir::BoxEleSizeOp>(loc, idxTy, argBox);
-              }
+              else
+                len = charHelp.readLengthFromBox(argBox);
             } else {
               auto unboxchar = charHelp.createUnboxChar(actualArg);
               addr = unboxchar.first;

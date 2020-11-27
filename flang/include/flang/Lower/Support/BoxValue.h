@@ -211,56 +211,36 @@ protected:
 /// Used for triple notation (array slices)
 using RangeBoxValue = std::tuple<mlir::Value, mlir::Value, mlir::Value>;
 
-/// BoxAddressValue is used for entities that are represented by the address to
-/// a box. These is intended to be used for entities whose base address, shape
+/// BoxAddressValue is used for entities that are represented by the address of
+/// a box. This is intended to be used for entities whose base address, shape
 /// and type are not constant in the entity lifetime (e.g Allocatables and
 /// Pointers).
 class BoxAddressValue : public AbstractBox {
 public:
-  // Currently only accepts fir.(ref/ptr/heap)<fir.box<type>> mlir::Value for
-  // the address. This may change if we accept
-  // fir.(ref/ptr/heap)<fir.heap<type>> for allocatables.
+  /// Create BoxAddressValue given the address \p addr of the box and the non
+  /// deferred length parameters \p lenParameters. The non deferred length
+  /// parameters must always be provided, even if they are constant and already
+  /// reflected in the address type.
   BoxAddressValue(mlir::Value addr, llvm::ArrayRef<mlir::Value> lenParameters)
       : AbstractBox(addr), lenParams{lenParameters.begin(),
                                      lenParameters.end()} {
+    // Currently only accepts fir.(ref/ptr/heap)<fir.box<type>> mlir::Value for
+    // the address. This may change if we accept
+    // fir.(ref/ptr/heap)<fir.heap<type>> for scalar without length parameters.
     assert(verify() &&
            "BoxAddressValue requires mem ref to fir.box<fir.[heap|ptr]<type>>");
   }
-  bool isPointer() const {
-    return fir::dyn_cast_ptrEleTy(getAddr().getType())
-        .dyn_cast<fir::BoxType>()
-        .getEleTy()
-        .isa<fir::PointerType>();
-  }
-  bool isAllocatable() const {
-    return fir::dyn_cast_ptrEleTy(getAddr().getType())
-        .dyn_cast<fir::BoxType>()
-        .getEleTy()
-        .isa<fir::PointerType>();
-  }
 
+  /// Get the fir.box<type> part of the address type.
   fir::BoxType getBoxTy() const {
     auto type = getAddr().getType();
-    if (auto pointedTy = fir::dyn_cast_ptrEleTy(type))
-      type = pointedTy;
-    return type.cast<fir::BoxType>();
+    return fir::dyn_cast_ptrEleTy(type).cast<fir::BoxType>();
   }
-
   /// Return the part of the address type after memory and box types. That is
-  /// the element type maybe wrapped in a fir.array type.
+  /// the element type, maybe wrapped in a fir.array type.
   mlir::Type getBaseTy() const {
-    auto type = getAddr().getType();
-    while (type) {
-      if (auto pointedTy = fir::dyn_cast_ptrEleTy(type))
-        type = pointedTy;
-      else if (auto boxTy = type.dyn_cast<fir::BoxType>())
-        type = boxTy.getEleTy();
-      else
-        break;
-    }
-    return type;
+    return fir::dyn_cast_ptrEleTy(getBoxTy().getEleTy());
   }
-
   /// Get the scalar type related to the described entity
   mlir::Type getEleTy() const {
     auto type = getBaseTy();
@@ -269,33 +249,45 @@ public:
     return type;
   }
 
-  /// Is the entity an array or an assumed rank.
+  /// Is this a Fortran pointer ?
+  bool isPointer() const {
+    return getBoxTy().getEleTy().isa<fir::PointerType>();
+  }
+  /// Is this an allocatable ?
+  bool isAllocatable() const {
+    return getBoxTy().getEleTy().isa<fir::HeapType>();
+  }
+  /// Is the entity an array or an assumed rank ?
   bool hasRank() const { return getBaseTy().isa<fir::SequenceType>(); }
+  /// Is this an assumed rank ?
   bool hasAssumedRank() const {
     auto seqTy = getBaseTy().dyn_cast<fir::SequenceType>();
     return seqTy && seqTy.hasUnknownShape();
   }
+  /// Returns the rank of the entity. Beware that zero will be returned for
+  /// both scalars and assumed rank.
   unsigned rank() const {
     auto seqTy = getBaseTy().dyn_cast<fir::SequenceType>();
     if (seqTy)
       return seqTy.getDimension();
     return 0;
   }
+  /// Is this a character entity ?
   bool isCharacter() const { return getEleTy().isa<fir::CharacterType>(); };
+  /// Is this a derived type entity ?
   bool isDerived() const { return getEleTy().isa<fir::RecordType>(); };
-  bool hasNonDeferredLenParams() const {
-    // FIXME: what if length in type ?
-    return !lenParams.empty();
-  }
-
+  /// Does this entity has any non deferred length parameters ?
+  bool hasNonDeferredLenParams() const { return !lenParams.empty(); }
+  /// Return the non deferred length parameters.
+  llvm::ArrayRef<mlir::Value> nonDeferredLenParams() { return lenParams; }
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &,
                                        const BoxAddressValue &);
   LLVM_DUMP_METHOD void dump() const { operator<<(llvm::errs(), *this); }
 
 protected:
-  /// validate the address type form.
+  /// Validate the address type form in the constructor.
   bool verify() const;
-  /// hold the non-deferred length parameters (both for characters and derived).
+  /// Hold the non-deferred length parameters (both for characters and derived).
   llvm::SmallVector<mlir::Value, 2> lenParams;
 };
 

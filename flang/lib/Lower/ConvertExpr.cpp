@@ -310,9 +310,9 @@ private:
     }
 
     if (boxAddr.isCharacter()) {
-      // FIXME: divide by width if needed !
-      auto lenTy = builder.getCharacterLengthType();
-      auto len = builder.create<fir::BoxEleSizeOp>(loc, lenTy, box);
+      Fortran::lower::CharacterExprHelper helper{builder, loc};
+      auto params = boxAddr.nonDeferredLenParams();
+      auto len = params.empty() ? helper.readLengthFromBox(box) : params[0];
       if (rank)
         return fir::CharArrayBoxValue{addr, len, extents, lbounds};
       return fir::CharBoxValue{addr, len};

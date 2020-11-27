@@ -157,6 +157,9 @@ public:
   /// Returns integer value held in a character singleton.
   mlir::Value extractCodeFromSingleton(mlir::Value singleton);
 
+  /// Compute length given a fir.box describing a character entity.
+  mlir::Value readLengthFromBox(mlir::Value box);
+
 private:
   /// FIXME: the implementation also needs a clean-up now that
   /// CharBoxValue are better propagated.

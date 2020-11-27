@@ -610,3 +610,17 @@ mlir::Value Fortran::lower::CharacterExprHelper::extractCodeFromSingleton(
   auto zero = builder.createIntegerConstant(loc, builder.getIndexType(), 0);
   return builder.create<fir::ExtractValueOp>(loc, intType, singleton, zero);
 }
+
+mlir::Value
+Fortran::lower::CharacterExprHelper::readLengthFromBox(mlir::Value box) {
+  auto lenTy = getLengthType();
+  auto size = builder.create<fir::BoxEleSizeOp>(loc, lenTy, box);
+  auto charTy = recoverCharacterType(box.getType());
+  auto bits = builder.getKindMap().getCharacterBitsize(charTy.getFKind());
+  auto width = bits / 8;
+  if (width > 1) {
+    auto widthVal = builder.createIntegerConstant(loc, lenTy, width);
+    return builder.create<mlir::SignedDivIOp>(loc, size, widthVal);
+  }
+  return size;
+}
