@@ -2023,13 +2023,13 @@ private:
     if (Fortran::semantics::IsAllocatableOrPointer(sym)) {
       llvm::SmallVector<mlir::Value, 1> nonDeferredLenParams;
       auto lenTy = builder->getCharacterLengthType();
-      if (sba.isChar())
-        if (auto len = sba.getCharLenConst()) {
+      if (sba.isChar()) {
+        if (auto len = sba.getCharLenConst())
           nonDeferredLenParams.push_back(
               builder->createIntegerConstant(loc, lenTy, *len));
-        } else if (auto lenExpr = sba.getCharLenExpr()) {
+        else if (auto lenExpr = sba.getCharLenExpr())
           nonDeferredLenParams.push_back(createFIRExpr(loc, &*lenExpr));
-        }
+      }
       // TODO: derived type length parameters
       // global
       auto boxAlloc = preAlloc;
