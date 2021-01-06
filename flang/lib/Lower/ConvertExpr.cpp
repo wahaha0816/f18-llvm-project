@@ -894,13 +894,16 @@ public:
 
   /// Special factoring to allow RangeBoxValue to be returned when generating
   /// values.
-  std::variant<fir::ExtendedValue, fir::RangeBoxValue>
+  std::variant<fir::RangeBoxValue, fir::ExtendedValue>
   genComponent(const Fortran::evaluate::Subscript &subs) {
     if (auto *s = std::get_if<Fortran::evaluate::IndirectSubscriptIntegerExpr>(
             &subs.u))
       return {genval(s->value())};
+    // clang++ 11 with glibc 10.2 needs std::in_place below, otherwise it
+    // attemps and fail to construct the variant containing an ExtendedValue.
     if (auto *s = std::get_if<Fortran::evaluate::Triplet>(&subs.u))
-      return {genTriple(*s)};
+      return std::variant<fir::RangeBoxValue, fir::ExtendedValue>{
+          std::in_place_type<fir::RangeBoxValue>, genTriple(*s)};
     llvm_unreachable("unknown subscript case");
   }
 
