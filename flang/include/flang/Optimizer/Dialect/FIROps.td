@@ -2243,6 +2243,11 @@ def fir_SliceOp : fir_Op<"slice", [NoSideEffect, AttrSizedOperandSegments]> {
       return emitOpError("slice type rank mismatch");
     return mlir::success();
   }];
+
+  let extraClassDeclaration = [{
+    unsigned getOutRank() { return getOutputRank(triples()); }
+    static unsigned getOutputRank(mlir::ValueRange triples);
+  }];
 }
 
 def fir_InsertValueOp : fir_OneResultOp<"insert_value", [NoSideEffect]> {
