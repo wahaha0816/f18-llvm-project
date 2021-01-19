@@ -1107,8 +1107,9 @@ public:
           TODO("");
         }
       }
-      return builder.create<fir::ArrayCoorOp>(
-          loc, refTy, addr, shape, mlir::Value{}, arrayCoorArgs, ValueRange());
+      return builder.create<fir::ArrayCoorOp>(loc, refTy, addr, shape,
+                                              mlir::Value{}, arrayCoorArgs,
+                                              ValueRange(), arr.getSourceBox());
     };
     return exv.match(
         [&](const fir::ArrayBoxValue &arr) {

@@ -438,7 +438,8 @@ public:
       rewriter.setInsertionPoint(op);
       auto coor = rewriter.create<ArrayCoorOp>(
           update.getLoc(), getEleTy(load.memref().getType()), allocmem,
-          load.shape(), load.slice(), update.indices(), load.lenParams());
+          load.shape(), load.slice(), update.indices(), load.lenParams(),
+          mlir::Value{});
       rewriter.create<fir::StoreOp>(update.getLoc(), update.merge(), coor);
       auto *storeOp = useMap.lookup(loadOp);
       rewriter.setInsertionPoint(storeOp);
@@ -452,7 +453,8 @@ public:
       rewriter.setInsertionPoint(op);
       auto coor = rewriter.create<ArrayCoorOp>(
           update.getLoc(), getEleTy(load.memref().getType()), load.memref(),
-          load.shape(), load.slice(), update.indices(), load.lenParams());
+          load.shape(), load.slice(), update.indices(), load.lenParams(),
+          mlir::Value{});
       rewriter.create<fir::StoreOp>(update.getLoc(), update.merge(), coor);
     }
     update.replaceAllUsesWith(load.getResult());
@@ -482,7 +484,7 @@ public:
     auto insPt = rewriter.saveInsertionPoint();
     llvm::SmallVector<mlir::Value, 8> shape;
     getExtents(shape, shapeOp.getDefiningOp());
-   llvm::SmallVector<mlir::Value, 8> indices;
+    llvm::SmallVector<mlir::Value, 8> indices;
     // Build loop nest from column to row.
     for (auto sh : llvm::reverse(shape)) {
       auto idxTy = rewriter.getIndexType();
@@ -496,11 +498,13 @@ public:
     std::reverse(indices.begin(), indices.end());
     auto ty0 = getEleTy(src.getType());
     auto fromAddr = rewriter.create<fir::ArrayCoorOp>(
-        loc, ty0, src, shapeOp, mlir::Value{}, indices, mlir::ValueRange{});
+        loc, ty0, src, shapeOp, mlir::Value{}, indices, mlir::ValueRange{},
+        mlir::Value{});
     auto load = rewriter.create<fir::LoadOp>(loc, fromAddr);
     auto ty1 = getEleTy(dst.getType());
     auto toAddr = rewriter.create<fir::ArrayCoorOp>(
-        loc, ty1, dst, shapeOp, mlir::Value{}, indices, mlir::ValueRange{});
+        loc, ty1, dst, shapeOp, mlir::Value{}, indices, mlir::ValueRange{},
+        mlir::Value{});
     rewriter.create<fir::StoreOp>(loc, load, toAddr);
     rewriter.restoreInsertionPoint(insPt);
   }
@@ -524,7 +528,8 @@ public:
     auto load = mlir::cast<ArrayLoadOp>(useMap.lookup(op));
     auto coor = rewriter.create<ArrayCoorOp>(
         fetch.getLoc(), getEleTy(load.memref().getType()), load.memref(),
-        load.shape(), load.slice(), fetch.indices(), load.lenParams());
+        load.shape(), load.slice(), fetch.indices(), load.lenParams(),
+        mlir::Value{});
     rewriter.replaceOpWithNewOp<fir::LoadOp>(fetch, coor);
     return mlir::success();
   }

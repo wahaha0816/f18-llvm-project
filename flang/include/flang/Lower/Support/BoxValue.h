@@ -95,9 +95,9 @@ class AbstractArrayBox {
 public:
   AbstractArrayBox() = default;
   AbstractArrayBox(llvm::ArrayRef<mlir::Value> extents,
-                   llvm::ArrayRef<mlir::Value> lbounds)
-      : extents{extents.begin(), extents.end()}, lbounds{lbounds.begin(),
-                                                         lbounds.end()} {}
+                   llvm::ArrayRef<mlir::Value> lbounds, mlir::Value sourceBox)
+      : extents{extents.begin(), extents.end()},
+        lbounds{lbounds.begin(), lbounds.end()}, sourceBox{sourceBox} {}
 
   // Every array has extents that describe its shape.
   const llvm::SmallVectorImpl<mlir::Value> &getExtents() const {
@@ -110,11 +110,18 @@ public:
     return lbounds;
   }
 
+  /// If the entity is described by a box (e.g. it is a dummy, allocatable, or
+  /// pointer) The information in the source box that is also present in other
+  /// fields (e.g the extents) is the same, except the lower bounds of the
+  /// sourceBox that should be ignored.
+  mlir::Value getSourceBox() const { return sourceBox; }
+
   bool lboundsAllOne() const { return lbounds.empty(); }
 
 protected:
   llvm::SmallVector<mlir::Value, 4> extents;
   llvm::SmallVector<mlir::Value, 4> lbounds;
+  mlir::Value sourceBox;
 };
 
 /// Expressions with rank > 0 have extents. They may also have lbounds that are
@@ -122,10 +129,13 @@ protected:
 class ArrayBoxValue : public AbstractBox, public AbstractArrayBox {
 public:
   ArrayBoxValue(mlir::Value addr, llvm::ArrayRef<mlir::Value> extents,
-                llvm::ArrayRef<mlir::Value> lbounds = {})
-      : AbstractBox{addr}, AbstractArrayBox{extents, lbounds} {}
+                llvm::ArrayRef<mlir::Value> lbounds = {},
+                mlir::Value sourceBox = {})
+      : AbstractBox{addr}, AbstractArrayBox{extents, lbounds, sourceBox} {}
 
   ArrayBoxValue clone(mlir::Value newBase) const {
+    // Do not clone sourceBox, it's stride and base address information would
+    // not describe the new entity.
     return {newBase, extents, lbounds};
   }
 
@@ -139,8 +149,10 @@ class CharArrayBoxValue : public CharBoxValue, public AbstractArrayBox {
 public:
   CharArrayBoxValue(mlir::Value addr, mlir::Value len,
                     llvm::ArrayRef<mlir::Value> extents,
-                    llvm::ArrayRef<mlir::Value> lbounds = {})
-      : CharBoxValue{addr, len}, AbstractArrayBox{extents, lbounds} {}
+                    llvm::ArrayRef<mlir::Value> lbounds = {},
+                    mlir::Value sourceBox = {})
+      : CharBoxValue{addr, len}, AbstractArrayBox{extents, lbounds, sourceBox} {
+  }
 
   CharArrayBoxValue clone(mlir::Value newBase) const {
     return {newBase, len, extents, lbounds};
@@ -180,14 +192,14 @@ public:
   BoxValue(mlir::Value addr, mlir::Value len)
       : AbstractBox{addr}, AbstractArrayBox{}, len{len} {}
   BoxValue(mlir::Value addr, llvm::ArrayRef<mlir::Value> extents,
-           llvm::ArrayRef<mlir::Value> lbounds = {})
-      : AbstractBox{addr}, AbstractArrayBox{extents, lbounds} {}
+           llvm::ArrayRef<mlir::Value> lbounds = {}, mlir::Value sourceBox = {})
+      : AbstractBox{addr}, AbstractArrayBox{extents, lbounds, sourceBox} {}
   BoxValue(mlir::Value addr, mlir::Value len,
            llvm::ArrayRef<mlir::Value> params,
            llvm::ArrayRef<mlir::Value> extents,
-           llvm::ArrayRef<mlir::Value> lbounds = {})
-      : AbstractBox{addr}, AbstractArrayBox{extents, lbounds}, len{len},
-        params{params.begin(), params.end()} {}
+           llvm::ArrayRef<mlir::Value> lbounds = {}, mlir::Value sourceBox = {})
+      : AbstractBox{addr}, AbstractArrayBox{extents, lbounds, sourceBox},
+        len{len}, params{params.begin(), params.end()} {}
 
   BoxValue clone(mlir::Value newBase) const {
     return {newBase, len, params, extents, lbounds};

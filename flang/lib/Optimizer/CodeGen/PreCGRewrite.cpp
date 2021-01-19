@@ -194,7 +194,8 @@ public:
         rewriter.getNamedAttr(XArrayCoorOp::sliceAttrName(), sliceAttr));
     auto xArrCoor = rewriter.create<XArrayCoorOp>(
         loc, arrCoor.getType(), arrCoor.memref(), shapeOpers, shiftOpers,
-        sliceOpers, arrCoor.indices(), arrCoor.lenParams(), attrs);
+        sliceOpers, arrCoor.indices(), arrCoor.lenParams(), arrCoor.sourceBox(),
+        attrs);
     LLVM_DEBUG(llvm::dbgs()
                << "rewriting " << arrCoor << " to " << xArrCoor << '\n');
     rewriter.replaceOp(arrCoor, xArrCoor.getOperation()->getResults());

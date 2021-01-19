@@ -210,24 +210,29 @@ public:
   /// Add an array mapping with (address, shape).
   void addSymbolWithShape(semantics::SymbolRef sym, mlir::Value value,
                           llvm::ArrayRef<mlir::Value> shape,
-                          bool force = false) {
-    makeSym(sym, SymbolBox::FullDim(value, shape), force);
+                          mlir::Value sourceBox = {}, bool force = false) {
+    makeSym(sym,
+            SymbolBox::FullDim(value, shape, /*lbounds*/ llvm::None, sourceBox),
+            force);
   }
 
   /// Add an array of CHARACTER mapping.
   void addCharSymbolWithShape(semantics::SymbolRef sym, mlir::Value value,
                               mlir::Value len,
                               llvm::ArrayRef<mlir::Value> shape,
-                              bool force = false) {
-    makeSym(sym, SymbolBox::CharFullDim(value, len, shape), force);
+                              mlir::Value sourceBox = {}, bool force = false) {
+    makeSym(sym,
+            SymbolBox::CharFullDim(value, len, shape, /* lbounds*/ llvm::None,
+                                   sourceBox),
+            force);
   }
 
   /// Add an array mapping with bounds notation.
   void addSymbolWithBounds(semantics::SymbolRef sym, mlir::Value value,
                            llvm::ArrayRef<mlir::Value> extents,
                            llvm::ArrayRef<mlir::Value> lbounds,
-                           bool force = false) {
-    makeSym(sym, SymbolBox::FullDim(value, extents, lbounds), force);
+                           mlir::Value sourceBox = {}, bool force = false) {
+    makeSym(sym, SymbolBox::FullDim(value, extents, lbounds, sourceBox), force);
   }
 
   /// Add an array of CHARACTER with bounds notation.
@@ -235,8 +240,10 @@ public:
                                mlir::Value len,
                                llvm::ArrayRef<mlir::Value> extents,
                                llvm::ArrayRef<mlir::Value> lbounds,
-                               bool force = false) {
-    makeSym(sym, SymbolBox::CharFullDim(value, len, extents, lbounds), force);
+                               mlir::Value sourceBox = {}, bool force = false) {
+    makeSym(sym,
+            SymbolBox::CharFullDim(value, len, extents, lbounds, sourceBox),
+            force);
   }
 
   /// Generalized derived type mapping.
@@ -244,9 +251,11 @@ public:
                         mlir::Value size, llvm::ArrayRef<mlir::Value> extents,
                         llvm::ArrayRef<mlir::Value> lbounds,
                         llvm::ArrayRef<mlir::Value> params,
-                        bool force = false) {
-    makeSym(sym, SymbolBox::Derived(value, size, params, extents, lbounds),
-            force);
+                        mlir::Value sourceBox = {}, bool force = false) {
+    makeSym(
+        sym,
+        SymbolBox::Derived(value, size, params, extents, lbounds, sourceBox),
+        force);
   }
 
   /// Find `symbol` and return its value if it appears in the current mappings.

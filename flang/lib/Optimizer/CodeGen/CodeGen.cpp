@@ -1435,14 +1435,11 @@ struct XArrayCoorOpConversion
     auto shiftOps = coor.shiftOperands().begin();
     auto sliceOps = coor.sliceOperands().begin();
     auto idxTy = lowerTy().indexType();
-    // Cast the base address to a pointer to T
-    auto base = rewriter.create<mlir::LLVM::BitcastOp>(loc, ty, operands[0]);
     mlir::Value one = genConstantIndex(loc, idxTy, rewriter, 1);
     auto prevExt = one;
     mlir::Value off = genConstantIndex(loc, idxTy, rewriter, 0);
     for (unsigned i = 0; i < rank; ++i) {
       auto index = asType(loc, rewriter, idxTy, *indexOps);
-      auto nextExt = asType(loc, rewriter, idxTy, *shapeOps);
       mlir::Value lb = one;
       if (coor.shiftOperands().size())
         lb = asType(loc, rewriter, idxTy, *shiftOps);
@@ -1461,13 +1458,36 @@ struct XArrayCoorOpConversion
           step ? rewriter.create<mlir::LLVM::MulOp>(loc, idxTy, diff, step)
                      .getResult()
                : diff;
-      auto sc1 = rewriter.create<mlir::LLVM::MulOp>(loc, idxTy, sc0, prevExt);
-      off = rewriter.create<mlir::LLVM::AddOp>(loc, idxTy, sc1, off);
-      prevExt =
-          rewriter.create<mlir::LLVM::MulOp>(loc, idxTy, prevExt, nextExt);
+      if (auto box = coor.sourceBox()) {
+        auto i64Ty = mlir::LLVM::LLVMIntegerType::get(coor.getContext(), 64);
+        auto c0 = genConstantOffset(loc, rewriter, 0);
+        auto c7 = genConstantOffset(loc, rewriter, 7);
+        auto dim = genConstantIndex(loc, idxTy, rewriter, i);
+        auto stride = loadFromOffset(loc, operands.back(), c0, c7, dim, 2,
+                                     i64Ty, rewriter);
+        auto sc1 = rewriter.create<mlir::LLVM::MulOp>(loc, idxTy, sc0, stride);
+        off = rewriter.create<mlir::LLVM::AddOp>(loc, idxTy, sc1, off);
+      } else {
+        auto nextExt = asType(loc, rewriter, idxTy, *shapeOps);
+        auto sc1 = rewriter.create<mlir::LLVM::MulOp>(loc, idxTy, sc0, prevExt);
+        off = rewriter.create<mlir::LLVM::AddOp>(loc, idxTy, sc1, off);
+        prevExt =
+            rewriter.create<mlir::LLVM::MulOp>(loc, idxTy, prevExt, nextExt);
+      }
     }
-    SmallVector<mlir::Value, 4> args{base, off};
-    rewriter.replaceOpWithNewOp<mlir::LLVM::GEPOp>(coor, ty, args);
+    if (coor.sourceBox()) {
+      auto voidPtrTy = getVoidPtrType(coor.getContext());
+      auto base =
+          rewriter.create<mlir::LLVM::BitcastOp>(loc, voidPtrTy, operands[0]);
+      SmallVector<mlir::Value, 4> args{base, off};
+      auto addr = rewriter.create<mlir::LLVM::GEPOp>(loc, voidPtrTy, args);
+      rewriter.replaceOpWithNewOp<mlir::LLVM::BitcastOp>(coor, ty, addr);
+    } else {
+      // Cast the base address to a pointer to T
+      auto base = rewriter.create<mlir::LLVM::BitcastOp>(loc, ty, operands[0]);
+      SmallVector<mlir::Value, 4> args{base, off};
+      rewriter.replaceOpWithNewOp<mlir::LLVM::GEPOp>(coor, ty, args);
+    }
     return success();
   }
 

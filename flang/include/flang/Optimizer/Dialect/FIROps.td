@@ -1865,13 +1865,14 @@ def fir_ArrayCoorOp : fir_Op<"array_coor",
     Optional<AnyShapeType>:$shape,
     Optional<fir_SliceType>:$slice,
     Variadic<AnyCoordinateType>:$indices,
-    Variadic<AnyIntegerType>:$lenParams
+    Variadic<AnyIntegerType>:$lenParams,
+    Optional<fir_BoxType>:$sourceBox
   );
 
   let results = (outs fir_ReferenceType);
 
   let assemblyFormat = [{
-    $memref (`(`$shape^`)`)? (`[`$slice^`]`)? $indices (`typeparams` $lenParams^)? attr-dict `:` functional-type(operands, results)
+    $memref (`(`$shape^`)`)? (`[`$slice^`]`)? $indices (`typeparams` $lenParams^)? (`box` $sourceBox^)? attr-dict `:` functional-type(operands, results)
   }];
 
   let verifier = [{
@@ -3597,12 +3598,15 @@ def fir_XArrayCoorOp : fir_Op<"ext_array_coor", []> {
          the element of the array to be computed.
        - LEN type parameters: A vector of runtime LEN type parameters that
          describe an correspond to the elemental derived type.
+       - Source box: a box describing the memory layout if the underlying array
+         is not contiguous (e.g pointer or assumed shape dummy). 
   }];
 
 let skipDefaultBuilders = 1;
   let builders = [OpBuilderDAG<(ins "mlir::Type":$type, "mlir::Value":$memref,
     "mlir::ValueRange":$shape, "mlir::ValueRange":$shift, "mlir::ValueRange":
     $slice, "mlir::ValueRange":$indices, "mlir::ValueRange":$lenParams,
+    "mlir::Value":$sourceBox,
     "llvm::ArrayRef<mlir::NamedAttribute>":$attrs)>];
 
   let arguments = (ins Variadic<AnyType>);
@@ -3620,6 +3624,7 @@ let skipDefaultBuilders = 1;
     mlir::Operation::operand_range shapeOperands();
     mlir::Operation::operand_range shiftOperands();
     mlir::Operation::operand_range sliceOperands();
+    mlir::Value sourceBox();
     unsigned getRank();
   }];
 }

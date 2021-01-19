@@ -1666,7 +1666,7 @@ void fir::XArrayCoorOp::build(mlir::OpBuilder &builder, OperationState &result,
                               mlir::Type ty, mlir::Value memref,
                               mlir::ValueRange shape, mlir::ValueRange shift,
                               mlir::ValueRange slice, mlir::ValueRange indices,
-                              mlir::ValueRange lenParams,
+                              mlir::ValueRange lenParams, mlir::Value sourceBox,
                               llvm::ArrayRef<mlir::NamedAttribute> attr) {
   result.addOperands(memref);
   result.addOperands(shape);
@@ -1674,6 +1674,8 @@ void fir::XArrayCoorOp::build(mlir::OpBuilder &builder, OperationState &result,
   result.addOperands(slice);
   result.addOperands(indices);
   result.addOperands(lenParams);
+  if (sourceBox)
+    result.addOperands(sourceBox);
   result.addTypes(ty);
   result.addAttributes(attr);
 }
@@ -1714,7 +1716,17 @@ mlir::Operation::operand_range fir::XArrayCoorOp::lenParamOperands() {
              getAttrOfType<mlir::IntegerAttr>(sliceAttrName()).getInt() +
              getAttrOfType<mlir::IntegerAttr>(indexAttrName()).getInt();
   auto first = std::next(getOperation()->operand_begin() + off);
-  return {first, getOperation()->operand_end()};
+  auto size = getAttrOfType<mlir::IntegerAttr>(lenParamAttrName()).getInt();
+  return {first, first + size};
+}
+mlir::Value fir::XArrayCoorOp::sourceBox() {
+  auto off = getAttrOfType<mlir::IntegerAttr>(shapeAttrName()).getInt() +
+             getAttrOfType<mlir::IntegerAttr>(shiftAttrName()).getInt() +
+             getAttrOfType<mlir::IntegerAttr>(sliceAttrName()).getInt() +
+             getAttrOfType<mlir::IntegerAttr>(indexAttrName()).getInt() +
+             getAttrOfType<mlir::IntegerAttr>(lenParamAttrName()).getInt();
+  auto first = std::next(getOperation()->operand_begin() + off);
+  return first != getOperation()->operand_end() ? *first : mlir::Value{};
 }
 
 unsigned fir::XArrayCoorOp::getRank() {
