@@ -2586,7 +2586,8 @@ private:
               shape.push_back(builder->createIntegerConstant(loc, idxTy, i));
             mlir::Value local =
                 replace ? addr : createNewLocal(loc, var, preAlloc);
-            localSymbols.addSymbolWithShape(sym, local, shape, replace);
+            localSymbols.addSymbolWithShape(
+                sym, local, shape, /*sourceBox*/ mlir::Value{}, replace);
             return;
           }
           // If object is an array process the lower bound and extent values by
@@ -2604,6 +2605,7 @@ private:
           assert(replace || Fortran::lower::isExplicitShape(sym) ||
                  Fortran::semantics::IsAllocatableOrPointer(sym));
           localSymbols.addSymbolWithBounds(sym, local, extents, lbounds,
+                                           /*sourceBox*/ mlir::Value{},
                                            replace);
         },
 
@@ -2628,7 +2630,8 @@ private:
             llvm::SmallVector<mlir::Value, 8> shapes;
             populateShape(shapes, x.bounds, argBox);
             if (isDummy || isResult) {
-              localSymbols.addSymbolWithShape(sym, addr, shapes, true);
+              localSymbols.addSymbolWithShape(sym, addr, shapes,
+                                              /*sourceBox*/ argBox, true);
               return;
             }
             // local array with computed bounds
@@ -2643,7 +2646,8 @@ private:
           llvm::SmallVector<mlir::Value, 8> lbounds;
           populateLBoundsExtents(lbounds, extents, x.bounds, argBox);
           if (isDummy || isResult) {
-            localSymbols.addSymbolWithBounds(sym, addr, extents, lbounds, true);
+            localSymbols.addSymbolWithBounds(sym, addr, extents, lbounds,
+                                             /*sourceBox*/ argBox, true);
             return;
           }
           // local array with computed bounds
@@ -2683,8 +2687,8 @@ private:
               shape.push_back(builder->createIntegerConstant(loc, idxTy, i));
             mlir::Value local =
                 replace ? addr : createNewLocal(loc, var, preAlloc);
-            localSymbols.addCharSymbolWithShape(sym, local, len, shape,
-                                                replace);
+            localSymbols.addCharSymbolWithShape(
+                sym, local, len, shape, /*sourceBox*/ mlir::Value{}, replace);
             return;
           }
 
@@ -2700,8 +2704,9 @@ private:
           }
 
           if (isDummy || isResult) {
-            localSymbols.addCharSymbolWithBounds(sym, addr, len, extents,
-                                                 lbounds, true);
+            localSymbols.addCharSymbolWithBounds(
+                sym, addr, len, extents, lbounds, /*sourceBox*/ mlir::Value{},
+                true);
             return;
           }
           // local CHARACTER array with computed bounds
@@ -2753,7 +2758,8 @@ private:
             for (auto i : x.shapes)
               shape.push_back(builder->createIntegerConstant(loc, idxTy, i));
             if (isDummy || isResult) {
-              localSymbols.addCharSymbolWithShape(sym, addr, len, shape, true);
+              localSymbols.addCharSymbolWithShape(
+                  sym, addr, len, shape, /*sourceBox*/ mlir::Value{}, true);
               return;
             }
             // local CHARACTER array with constant size
@@ -2775,8 +2781,9 @@ private:
                 builder->createIntegerConstant(loc, idxTy, snd));
           }
           if (isDummy || isResult) {
-            localSymbols.addCharSymbolWithBounds(sym, addr, len, extents,
-                                                 lbounds, true);
+            localSymbols.addCharSymbolWithBounds(
+                sym, addr, len, extents, lbounds, /*sourceBox*/ mlir::Value{},
+                true);
             return;
           }
           // local CHARACTER array with computed bounds
@@ -2821,7 +2828,8 @@ private:
             llvm::SmallVector<mlir::Value, 8> shape;
             populateShape(shape, x.bounds, argBox);
             if (isDummy || isResult) {
-              localSymbols.addCharSymbolWithShape(sym, addr, len, shape, true);
+              localSymbols.addCharSymbolWithShape(
+                  sym, addr, len, shape, /*sourceBox*/ mlir::Value{}, true);
               return;
             }
             // local CHARACTER array
@@ -2834,8 +2842,9 @@ private:
           llvm::SmallVector<mlir::Value, 8> lbounds;
           populateLBoundsExtents(lbounds, extents, x.bounds, argBox);
           if (isDummy || isResult) {
-            localSymbols.addCharSymbolWithBounds(sym, addr, len, extents,
-                                                 lbounds, true);
+            localSymbols.addCharSymbolWithBounds(
+                sym, addr, len, extents, lbounds, /*sourceBox*/ mlir::Value{},
+                true);
             return;
           }
           // local CHARACTER array with computed bounds
@@ -2895,7 +2904,8 @@ private:
             llvm::SmallVector<mlir::Value, 8> shape;
             populateShape(shape, x.bounds, argBox);
             if (isDummy || isResult) {
-              localSymbols.addCharSymbolWithShape(sym, addr, len, shape, true);
+              localSymbols.addCharSymbolWithShape(
+                  sym, addr, len, shape, /*sourceBox*/ mlir::Value{}, true);
               return;
             }
             // local CHARACTER array
@@ -2908,8 +2918,9 @@ private:
           llvm::SmallVector<mlir::Value, 8> lbounds;
           populateLBoundsExtents(lbounds, extents, x.bounds, argBox);
           if (isDummy || isResult) {
-            localSymbols.addCharSymbolWithBounds(sym, addr, len, extents,
-                                                 lbounds, true);
+            localSymbols.addCharSymbolWithBounds(
+                sym, addr, len, extents, lbounds, /*sourceBox*/ mlir::Value{},
+                true);
             return;
           }
           // local CHARACTER array with computed bounds
