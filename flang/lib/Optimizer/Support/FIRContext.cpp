@@ -20,11 +20,11 @@
 static constexpr const char *tripleName = "fir.triple";
 
 void fir::setTargetTriple(mlir::ModuleOp mod, llvm::Triple &triple) {
-  mod.setAttr(tripleName, fir::OpaqueAttr::get(mod.getContext(), &triple));
+  mod->setAttr(tripleName, fir::OpaqueAttr::get(mod.getContext(), &triple));
 }
 
 llvm::Triple *fir::getTargetTriple(mlir::ModuleOp mod) {
-  if (auto triple = mod.getAttrOfType<fir::OpaqueAttr>(tripleName))
+  if (auto triple = mod->getAttrOfType<fir::OpaqueAttr>(tripleName))
     return static_cast<llvm::Triple *>(triple.getPointer());
   return nullptr;
 }
@@ -32,11 +32,11 @@ llvm::Triple *fir::getTargetTriple(mlir::ModuleOp mod) {
 static constexpr const char *uniquerName = "fir.uniquer";
 
 void fir::setNameUniquer(mlir::ModuleOp mod, fir::NameUniquer &uniquer) {
-  mod.setAttr(uniquerName, fir::OpaqueAttr::get(mod.getContext(), &uniquer));
+  mod->setAttr(uniquerName, fir::OpaqueAttr::get(mod.getContext(), &uniquer));
 }
 
 fir::NameUniquer *fir::getNameUniquer(mlir::ModuleOp mod) {
-  if (auto triple = mod.getAttrOfType<fir::OpaqueAttr>(uniquerName))
+  if (auto triple = mod->getAttrOfType<fir::OpaqueAttr>(uniquerName))
     return static_cast<fir::NameUniquer *>(triple.getPointer());
   return nullptr;
 }
@@ -44,11 +44,11 @@ fir::NameUniquer *fir::getNameUniquer(mlir::ModuleOp mod) {
 static constexpr const char *kindMapName = "fir.kindmap";
 
 void fir::setKindMapping(mlir::ModuleOp mod, fir::KindMapping &kindMap) {
-  mod.setAttr(kindMapName, fir::OpaqueAttr::get(mod.getContext(), &kindMap));
+  mod->setAttr(kindMapName, fir::OpaqueAttr::get(mod.getContext(), &kindMap));
 }
 
 fir::KindMapping *fir::getKindMapping(mlir::ModuleOp mod) {
-  if (auto triple = mod.getAttrOfType<fir::OpaqueAttr>(kindMapName))
+  if (auto triple = mod->getAttrOfType<fir::OpaqueAttr>(kindMapName))
     return static_cast<fir::KindMapping *>(triple.getPointer());
   return nullptr;
 }

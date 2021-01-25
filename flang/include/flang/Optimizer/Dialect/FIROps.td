@@ -2686,7 +2686,8 @@ def fir_CallOp : fir_Op<"call", [CallOpInterface]> {
 
     /// Get the argument operands to the called function.
     operand_range getArgOperands() {
-      if (auto calling = getAttrOfType<SymbolRefAttr>(calleeAttrName()))
+      if (auto calling =
+          (*this)->getAttrOfType<SymbolRefAttr>(calleeAttrName()))
         return {arg_operand_begin(), arg_operand_end()};
       return {arg_operand_begin() + 1, arg_operand_end()};
     }
@@ -2696,7 +2697,8 @@ def fir_CallOp : fir_Op<"call", [CallOpInterface]> {
 
     /// Return the callee of this operation.
     CallInterfaceCallable getCallableForCallee() {
-      if (auto calling = getAttrOfType<SymbolRefAttr>(calleeAttrName()))
+      if (auto calling =
+          (*this)->getAttrOfType<SymbolRefAttr>(calleeAttrName()))
         return calling;
       return getOperand(0);
     }
