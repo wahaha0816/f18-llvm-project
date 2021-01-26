@@ -15,6 +15,7 @@
 #include "flang/Common/default-kinds.h"
 #include "flang/Common/unwrap.h"
 #include "flang/Evaluate/fold.h"
+#include "flang/Evaluate/intrinsics.h"
 #include "flang/Evaluate/real.h"
 #include "flang/Evaluate/traverse.h"
 #include "flang/Lower/Allocatable.h"
@@ -1234,6 +1235,14 @@ public:
     if (resultTypes.size() == 1)
       resultType = resultTypes[0];
 
+    // TODO: find a nice way to drive how arguments should be lower to fir
+    // (address, value, or descriptor). For now, make a special case for
+    // inquiries, but driving how args are lowered with the intrinsic class
+    // will not be enough with all intrinsics.
+    bool isInquiry =
+        converter.getFoldingContext().intrinsics().GetIntrinsicClass(
+            intrinsic.name) ==
+        Fortran::evaluate::IntrinsicClass::inquiryFunction;
     llvm::SmallVector<fir::ExtendedValue, 2> operands;
     // Lower arguments
     // For now, logical arguments for intrinsic are lowered to `fir.logical`
@@ -1243,10 +1252,20 @@ public:
     // lowering facility should control argument lowering.
     for (const auto &arg : procRef.arguments()) {
       if (auto *expr = Fortran::evaluate::UnwrapExpr<
-              Fortran::evaluate::Expr<Fortran::evaluate::SomeType>>(arg))
+              Fortran::evaluate::Expr<Fortran::evaluate::SomeType>>(arg)) {
+        if (isInquiry)
+          if (const auto *sym =
+                  Fortran::evaluate::UnwrapWholeSymbolDataRef(*expr)) {
+            operands.emplace_back(
+                Fortran::semantics::IsAllocatableOrPointer(*sym)
+                    ? genMutableBoxValue(*expr).getAddr()
+                    : genExtAddr(*expr));
+            continue;
+          }
         operands.emplace_back(genval(*expr));
-      else
+      } else {
         operands.emplace_back(fir::UnboxedValue{}); // absent optional
+      }
     }
     // Let the intrinsic library lower the intrinsic procedure call
     llvm::StringRef name = intrinsic.name;
@@ -1320,8 +1339,46 @@ public:
 
     for (const auto &arg : caller.getPassedArguments()) {
       const auto *actual = arg.entity;
-      if (!actual)
-        TODO("optional argument lowering");
+      if (!actual) {
+        // absent optional.
+        auto argTy = caller.genFunctionType().getInput(arg.firArgument);
+        if (arg.passBy == PassBy::Box) {
+          // TODO: for now create a scalar box with null address to implement
+          // absent optional (it will be casted to the correct box type later,
+          // do not bother making non trivial embox for that).
+          // This will waste a bit of time/memory compare to
+          // using a null descriptor address, but the fact that box are passed
+          // as ssa values in fir makes it a bit harder to implement absent
+          // non-pointer/non-allocatable descriptor as a null descriptor address
+          // (the issue is mainly on the caller side to check if a fir.box is
+          // null).
+          // In the bind(c) context, it will be required to handle optional
+          // descriptor as a null descriptor address (F2018 18.3.6 point 7).
+          auto null = builder.createNullConstant(
+              loc, builder.getRefType(builder.getI32Type()));
+          caller.placeInput(arg, builder.createBox(loc, null));
+        } else if (arg.passBy == PassBy::BoxChar) {
+          auto refTy =
+              builder.getRefType(argTy.cast<fir::BoxCharType>().getEleTy());
+          auto null = builder.createNullConstant(loc, refTy);
+          auto undef = builder.create<fir::UndefOp>(
+              loc, builder.getCharacterLengthType());
+          auto nullBoxChar =
+              Fortran::lower::CharacterExprHelper{builder, loc}.createEmboxChar(
+                  null, undef);
+          caller.placeInput(arg, nullBoxChar);
+        } else {
+          caller.placeInput(arg, builder.createNullConstant(loc, argTy));
+        }
+        continue;
+        // TODO passing present pointer/allocatable to nonpointer/non
+        // allocatable optional box. Right now there is nothing to do since we
+        // are using null address inside descriptor as optional indicator, but
+        // when using null descriptor address it will be required to insert a
+        // runtime allocation/association test and to pass a null descriptor
+        // address in case the entity is disassociated or not allocated
+        // (F2018 15.5.2.12 point 1).
+      }
       const auto *expr = actual->UnwrapExpr();
       if (!expr)
         TODO("assumed type actual argument lowering");

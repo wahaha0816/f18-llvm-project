@@ -461,13 +461,37 @@ private:
     }
   }
 
+  // Some dummy argument attributes prevent it to be used with implicit
+  // interfaces but that odes not imply that a box is needed for those. For
+  // instance, scalar intrinsic that are OPTIONAL require an explicit interface,
+  // but they can still be passed by reference.
+  bool dummyRequiresBox(
+      const Fortran::evaluate::characteristics::DummyDataObject &obj) {
+    using ShapeAttr = Fortran::evaluate::characteristics::TypeAndShape::Attr;
+    using ShapeAttrs = Fortran::evaluate::characteristics::TypeAndShape::Attrs;
+    constexpr ShapeAttrs shapeRequiringBox = {
+        ShapeAttr::AssumedShape, ShapeAttr::DeferredShape,
+        ShapeAttr::AssumedRank, ShapeAttr::Coarray};
+    if ((obj.type.attrs() & shapeRequiringBox).any())
+      // Need to pass shape/coshape info in fir.box.
+      return true;
+    else if (obj.type.type().IsPolymorphic())
+      // Need to pass dynamic type info in fir.box.
+      return true;
+    else if (const auto *derived{
+                 Fortran::evaluate::GetDerivedTypeSpec(obj.type.type())})
+      // Need to pass type parameters in fir.box if any.
+      return derived->parameters().empty();
+    return false;
+  }
+
   void handleExplicitDummy(
       const Fortran::evaluate::characteristics::DummyDataObject &obj,
       const FortranEntity &entity) {
     using Attrs = Fortran::evaluate::characteristics::DummyDataObject::Attr;
 
-    if (obj.attrs.test(Attrs::Optional))
-      TODO("Optional in procedure interface");
+    // if (obj.attrs.test(Attrs::Optional))
+    // TODO: add attribute to mlir argument (needs PR579 attribute handling)
     if (obj.attrs.test(Attrs::Asynchronous))
       TODO("Asynchronous in procedure interface");
     if (obj.attrs.test(Attrs::Contiguous))
@@ -510,12 +534,25 @@ private:
     auto boxType = fir::BoxType::get(type);
 
     if (obj.attrs.test(Attrs::Allocatable) || obj.attrs.test(Attrs::Pointer)) {
+      // Pass as fir.ref<fir.box>
       auto boxRefType = fir::ReferenceType::get(boxType);
       addFirInput(boxRefType, nextPassedArgPosition(), Property::MutableBox);
       addPassedArg(PassEntityBy::MutableBox, entity);
-    } else {
+    } else if (dummyRequiresBox(obj)) {
+      // Pass as fir.box
       addFirInput(boxType, nextPassedArgPosition(), Property::Box);
       addPassedArg(PassEntityBy::Box, entity);
+    } else if (dynamicType.category() ==
+               Fortran::common::TypeCategory::Character) {
+      // Pass as fir.box_char
+      auto boxCharTy = fir::BoxCharType::get(&mlirContext, dynamicType.kind());
+      addFirInput(boxCharTy, nextPassedArgPosition(), Property::BoxChar);
+      addPassedArg(PassEntityBy::BoxChar, entity);
+    } else {
+      // Pass as fir.ref
+      auto refType = fir::ReferenceType::get(type);
+      addFirInput(refType, nextPassedArgPosition(), Property::BaseAddress);
+      addPassedArg(PassEntityBy::BaseAddress, entity);
     }
   }
 
