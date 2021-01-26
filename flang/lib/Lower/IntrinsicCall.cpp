@@ -145,6 +145,7 @@ struct IntrinsicLibrary {
   mlir::Value genMerge(mlir::Type, llvm::ArrayRef<mlir::Value>);
   mlir::Value genMod(mlir::Type, llvm::ArrayRef<mlir::Value>);
   mlir::Value genNint(mlir::Type, llvm::ArrayRef<mlir::Value>);
+  fir::ExtendedValue genPresent(mlir::Type, llvm::ArrayRef<fir::ExtendedValue>);
   mlir::Value genSign(mlir::Type, llvm::ArrayRef<mlir::Value>);
   /// Implement all conversion functions like DBLE, the first argument is
   /// the value to convert. There may be an additional KIND arguments that
@@ -247,6 +248,7 @@ static constexpr IntrinsicHandler handlers[]{
     {"merge", &I::genMerge},
     {"mod", &I::genMod},
     {"nint", &I::genNint},
+    {"present", &I::genPresent, /*isElemental=*/false},
     {"sign", &I::genSign},
 };
 
@@ -1306,6 +1308,18 @@ mlir::Value IntrinsicLibrary::genNint(mlir::Type resultType,
   // Skip optional kind argument to search the runtime; it is already reflected
   // in result type.
   return genRuntimeCall("nint", resultType, {args[0]});
+}
+
+// PRESENT
+fir::ExtendedValue
+IntrinsicLibrary::genPresent(mlir::Type,
+                             llvm::ArrayRef<fir::ExtendedValue> args) {
+  assert(args.size() == 1);
+  auto idxTy = builder.getIndexType();
+  auto addrCast = builder.createConvert(loc, idxTy, fir::getBase(args[0]));
+  auto zero = builder.createIntegerConstant(loc, idxTy, 0);
+  return builder.create<mlir::CmpIOp>(loc, mlir::CmpIPredicate::ne, addrCast,
+                                      zero);
 }
 
 // SIGN
