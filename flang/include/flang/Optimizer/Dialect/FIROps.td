@@ -2221,7 +2221,7 @@ def fir_SliceOp : fir_Op<"slice", [NoSideEffect, AttrSizedOperandSegments]> {
   }];
 
   let arguments = (ins
-    Variadic<AnyIntegerType>:$triples,
+    Variadic<AnyCoordinateType>:$triples,
     Variadic<AnyComponentType>:$fields
   );
 
