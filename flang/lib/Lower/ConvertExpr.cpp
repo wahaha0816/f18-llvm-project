@@ -1299,7 +1299,7 @@ public:
     // (address, value, or descriptor). For now, make a special case for
     // inquiries, but driving how args are lowered with the intrinsic class
     // will not be enough with all intrinsics.
-    bool isInquiry =
+    const bool isInquiry =
         converter.getFoldingContext().intrinsics().GetIntrinsicClass(
             intrinsic.name) ==
         Fortran::evaluate::IntrinsicClass::inquiryFunction;
@@ -1400,7 +1400,7 @@ public:
     for (const auto &arg : caller.getPassedArguments()) {
       const auto *actual = arg.entity;
       if (!actual) {
-        // absent optional.
+        // Optional dummy argument for which there is no actual argument.
         auto argTy = caller.genFunctionType().getInput(arg.firArgument);
         if (arg.passBy == PassBy::Box) {
           // TODO: for now create a scalar box with null address to implement
