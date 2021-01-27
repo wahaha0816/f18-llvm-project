@@ -2221,7 +2221,7 @@ def fir_SliceOp : fir_Op<"slice", [NoSideEffect, AttrSizedOperandSegments]> {
   }];
 
   let arguments = (ins
-    Variadic<AnyIntegerType>:$triples,
+    Variadic<AnyCoordinateType>:$triples,
     Variadic<AnyComponentType>:$fields
   );
 
@@ -2242,6 +2242,11 @@ def fir_SliceOp : fir_Op<"slice", [NoSideEffect, AttrSizedOperandSegments]> {
     if (sliceTy.getRank() * 3 != size)
       return emitOpError("slice type rank mismatch");
     return mlir::success();
+  }];
+
+  let extraClassDeclaration = [{
+    unsigned getOutRank() { return getOutputRank(triples()); }
+    static unsigned getOutputRank(mlir::ValueRange triples);
   }];
 }
 

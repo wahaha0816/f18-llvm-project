@@ -870,7 +870,7 @@ mlir::BlockArgument fir::IterWhileOp::iterArgToBlockArg(mlir::Value iterArg) {
 
 void fir::IterWhileOp::resultToSourceOps(
     llvm::SmallVectorImpl<mlir::Value> &results, unsigned resultNum) {
-  auto oper = finalValue() ? resultNum : resultNum + 1;
+  auto oper = finalValue() ? resultNum + 1 : resultNum;
   auto *term = region().front().getTerminator();
   if (oper < term->getNumOperands())
     results.push_back(term->getOperand(oper));
@@ -1106,7 +1106,7 @@ mlir::BlockArgument fir::DoLoopOp::iterArgToBlockArg(mlir::Value iterArg) {
 /// to the `fir.result` Op.
 void fir::DoLoopOp::resultToSourceOps(
     llvm::SmallVectorImpl<mlir::Value> &results, unsigned resultNum) {
-  auto oper = finalValue() ? resultNum : resultNum + 1;
+  auto oper = finalValue() ? resultNum + 1 : resultNum;
   auto *term = region().front().getTerminator();
   if (oper < term->getNumOperands())
     results.push_back(term->getOperand(oper));
@@ -1162,7 +1162,7 @@ static constexpr llvm::StringRef getTargetOffsetAttr() {
 template <typename A, typename... AdditionalArgs>
 static A getSubOperands(unsigned pos, A allArgs,
                         mlir::DenseIntElementsAttr ranges,
-                        AdditionalArgs &&...additionalArgs) {
+                        AdditionalArgs &&... additionalArgs) {
   unsigned start = 0;
   for (unsigned i = 0; i < pos; ++i)
     start += (*(ranges.begin() + i)).getZExtValue();
@@ -1527,6 +1527,25 @@ static ParseResult parseSelectType(OpAsmParser &parser,
 unsigned fir::SelectTypeOp::targetOffsetSize() {
   return denseElementsSize((*this)->getAttrOfType<mlir::DenseIntElementsAttr>(
       getTargetOffsetAttr()));
+}
+
+//===----------------------------------------------------------------------===//
+// SliceOp
+//===----------------------------------------------------------------------===//
+
+/// Return the output rank of a slice op. The output rank must be between 1 and
+/// the rank of the array being sliced (inclusive).
+unsigned fir::SliceOp::getOutputRank(mlir::ValueRange triples) {
+  unsigned rank = 0;
+  if (!triples.empty()) {
+    for (unsigned i = 1, end = triples.size(); i < end; i += 3) {
+      auto op = triples[i].getDefiningOp();
+      if (!mlir::isa_and_nonnull<fir::UndefOp>(op))
+        ++rank;
+    }
+    assert(rank > 0);
+  }
+  return rank;
 }
 
 //===----------------------------------------------------------------------===//
