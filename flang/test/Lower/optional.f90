@@ -5,11 +5,12 @@ module opt
 contains
 
 ! Test simple scalar optional
-! CHECK-LABEL: func @_QMoptPintrinsic_scalar(%arg0: !fir.ref<f32>)
+! CHECK-LABEL: func @_QMoptPintrinsic_scalar
+! CHECK-SAME: (%[[arg0:.*]]: !fir.ref<f32>)
 subroutine intrinsic_scalar(x)
   implicit none
   real, optional :: x
-  ! CHECK: %[[addr:.*]] = fir.convert %arg0 : (!fir.ref<f32>) -> index
+  ! CHECK: %[[addr:.*]] = fir.convert %[[arg0]] : (!fir.ref<f32>) -> index
   ! CHECK: cmpi ne, %[[addr]], %c0{{.*}} : index
   print *, present(x)
 end subroutine
@@ -26,11 +27,12 @@ subroutine call_intrinsic_scalar()
 end subroutine
 
 ! Test explicit shape array optional
-! CHECK-LABEL: func @_QMoptPintrinsic_f77_array(%arg0: !fir.ref<!fir.array<100xf32>>)
+! CHECK-LABEL: func @_QMoptPintrinsic_f77_array
+! CHECK-SAME: (%[[arg0:.*]]: !fir.ref<!fir.array<100xf32>>)
 subroutine intrinsic_f77_array(x)
   implicit none
   real, optional :: x(100)
-  ! CHECK: %[[addr:.*]] = fir.convert %arg0 : (!fir.ref<!fir.array<100xf32>>) -> index
+  ! CHECK: %[[addr:.*]] = fir.convert %[[arg0]] : (!fir.ref<!fir.array<100xf32>>) -> index
   ! CHECK: cmpi ne, %[[addr]], %c0{{.*}} : index
   print *, present(x)
 end subroutine
@@ -47,10 +49,11 @@ subroutine call_intrinsic_f77_array()
 end subroutine
 
 ! Test optional character scalar
-! CHECK-LABEL: func @_QMoptPcharacter_scalar(%arg0: !fir.boxchar<1>)
+! CHECK-LABEL: func @_QMoptPcharacter_scalar
+! CHECK-SAME: (%[[arg0:.*]]: !fir.boxchar<1>)
 subroutine character_scalar(x)
   implicit none
-  ! CHECK: %[[unboxed:.*]]:2 = fir.unboxchar %arg0 : (!fir.boxchar<1>) -> (!fir.ref<!fir.char<1,?>>, index)
+  ! CHECK: %[[unboxed:.*]]:2 = fir.unboxchar %[[arg0]] : (!fir.boxchar<1>) -> (!fir.ref<!fir.char<1,?>>, index)
   character(10), optional :: x
   ! CHECK: %[[addr:.*]] = fir.convert %[[unboxed]]#0 : (!fir.ref<!fir.char<1,?>>) -> index
   ! CHECK: cmpi ne, %[[addr]], %c0{{.*}} : index
@@ -73,10 +76,11 @@ subroutine call_character_scalar()
 end subroutine
 
 ! Test optional assumed shape
-! CHECK-LABEL: func @_QMoptPassumed_shape(%arg0: !fir.box<!fir.array<?xf32>>)
+! CHECK-LABEL: func @_QMoptPassumed_shape
+! CHECK-SAME: (%[[arg0:.*]]: !fir.box<!fir.array<?xf32>>)
 subroutine assumed_shape(x)
   implicit none
-  ! CHECK: %[[boxaddr:.*]] = fir.box_addr %arg0 : (!fir.box<!fir.array<?xf32>>) -> !fir.ref<!fir.array<?xf32>>
+  ! CHECK: %[[boxaddr:.*]] = fir.box_addr %[[arg0]] : (!fir.box<!fir.array<?xf32>>) -> !fir.ref<!fir.array<?xf32>>
   real, optional :: x(:)
   ! CHECK: %[[addr:.*]] = fir.convert %[[boxaddr]] : (!fir.ref<!fir.array<?xf32>>) -> index
   ! CHECK: cmpi ne, %[[addr]], %c0{{.*}} : index
@@ -99,11 +103,12 @@ subroutine call_assumed_shape()
 end subroutine
 
 ! Test optional allocatable
-! CHECK: func @_QMoptPallocatable_array(%arg0: !fir.ref<!fir.box<!fir.heap<!fir.array<?xf32>>>>)
+! CHECK: func @_QMoptPallocatable_array
+! CHECK-SAME: (%[[arg0:.*]]: !fir.ref<!fir.box<!fir.heap<!fir.array<?xf32>>>>)
 subroutine allocatable_array(x)
   implicit none
   real, allocatable, optional :: x(:)
-  ! CHECK: %[[addr:.*]] = fir.convert %arg0 : (!fir.ref<!fir.box<!fir.heap<!fir.array<?xf32>>>>) -> index
+  ! CHECK: %[[addr:.*]] = fir.convert %[[arg0]] : (!fir.ref<!fir.box<!fir.heap<!fir.array<?xf32>>>>) -> index
   ! CHECK: cmpi ne, %[[addr]], %c0{{.*}} : index
   print *, present(x)
 end subroutine

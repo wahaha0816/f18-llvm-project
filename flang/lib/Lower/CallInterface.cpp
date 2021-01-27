@@ -461,8 +461,8 @@ private:
     }
   }
 
-  // Some dummy argument attributes prevent it to be used with implicit
-  // interfaces but that odes not imply that a box is needed for those. For
+  // Some dummy argument attributes prevent it from being used with implicit
+  // interfaces but that does not imply that a box is needed for those. For
   // instance, scalar intrinsic that are OPTIONAL require an explicit interface,
   // but they can still be passed by reference.
   bool dummyRequiresBox(
@@ -475,11 +475,11 @@ private:
     if ((obj.type.attrs() & shapeRequiringBox).any())
       // Need to pass shape/coshape info in fir.box.
       return true;
-    else if (obj.type.type().IsPolymorphic())
+    if (obj.type.type().IsPolymorphic())
       // Need to pass dynamic type info in fir.box.
       return true;
-    else if (const auto *derived{
-                 Fortran::evaluate::GetDerivedTypeSpec(obj.type.type())})
+    if (const auto *derived =
+            Fortran::evaluate::GetDerivedTypeSpec(obj.type.type()))
       // Need to pass type parameters in fir.box if any.
       return derived->parameters().empty();
     return false;
