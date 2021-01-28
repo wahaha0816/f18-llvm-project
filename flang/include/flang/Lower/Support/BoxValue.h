@@ -115,7 +115,7 @@ public:
 
   /// If the entity is described by a box (e.g. it is a dummy, allocatable, or
   /// pointer) The information in the source box that is also present in other
-  /// fields (e.g the extents) is the same, except the lower bounds of the
+  /// fields (e.g. the extents) is the same, except the lower bounds of the
   /// sourceBox that should be ignored.
   mlir::Value getSourceBox() const { return sourceBox; }
 

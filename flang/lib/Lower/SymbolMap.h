@@ -154,8 +154,8 @@ struct SymbolBox : public fir::details::matcher<SymbolBox> {
     return false;
   }
 
-  /// Does the boxed value have a contiguous memory layout
-  bool isContiugous() const {
+  /// Does the boxed value have a contiguous memory layout?
+  bool isContiguous() const {
     return match(
         [](const FullDim &box) { return box.isContiguous(); },
         [](const CharFullDim &box) { return box.isContiguous(); },

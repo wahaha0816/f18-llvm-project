@@ -1218,7 +1218,7 @@ public:
             return genAllocatableOrPointerUnbox(x);
           },
           [](const auto &x) -> Fortran::lower::SymbolBox { return x; });
-      if (!si.hasConstantShape() && si.isContiugous())
+      if (!si.hasConstantShape() && si.isContiguous())
         return gen(si, aref);
       auto box = gen(symbol);
       auto memref = box.getMemRef();

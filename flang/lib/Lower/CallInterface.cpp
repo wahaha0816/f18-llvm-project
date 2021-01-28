@@ -234,7 +234,6 @@ void Fortran::lower::CallInterface<T>::declare() {
       for (const auto &placeHolder : llvm::enumerate(inputs))
         if (!placeHolder.value().attributes.empty())
           func.setArgAttrs(placeHolder.index(), placeHolder.value().attributes);
-      // for (const auto &placeHolder : outputs)
     }
   }
 }
