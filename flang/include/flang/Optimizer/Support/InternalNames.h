@@ -32,6 +32,7 @@ struct NameUniquer {
   /// The sort of the unique name
   enum class NameKind {
     NOT_UNIQUED,
+    BLOCK_DATA_NAME,
     COMMON,
     CONSTANT,
     DERIVED_TYPE,
@@ -40,8 +41,7 @@ struct NameUniquer {
     INTRINSIC_TYPE_DESC,
     PROCEDURE,
     TYPE_DESC,
-    VARIABLE,
-    BLOCK_DATA_NAME
+    VARIABLE
   };
 
   /// Components of an unparsed unique name

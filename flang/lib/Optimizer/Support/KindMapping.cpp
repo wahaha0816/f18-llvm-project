@@ -307,7 +307,7 @@ KindTy fir::KindMapping::defaultComplexKind() const {
 }
 
 KindTy fir::KindMapping::defaultDoubleKind() const {
-  auto iter = defaultMap.find('c');
+  auto iter = defaultMap.find('d');
   assert(iter != defaultMap.end());
   return iter->second;
 }
