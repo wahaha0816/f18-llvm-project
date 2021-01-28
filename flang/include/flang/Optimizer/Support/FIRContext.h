@@ -9,8 +9,6 @@
 // Coding style: https://mlir.llvm.org/getting_started/DeveloperGuide/
 //
 //===----------------------------------------------------------------------===//
-/// \file
-///
 /// Setters and getters for associating context with an instance of a ModuleOp.
 /// The context is typically set by the tool and needed in later stages to
 /// determine how to correctly generate code.
