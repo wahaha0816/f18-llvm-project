@@ -130,6 +130,36 @@ convertOptExtentExpr(Fortran::lower::AbstractConverter &converter,
   return fir::getBase(converter.genExprValue(&e, stmtCtx, loc));
 }
 
+static mlir::Value getLBoundOrDefault(mlir::Location loc,
+                                      const fir::ExtendedValue &exv,
+                                      mlir::Value one, unsigned dim) {
+  auto getLBound = [&](const fir::AbstractArrayBox &v) -> mlir::Value {
+    auto &lbounds = v.getLBounds();
+    if (lbounds.empty())
+      return one;
+    return lbounds[dim];
+  };
+  return exv.match(
+      [&](const fir::ArrayBoxValue &v) { return getLBound(v); },
+      [&](const fir::CharArrayBoxValue &v) { return getLBound(v); },
+      [&](const fir::BoxValue &v) { return getLBound(v); },
+      [&](auto) -> mlir::Value { fir::emitFatalError(loc, "expected array"); });
+}
+static mlir::Value getExtent(mlir::Location loc, const fir::ExtendedValue &exv,
+                             unsigned dim) {
+  auto getExtentImpl = [&](const fir::AbstractArrayBox &v) -> mlir::Value {
+    if (v.getExtents().size() < dim + 1)
+      fir::emitFatalError(loc,
+                          "inquiring extent in dimension bigger than the rank");
+    return v.getExtents()[dim];
+  };
+  return exv.match(
+      [&](const fir::ArrayBoxValue &v) { return getExtentImpl(v); },
+      [&](const fir::CharArrayBoxValue &v) { return getExtentImpl(v); },
+      [&](const fir::BoxValue &v) { return getExtentImpl(v); },
+      [&](auto) -> mlir::Value { fir::emitFatalError(loc, "expected array"); });
+}
+
 namespace {
 
 /// Lowering of Fortran::evaluate::Expr<T> expressions
@@ -368,13 +398,38 @@ public:
   }
 
   fir::ExtendedValue genval(const Fortran::evaluate::DescriptorInquiry &desc) {
-    auto symBox = symMap.lookupSymbol(desc.base().GetLastSymbol());
-    assert(symBox && "no SymbolBox associated to Symbol");
+    // This gen(symbolref) call will read all properties from a descriptor into
+    // the ExtendedValue if they are not already kept in the symbol map (which
+    // is the case if they are not constant in the scope: e.g
+    // allocatables/pointers). So for allocatable/pointers, it will most likely
+    // generate reads of properties that are not inquired here, but that is OK
+    // because dead code elimination will remove these unused reads right after
+    // lowering.
+    auto exv = gen(desc.base().GetLastSymbol());
+    auto loc = getLoc();
     switch (desc.field()) {
     case Fortran::evaluate::DescriptorInquiry::Field::Len:
-      return symBox.getCharLen().getValue();
-    default:
-      TODO("descriptor inquiry other than length");
+      return exv.match(
+          [](const fir::CharBoxValue &x) { return x.getLen(); },
+          [](const fir::CharArrayBoxValue &x) { return x.getLen(); },
+          [loc](const auto &) -> mlir::Value {
+            fir::emitFatalError(
+                loc,
+                "len descriptor inquiry on an entity that is not a character");
+          });
+    case Fortran::evaluate::DescriptorInquiry::Field::LowerBound:
+      return getLBoundOrDefault(
+          loc, exv,
+          builder.createIntegerConstant(loc, builder.getIndexType(), 1),
+          desc.dimension());
+    case Fortran::evaluate::DescriptorInquiry::Field::Extent:
+      return getExtent(loc, exv, desc.dimension());
+    case Fortran::evaluate::DescriptorInquiry::Field::Rank:
+      fir::emitFatalError(getLoc(), "TODO: Rank DescriptorInquiry lowering");
+    case Fortran::evaluate::DescriptorInquiry::Field::Stride:
+      // Currently the front end is not generating this.
+      // Should it be removed from the front-end ?
+      fir::emitFatalError(getLoc(), "TODO: Stride DescriptorInquiry lowering");
     }
     llvm_unreachable("unknown descriptor inquiry");
   }
@@ -2188,24 +2243,6 @@ public:
   template <typename A>
   static const Fortran::semantics::Symbol *extractSubscriptSymbol(const A &x) {
     return nullptr;
-  }
-
-  static mlir::Value getLBoundOrDefault(mlir::Location loc,
-                                        const fir::ExtendedValue &exv,
-                                        mlir::Value one, unsigned dim) {
-    auto getLBound = [&](const fir::AbstractArrayBox &v) -> mlir::Value {
-      auto &lbounds = v.getLBounds();
-      if (lbounds.empty())
-        return one;
-      return lbounds[dim];
-    };
-    return exv.match(
-        [&](const fir::ArrayBoxValue &v) { return getLBound(v); },
-        [&](const fir::CharArrayBoxValue &v) { return getLBound(v); },
-        [&](const fir::BoxValue &v) { return getLBound(v); },
-        [&](auto) -> mlir::Value {
-          fir::emitFatalError(loc, "expected array");
-        });
   }
 
   /// Array reference with subscripts. Since this has rank > 0, this is a form
