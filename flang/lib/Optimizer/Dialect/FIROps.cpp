@@ -124,18 +124,83 @@ mlir::Type fir::AllocMemOp::wrapResultType(mlir::Type intype) {
 }
 
 //===----------------------------------------------------------------------===//
+// ArrayCoorOp
+//===----------------------------------------------------------------------===//
+
+static mlir::LogicalResult verify(fir::ArrayCoorOp op) {
+  auto eleTy = fir::dyn_cast_ptrEleTy(op.memref().getType());
+  if (!eleTy)
+    return op.emitOpError("must be a reference type");
+  auto arrTy = eleTy.dyn_cast<fir::SequenceType>();
+  if (!arrTy)
+    return op.emitOpError("must be a reference to an array");
+  auto arrDim = arrTy.getDimension();
+
+  if (auto shapeOp = op.shape()) {
+    auto shapeTy = shapeOp.getType();
+    unsigned shapeTyRank = 0;
+    if (auto s = shapeTy.dyn_cast<fir::ShapeType>()) {
+      shapeTyRank = s.getRank();
+    } else {
+      auto ss = shapeTy.cast<fir::ShapeShiftType>();
+      shapeTyRank = ss.getRank();
+    }
+    if (arrDim && arrDim != shapeTyRank)
+      return op.emitOpError("rank of dimension mismatched");
+    if (shapeTyRank != op.indices().size())
+      return op.emitOpError("number of indices do not match dim rank");
+  }
+
+  if (auto sliceOp = op.slice())
+    if (auto sliceTy = sliceOp.getType().dyn_cast<fir::SliceType>())
+      if (sliceTy.getRank() != arrDim)
+        return op.emitOpError("rank of dimension in slice mismatched");
+
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
 // ArrayLoadOp
 //===----------------------------------------------------------------------===//
 
 std::vector<mlir::Value> fir::ArrayLoadOp::getExtents() {
-  std::vector<mlir::Value> result;
   if (auto sh = shape())
     if (auto *op = sh.getDefiningOp()) {
       if (auto shOp = dyn_cast<fir::ShapeOp>(op))
         return shOp.getExtents();
       return cast<fir::ShapeShiftOp>(op).getExtents();
     }
-  return result;
+  return {};
+}
+
+static mlir::LogicalResult verify(fir::ArrayLoadOp op) {
+  auto eleTy = fir::dyn_cast_ptrEleTy(op.memref().getType());
+  if (!eleTy)
+    return op.emitOpError("must be a reference type");
+  auto arrTy = eleTy.dyn_cast<fir::SequenceType>();
+  if (!arrTy)
+    return op.emitOpError("must be a reference to an array");
+  auto arrDim = arrTy.getDimension();
+
+  if (auto shapeOp = op.shape()) {
+    auto shapeTy = shapeOp.getType();
+    unsigned shapeTyRank = 0;
+    if (auto s = shapeTy.dyn_cast<fir::ShapeType>()) {
+      shapeTyRank = s.getRank();
+    } else {
+      auto ss = shapeTy.cast<fir::ShapeShiftType>();
+      shapeTyRank = ss.getRank();
+    }
+    if (arrDim && arrDim != shapeTyRank)
+      return op.emitOpError("rank of dimension mismatched");
+  }
+
+  if (auto sliceOp = op.slice())
+    if (auto sliceTy = sliceOp.getType().dyn_cast<fir::SliceType>())
+      if (sliceTy.getRank() != arrDim)
+        return op.emitOpError("rank of dimension in slice mismatched");
+
+  return mlir::success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -431,6 +496,37 @@ void fir::CoordinateOp::build(OpBuilder &builder, OperationState &result,
   build(builder, result, resType, operands, attrs);
 }
 
+static mlir::LogicalResult verify(fir::CoordinateOp op) {
+  auto refTy = op.ref().getType();
+  if (fir::isa_ref_type(refTy)) {
+    auto eleTy = fir::dyn_cast_ptrEleTy(refTy);
+    if (auto arrTy = eleTy.dyn_cast<fir::SequenceType>()) {
+      if (arrTy.hasUnknownShape())
+        return op.emitOpError("cannot find coordinate in unknown shape");
+      if (arrTy.getConstantRows() < arrTy.getDimension() - 1)
+        return op.emitOpError("cannot find coordinate with unknown extents");
+    }
+    if (!(fir::isa_aggregate(eleTy) || fir::isa_complex(eleTy) ||
+          fir::isa_char_string(eleTy)))
+      return op.emitOpError("cannot apply coordinate_of to this type");
+  }
+  // Recovering a LEN type parameter only makes sense from a boxed value
+  for (auto co : op.coor())
+    if (dyn_cast_or_null<fir::LenParamIndexOp>(co.getDefiningOp())) {
+      if (op.getNumOperands() != 2)
+        return op.emitOpError("len_param_index must be last argument");
+      if (!op.ref().getType().isa<BoxType>())
+        return op.emitOpError("len_param_index must be used on box type");
+    }
+  if (auto attr = op->getAttr(CoordinateOp::baseType())) {
+    if (!attr.isa<mlir::TypeAttr>())
+      return op.emitOpError("improperly constructed");
+  } else {
+    return op.emitOpError("must have base type");
+  }
+  return mlir::success();
+}
+
 //===----------------------------------------------------------------------===//
 // DispatchOp
 //===----------------------------------------------------------------------===//
@@ -448,6 +544,52 @@ void fir::DispatchTableOp::appendTableEntry(mlir::Operation *op) {
   assert(mlir::isa<fir::DTEntryOp>(*op) && "operation must be a DTEntryOp");
   auto &block = getBlock();
   block.getOperations().insert(block.end(), op);
+}
+
+//===----------------------------------------------------------------------===//
+// EmboxOp
+//===----------------------------------------------------------------------===//
+
+static mlir::LogicalResult verify(fir::EmboxOp op) {
+  auto eleTy = fir::dyn_cast_ptrEleTy(op.memref().getType());
+  if (!eleTy)
+    return op.emitOpError("must embox a memory reference type");
+  bool isArray = false;
+  if (auto seqTy = eleTy.dyn_cast<fir::SequenceType>()) {
+    eleTy = seqTy.getEleTy();
+    isArray = true;
+  }
+  if (op.hasLenParams()) {
+    auto lenPs = op.numLenParams();
+    if (auto rt = eleTy.dyn_cast<fir::RecordType>()) {
+      if (lenPs != rt.getNumLenParams())
+        return op.emitOpError("number of LEN params does not correspond"
+                              " to the !fir.type type");
+    } else if (auto strTy = eleTy.dyn_cast<fir::CharacterType>()) {
+      if (strTy.getLen() != fir::CharacterType::unknownLen())
+        return op.emitOpError("CHARACTER already has static LEN");
+    } else {
+      return op.emitOpError("LEN parameters require CHARACTER or derived type");
+    }
+    for (auto lp : op.lenParams())
+      if (!fir::isa_integer(lp.getType()))
+        return op.emitOpError("LEN parameters must be integral type");
+  }
+  if (op.getShape()) {
+    auto shapeTy = op.getShape().getType();
+    if (!(shapeTy.isa<fir::ShapeType>() || shapeTy.isa<ShapeShiftType>()))
+      return op.emitOpError("must be shape or shapeshift type");
+    if (!isArray)
+      return op.emitOpError("shape must not be provided for a scalar");
+  }
+  if (op.getSlice()) {
+    auto sliceTy = op.getSlice().getType();
+    if (!sliceTy.isa<fir::SliceType>())
+      return op.emitOpError("must be a slice type");
+    if (!isArray)
+      return op.emitOpError("slice must not be provided for a scalar");
+  }
+  return mlir::success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -592,8 +734,8 @@ static bool checkIsIntegerConstant(mlir::Value v, int64_t conVal) {
 static bool isZero(mlir::Value v) { return checkIsIntegerConstant(v, 0); }
 static bool isOne(mlir::Value v) { return checkIsIntegerConstant(v, 1); }
 
-// These patterns are written by hand because the tablegen pattern language
-// isn't adequate here.
+// Undo some complex patterns created in the front-end and turn them back into
+// complex ops.
 template <typename FltOp, typename CpxOp>
 struct UndoComplexPattern : public mlir::RewritePattern {
   UndoComplexPattern(mlir::MLIRContext *ctx)
@@ -1162,7 +1304,7 @@ static constexpr llvm::StringRef getTargetOffsetAttr() {
 template <typename A, typename... AdditionalArgs>
 static A getSubOperands(unsigned pos, A allArgs,
                         mlir::DenseIntElementsAttr ranges,
-                        AdditionalArgs &&... additionalArgs) {
+                        AdditionalArgs &&...additionalArgs) {
   unsigned start = 0;
   for (unsigned i = 0; i < pos; ++i)
     start += (*(ranges.begin() + i)).getZExtValue();

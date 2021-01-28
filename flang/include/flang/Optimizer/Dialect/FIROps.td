@@ -1104,50 +1104,11 @@ def fir_EmboxOp : fir_Op<"embox", [NoSideEffect, AttrSizedOperandSegments]> {
   ];
 
   let assemblyFormat = [{
-    $memref (`(` $shape^ `)`)? (`[` $slice^ `]`)? (`typeparams` $lenParams^)? (`map` $accessMap^)? attr-dict `:` functional-type(operands, results)
+    $memref (`(` $shape^ `)`)? (`[` $slice^ `]`)? (`typeparams` $lenParams^)?
+      (`map` $accessMap^)? attr-dict `:` functional-type(operands, results)
   }];
 
-  let verifier = [{
-    auto eleTy = fir::dyn_cast_ptrEleTy(memref().getType());
-    if (!eleTy)
-      return emitOpError("must embox a memory reference type");
-    bool isArray = false;
-    if (auto seqTy = eleTy.dyn_cast<fir::SequenceType>()) {
-      eleTy = seqTy.getEleTy();
-      isArray = true;
-    }
-    if (hasLenParams()) {
-      auto lenPs = numLenParams();
-      if (auto rt = eleTy.dyn_cast<fir::RecordType>()) {
-        if (lenPs != rt.getNumLenParams())
-          return emitOpError("number of LEN params does not correspond"
-                             " to the !fir.type type");
-      } else if (auto strTy = eleTy.dyn_cast<fir::CharacterType>()) {
-        if (strTy.getLen() != fir::CharacterType::unknownLen())
-          return emitOpError("CHARACTER already has static LEN");
-      } else {
-          return emitOpError("LEN parameters require CHARACTER or derived type");
-      }
-      for (auto lp : lenParams())
-        if (!fir::isa_integer(lp.getType()))
-          return emitOpError("LEN parameters must be integral type");
-    }
-    if (getShape()) {
-      auto shapeTy = getShape().getType();
-      if (!(shapeTy.isa<fir::ShapeType>() || shapeTy.isa<ShapeShiftType>()))
-        return emitOpError("must be shape or shapeshift type");
-      if (!isArray)
-        return emitOpError("shape must not be provided for a scalar");
-    }
-    if (getSlice()) {
-      auto sliceTy = getSlice().getType();
-      if (!sliceTy.isa<fir::SliceType>())
-        return emitOpError("must be a slice type");
-      if (!isArray)
-        return emitOpError("slice must not be provided for a scalar");
-    }
-    return mlir::success();
-  }];
+  let verifier = [{ return ::verify(*this); }];
 
   let extraClassDeclaration = [{
     mlir::Value getShape() { return shape(); }
@@ -1484,8 +1445,8 @@ def fir_BoxIsArrayOp : fir_SimpleOp<"box_isarray", [NoSideEffect]> {
     ```mlir
       %r = ... : !fir.ref<i64>
       %c_100 = constant 100 : index
-      %d = fir.shape(%c_100) : (index) -> !fir.shape<1>
-      %b = fir.embox %r shape %d : (!fir.ref<i64>, !fir.shape<1>) -> !fir.box<i64>
+      %d = fir.shape %c_100 : (index) -> !fir.shape<1>
+      %b = fir.embox %r(%d) : (!fir.ref<i64>, !fir.shape<1>) -> !fir.box<i64>
       %a = fir.box_isarray %b : (!fir.box<i64>) -> i1  // true
     ```
   }];
@@ -1620,37 +1581,7 @@ def fir_ArrayLoadOp : fir_Op<"array_load", [AttrSizedOperandSegments]> {
     $memref (`(`$shape^`)`)? (`[`$slice^`]`)? (`typeparams` $lenParams^)? attr-dict `:` functional-type(operands, results)
   }];
 
-  let verifier = [{
-    auto eleTy = fir::dyn_cast_ptrEleTy(memref().getType());
-    if (!eleTy)
-       return emitOpError("must be a reference type");
-    auto arrTy = eleTy.dyn_cast<fir::SequenceType>();
-    if (!arrTy)
-      return emitOpError("must be a reference to an array");
-    auto arrDim = arrTy.getDimension();
-
-    if (auto shapeOp = shape()) {
-      auto shapeTy = shapeOp.getType();
-      unsigned shapeTyRank = 0;
-      if (auto s = shapeTy.dyn_cast<fir::ShapeType>()) {
-        shapeTyRank = s.getRank();
-      } else {
-        auto ss = shapeTy.cast<fir::ShapeShiftType>();
-        shapeTyRank = ss.getRank();
-      }
-      if (arrDim && arrDim != shapeTyRank)
-        return emitOpError("rank of dimension mismatched");
-    }
-
-    if (auto sliceOp = slice()) {
-      if (auto sliceTy = sliceOp.getType().dyn_cast<fir::SliceType>()) {
-        if (sliceTy.getRank() != arrDim)
-          return emitOpError("rank of dimension in slice mismatched");
-      }
-    }
-
-    return mlir::success();
-  }];
+  let verifier = [{ return ::verify(*this); }];
 
   let extraClassDeclaration = [{
     std::vector<mlir::Value> getExtents();
@@ -1857,39 +1788,7 @@ def fir_ArrayCoorOp : fir_Op<"array_coor",
     $memref (`(`$shape^`)`)? (`[`$slice^`]`)? $indices (`typeparams` $lenParams^)? attr-dict `:` functional-type(operands, results)
   }];
 
-  let verifier = [{
-    auto eleTy = fir::dyn_cast_ptrEleTy(memref().getType());
-    if (!eleTy)
-       return emitOpError("must be a reference type");
-    auto arrTy = eleTy.dyn_cast<fir::SequenceType>();
-    if (!arrTy)
-      return emitOpError("must be a reference to an array");
-    auto arrDim = arrTy.getDimension();
-
-    if (auto shapeOp = shape()) {
-      auto shapeTy = shapeOp.getType();
-      unsigned shapeTyRank = 0;
-      if (auto s = shapeTy.dyn_cast<fir::ShapeType>()) {
-        shapeTyRank = s.getRank();
-      } else {
-        auto ss = shapeTy.cast<fir::ShapeShiftType>();
-        shapeTyRank = ss.getRank();
-      }
-      if (arrDim && arrDim != shapeTyRank)
-        return emitOpError("rank of dimension mismatched");
-      if (shapeTyRank != indices().size())
-        return emitOpError("number of indices do not match dim rank");
-    }
-
-    if (auto sliceOp = slice()) {
-      if (auto sliceTy = sliceOp.getType().dyn_cast<fir::SliceType>()) {
-        if (sliceTy.getRank() != arrDim)
-          return emitOpError("rank of dimension in slice mismatched");
-      }
-    }
-
-    return mlir::success();
-  }];
+  let verifier = [{ return ::verify(*this); }];
 }
 
 def fir_CoordinateOp : fir_Op<"coordinate_of", [NoSideEffect]> {
@@ -1930,36 +1829,7 @@ def fir_CoordinateOp : fir_Op<"coordinate_of", [NoSideEffect]> {
         (*this)->getResultTypes());
   }];
 
-  let verifier = [{
-    auto refTy = ref().getType();
-    if (fir::isa_ref_type(refTy)) {
-      auto eleTy = fir::dyn_cast_ptrEleTy(refTy);
-      if (auto arrTy = eleTy.dyn_cast<fir::SequenceType>()) {
-        if (arrTy.hasUnknownShape())
-          return emitOpError("cannot find coordinate in unknown shape");
-        if (arrTy.getConstantRows() < arrTy.getDimension() - 1)
-          return emitOpError("cannot find coordinate with unknown extents");
-      }
-      if (!(fir::isa_aggregate(eleTy) || fir::isa_complex(eleTy) ||
-            fir::isa_char_string(eleTy)))
-        return emitOpError("cannot apply coordinate_of to this type");
-    }
-    // Recovering a LEN type parameter only makes sense from a boxed value
-    for (auto co : coor())
-      if (dyn_cast_or_null<LenParamIndexOp>(co.getDefiningOp())) {
-        if (getNumOperands() != 2)
-          return emitOpError("len_param_index must be last argument");
-        if (!ref().getType().isa<BoxType>())
-          return emitOpError("len_param_index must be used on box type");
-      }
-    if (auto attr = (*this)->getAttr(CoordinateOp::baseType())) {
-      if (!attr.isa<mlir::TypeAttr>())
-        return emitOpError("improperly constructed");
-    } else {
-      return emitOpError("must have base type");
-    }
-    return mlir::success();
-  }];
+  let verifier = [{ return ::verify(*this); }];
 
   let skipDefaultBuilders = 1;
   let builders = [
@@ -2826,7 +2696,8 @@ def fir_StringLitOp : fir_Op<"string_lit", [NoSideEffect]> {
     if (!charTy)
       return parser.emitError(parser.getCurrentLocation(),
                               "must have character type");
-    type = fir::CharacterType::get(builder.getContext(), charTy.getFKind(), sz.getInt());
+    type = fir::CharacterType::get(builder.getContext(), charTy.getFKind(),
+                                   sz.getInt());
     if (!type || parser.addTypesToList(type, result.types))
       return mlir::failure();
     return mlir::success();
