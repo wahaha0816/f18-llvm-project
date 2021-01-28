@@ -68,7 +68,7 @@ inline llvm::StringRef getContiguousAttrName() { return "fir.contiguous"; }
 ///   attributeName.
 ///   - or, the result of a fir.address_of of a fir.global that has attribute \p
 ///   attributeName
-///   - or, a fir.box loaded from a fir.ref<fir.box> that matches on of the
+///   - or, a fir.box loaded from a fir.ref<fir.box> that matches one of the
 ///   previous cases.
 bool valueHasFirAttribute(mlir::Value value, llvm::StringRef attributeName);
 
