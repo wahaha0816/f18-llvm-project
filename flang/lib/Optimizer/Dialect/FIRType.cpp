@@ -987,6 +987,13 @@ mlir::Type fir::RecordType::getType(llvm::StringRef ident) {
   return {};
 }
 
+unsigned fir::RecordType::getFieldIndex(llvm::StringRef ident) {
+  for (auto f : llvm::enumerate(getTypeList()))
+    if (ident == f.value().first)
+      return f.index();
+  return std::numeric_limits<unsigned>::max();
+}
+
 //===----------------------------------------------------------------------===//
 // Type descriptor type
 //===----------------------------------------------------------------------===//

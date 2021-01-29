@@ -281,6 +281,9 @@ public:
   TypeList getLenParamList();
 
   mlir::Type getType(llvm::StringRef ident);
+  /// Returns the index of the field \p ident in the type list.
+  /// Returns maximum unsigned if ident is not a field of this RecordType.
+  unsigned getFieldIndex(llvm::StringRef ident);
   mlir::Type getType(unsigned index) {
     assert(index < getNumFields());
     return getTypeList()[index].second;
