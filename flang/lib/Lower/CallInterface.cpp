@@ -444,13 +444,9 @@ private:
       auto boxCharTy = fir::BoxCharType::get(&mlirContext, dynamicType.kind());
       addFirInput(boxCharTy, nextPassedArgPosition(), Property::BoxChar);
       addPassedArg(PassEntityBy::BoxChar, entity);
-    } else if (dynamicType.category() ==
-               Fortran::common::TypeCategory::Derived) {
-      //  non PDT derived type allowed in implicit interface.
-      TODO("derived type arguments in implicit interface");
     } else {
-      mlir::Type type =
-          getConverter().genType(dynamicType.category(), dynamicType.kind());
+      //  non PDT derived type allowed in implicit interface.
+      auto type = translateDynamicType(dynamicType);
       fir::SequenceType::Shape bounds = getBounds(obj.type.shape());
       if (!bounds.empty())
         type = fir::SequenceType::get(bounds, type);
@@ -459,6 +455,18 @@ private:
       addFirInput(refType, nextPassedArgPosition(), Property::BaseAddress);
       addPassedArg(PassEntityBy::BaseAddress, entity);
     }
+  }
+
+  mlir::Type
+  translateDynamicType(const Fortran::evaluate::DynamicType &dynamicType) {
+    auto cat = dynamicType.category();
+    if (cat == Fortran::common::TypeCategory::Derived)
+      return getConverter().genType(dynamicType.GetDerivedTypeSpec());
+    llvm::SmallVector<std::int64_t, 2> lenParams;
+    if (cat == Fortran::common::TypeCategory::Character)
+      if (auto constantLen = toInt64(dynamicType.GetCharLength()))
+        lenParams.push_back(*constantLen);
+    return getConverter().genType(cat, dynamicType.kind(), lenParams);
   }
 
   void handleExplicitDummy(
@@ -491,15 +499,7 @@ private:
     // So far assume that if the argument cannot be passed by implicit interface
     // it must be by box. That may no be always true (e.g for simple optionals)
 
-    auto dynamicType = obj.type.type();
-    auto cat = dynamicType.category();
-    llvm::SmallVector<std::int64_t, 2> lenParams;
-    if (cat == Fortran::common::TypeCategory::Derived)
-      TODO("derived type arguments in procedure interface");
-    if (cat == Fortran::common::TypeCategory::Character)
-      if (auto constantLen = toInt64(dynamicType.GetCharLength()))
-        lenParams.push_back(*constantLen);
-    auto type = getConverter().genType(cat, dynamicType.kind(), lenParams);
+    auto type = translateDynamicType(obj.type.type());
     fir::SequenceType::Shape bounds = getBounds(obj.type.shape());
     if (!bounds.empty())
       type = fir::SequenceType::get(bounds, type);

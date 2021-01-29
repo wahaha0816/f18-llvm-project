@@ -14,8 +14,8 @@
 #define FORTRAN_LOWER_ABSTRACTCONVERTER_H
 
 #include "flang/Common/Fortran.h"
-#include "flang/Lower/Support/BoxValue.h"
 #include "flang/Lower/PFTDefs.h"
+#include "flang/Lower/Support/BoxValue.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "llvm/ADT/ArrayRef.h"
 
@@ -37,7 +37,8 @@ class CharBlock;
 }
 namespace semantics {
 class Symbol;
-}
+class DerivedTypeSpec;
+} // namespace semantics
 
 namespace lower {
 namespace pft {
@@ -119,6 +120,8 @@ public:
   virtual mlir::Type
   genType(Fortran::common::TypeCategory tc, int kind,
           llvm::ArrayRef<std::int64_t> lenParameters = llvm::None) = 0;
+  /// Generate the type from a DerivedTypeSpec.
+  virtual mlir::Type genType(const Fortran::semantics::DerivedTypeSpec &) = 0;
   /// Generate the type from a Variable
   virtual mlir::Type genType(const pft::Variable &) = 0;
 

@@ -958,19 +958,50 @@ public:
     std::list<const Fortran::evaluate::Component *> list;
     auto *base = reverseComponents(cmpt, list);
     llvm::SmallVector<mlir::Value, 2> coorArgs;
-    auto obj = genunbox(*base);
+    auto obj = fir::getBase(gen(*base));
     auto *sym = &cmpt.GetFirstSymbol();
     auto ty = converter.genType(*sym);
+    auto fieldTy = ty;
+    auto lenTy = fir::LenType::get(builder.getContext());
+    auto loc = getLoc();
     for (auto *field : list) {
       sym = &field->GetLastSymbol();
       auto name = sym->name().ToString();
-      // FIXME: as we're walking the chain of field names, we need to update the
-      // subtype as we drill down
-      coorArgs.push_back(builder.create<fir::FieldIndexOp>(getLoc(), name, ty));
+      auto on_ty_attr = mlir::TypeAttr::get(fieldTy);
+      if (auto recordTy = fieldTy.dyn_cast<fir::RecordType>())
+        fieldTy = recordTy.getType(name);
+      else
+        fir::emitFatalError(getLoc(), "component on non derived type");
+      auto name_attr = mlir::StringAttr::get(name, builder.getContext());
+      coorArgs.push_back(builder.create<fir::FieldIndexOp>(
+          loc, lenTy, name_attr, on_ty_attr, /*lenparams=*/llvm::None));
     }
     assert(sym && "no component(s)?");
-    ty = builder.getRefType(ty);
-    return builder.create<fir::CoordinateOp>(getLoc(), ty, obj, coorArgs);
+    auto resTy = builder.getRefType(fieldTy);
+    auto addr = builder.create<fir::CoordinateOp>(loc, resTy, obj, coorArgs);
+    if (Fortran::lower::CharacterExprHelper::isCharacterScalar(fieldTy)) {
+      auto cstLen =
+          Fortran::lower::CharacterExprHelper::getCharacterType(fieldTy)
+              .getLen();
+      if (cstLen == fir::CharacterType::unknownLen())
+        fir::emitFatalError(
+            loc,
+            "TODO: get character component length from length type parameters");
+      auto len = builder.createIntegerConstant(
+          loc, builder.getCharacterLengthType(), cstLen);
+      return fir::CharBoxValue{addr, len};
+    }
+    // TODO: is array support needed here ?
+    if (fieldTy.dyn_cast<fir::SequenceType>())
+      fir::emitFatalError(loc, "TODO: lower shape of array component ref");
+    if (fieldTy.dyn_cast<fir::BoxType>())
+      fir::emitFatalError(loc, "TODO: lower pointer/allocatable component ref");
+    if (auto recordTy = fieldTy.dyn_cast<fir::RecordType>())
+      if (recordTy.getNumLenParams() != 0)
+        fir::emitFatalError(loc, "TODO: lower component ref that is a derived "
+                                 "type with length parameter");
+
+    return addr;
   }
 
   fir::ExtendedValue genval(const Fortran::evaluate::Component &cmpt) {

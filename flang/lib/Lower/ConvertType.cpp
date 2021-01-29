@@ -15,6 +15,7 @@
 #include "flang/Lower/Support/Utils.h"
 #include "flang/Lower/Todo.h"
 #include "flang/Optimizer/Dialect/FIRType.h"
+#include "flang/Optimizer/Support/FatalError.h"
 #include "flang/Semantics/tools.h"
 #include "flang/Semantics/type.h"
 #include "mlir/IR/Builders.h"
@@ -138,17 +139,20 @@ struct TypeBuilder {
     if (!dynamicType)
       return genTypelessExprType(expr);
     auto category = dynamicType->category();
-    if (category == Fortran::common::TypeCategory::Derived)
-      TODO("derived types lowering");
+
+    mlir::Type baseType;
+    if (category == Fortran::common::TypeCategory::Derived) {
+      baseType = genDerivedType(dynamicType->GetDerivedTypeSpec());
+    } else {
+      // LOGICAL, INTEGER, REAL, COMPLEX, CHARACTER
+      llvm::SmallVector<Fortran::lower::LenParameterTy, 2> params;
+      translateLenParameters(params, category, expr);
+      baseType = genFIRType(context, category, dynamicType->kind(), params);
+    }
     auto shapeExpr =
         Fortran::evaluate::GetShape(converter.getFoldingContext(), expr);
     if (!shapeExpr)
       TODO("Assumed rank expression type lowering");
-
-    // LOGICAL, INTEGER, REAL, COMPLEX, CHARACTER
-    llvm::SmallVector<Fortran::lower::LenParameterTy, 2> params;
-    translateLenParameters(params, category, expr);
-    auto baseType = genFIRType(context, category, dynamicType->kind(), params);
     fir::SequenceType::Shape shape;
     translateShape(shape, std::move(*shapeExpr));
     if (!shape.empty())
@@ -217,16 +221,7 @@ struct TypeBuilder {
         translateLenParameters(params, tySpec->category(), ultimate);
         ty = genFIRType(context, tySpec->category(), kind, params);
       } else if (auto *tySpec = type->AsDerived()) {
-        std::vector<std::pair<std::string, mlir::Type>> ps;
-        std::vector<std::pair<std::string, mlir::Type>> cs;
-        auto &symbol = tySpec->typeSymbol();
-        auto rec = fir::RecordType::get(context, toStringRef(symbol.name()));
-        // TODO: use Fortran::semantics::ComponentIterator to go through
-        // components. or use similar mechanism. We probably want to go through
-        // the Ordered components.
-        TODO("lower derived type to fir types");
-        rec.finalize(ps, cs);
-        ty = rec;
+        ty = genDerivedType(*tySpec);
       } else {
         mlir::emitError(loc, "symbol's type must have a type spec");
         return {};
@@ -257,6 +252,33 @@ struct TypeBuilder {
     if (isAlloc)
       return fir::HeapType::get(ty);
     return ty;
+  }
+
+  mlir::Type genDerivedType(const Fortran::semantics::DerivedTypeSpec &tySpec) {
+    auto loc = converter.genLocation(tySpec.name());
+    if (!tySpec.parameters().empty())
+      fir::emitFatalError(loc, "TODO: derived type with length parameters");
+    auto &symbol = tySpec.typeSymbol();
+    auto rec = fir::RecordType::get(context, toStringRef(symbol.name()));
+    fir::RecordType::TypeList componentList;
+    fir::RecordType::TypeList lengthParameterList;
+    for (const auto &comp :
+         Fortran::semantics::OrderedComponentIterator(tySpec)) {
+      // TODO: What to do with parent types ?
+      if (comp.test(Fortran::semantics::Symbol::Flag::ParentComp))
+        fir::emitFatalError(loc, "TODO: derived type with parent types");
+      // TODO: Beware of circular loops here if pointer to itself.
+      if (Fortran::semantics::IsAllocatableOrPointer(comp))
+        fir::emitFatalError(
+            loc, "TODO: derived types with allocatable/pointer components");
+      // TODO: Does this iterate over parameter too ?
+      // TODO: deal with promotion to descriptor here for automatic data ?
+      // That is the easiest but probably want to leave this to codegen to
+      // avoid assuming derived type layout here.
+      componentList.emplace_back(comp.name().ToString(), genSymbolType(comp));
+    }
+    rec.finalize(lengthParameterList, componentList);
+    return rec;
   }
 
   // To get the character length from a symbol, make an fold a designator for
@@ -331,6 +353,12 @@ mlir::Type Fortran::lower::getFIRType(mlir::MLIRContext *context,
                                       int kind,
                                       llvm::ArrayRef<LenParameterTy> params) {
   return genFIRType(context, tc, kind, params);
+}
+
+mlir::Type Fortran::lower::translateDerivedTypeToFIRType(
+    Fortran::lower::AbstractConverter &converter,
+    const Fortran::semantics::DerivedTypeSpec &tySpec) {
+  return TypeBuilder{converter}.genDerivedType(tySpec);
 }
 
 mlir::Type Fortran::lower::translateSomeExprToFIRType(
