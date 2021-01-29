@@ -37,9 +37,9 @@ static mlir::Type genRealType(mlir::MLIRContext *context, int kind) {
     case 8:
       return mlir::FloatType::getF64(context);
     case 10:
-      return fir::RealType::get(context, 10);
+      return mlir::FloatType::getF80(context);
     case 16:
-      return fir::RealType::get(context, 16);
+      return mlir::FloatType::getF128(context);
     }
   }
   llvm_unreachable("REAL type translation not implemented");

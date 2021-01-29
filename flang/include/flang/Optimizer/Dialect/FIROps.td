@@ -243,9 +243,9 @@ class fir_AllocatableOp<string mnemonic, Resource resource,
     static constexpr llvm::StringRef inType() { return "in_type"; }
     static constexpr llvm::StringRef lenpName() { return "len_param_count"; }
     mlir::Type getAllocatedType();
-    
+
     bool hasLenParams() { return bool{(*this)->getAttr(lenpName())}; }
-    
+
     unsigned numLenParams() {
       if (auto val = (*this)->getAttrOfType<mlir::IntegerAttr>(lenpName()))
         return val.getInt();
@@ -1559,7 +1559,7 @@ def fir_ArrayLoadOp : fir_Op<"array_load", [AttrSizedOperandSegments]> {
     alter its composite value. This operation let's one load an array as a
     value while applying a runtime shape, shift, or slice to the memory
     reference, and its semantics guarantee immutability.
-    
+
     ```mlir
       %s = fir.shape_shift %o, %n, %p, %m : (index, index, index, index) -> !fir.shape<2>
       // load the entire array 'a'
@@ -1717,7 +1717,7 @@ def fir_ArrayMergeStoreOp : fir_Op<"array_merge_store", [
 
     One can use `fir.array_merge_store` to merge/copy the value of `a` in an
     array expression as shown above.
-    
+
     ```mlir
       %v = fir.array_load %a(%shape) : ...
       %r = fir.array_update %v, %f, %i, %j : (!fir.array<?x?xf32>, f32, index, index) -> !fir.array<?x?xf32>
@@ -1928,7 +1928,7 @@ def fir_FieldIndexOp : fir_OneResultOp<"field_index", [NoSideEffect]> {
 
   let printer = [{
     p << getOperationName() << ' '
-      << (*this)->getAttrOfType<mlir::StringAttr>(fieldAttrName()).getValue() 
+      << (*this)->getAttrOfType<mlir::StringAttr>(fieldAttrName()).getValue()
       << ", " << (*this)->getAttr(typeAttrName());
     if (getNumOperands()) {
       p << '(';
@@ -2083,7 +2083,7 @@ def fir_SliceOp : fir_Op<"slice", [NoSideEffect, AttrSizedOperandSegments]> {
     To support generalized slicing of Fortran's dynamic derived types, a slice
     op can be given a component path (narrowing from the product type of the
     original array to the specific elemental type of the sliced projection).
-    
+
     ```mlir
       %fld = fir.field_index component, !fir.type<t{...component:ct...}>
       %d = fir.slice %lo, %hi, %step path %fld : (index, index, index, !fir.field) -> !fir.slice<1>
@@ -2351,7 +2351,7 @@ def fir_DoLoopOp : region_Op<"do_loop",
       (*this)->setAttr(unorderedAttrName(),
                               mlir::UnitAttr::get(getContext()));
     }
-    
+
     mlir::BlockArgument iterArgToBlockArg(mlir::Value iterArg);
     void resultToSourceOps(llvm::SmallVectorImpl<mlir::Value> &results,
                            unsigned resultNum);
@@ -2402,7 +2402,7 @@ def fir_IfOp : region_Op<"if", [NoRegionArguments]> {
       mlir::Block &body = elseRegion().front();
       return mlir::OpBuilder(&body, std::prev(body.end()));
     }
-    
+
     void resultToSourceOps(llvm::SmallVectorImpl<mlir::Value> &results,
                            unsigned resultNum);
   }];
@@ -2428,7 +2428,7 @@ def fir_IterWhileOp : region_Op<"iterate_while",
     loop. The result triple is the values of %i=phi(%lo,%i+%c1),
     %ok=phi(%okIn,%okNew), and %sh=phi(%shIn,%shNew) from the last executed
     iteration.
-    
+
     ```mlir
       %v:3 = fir.iterate_while (%i = %lo to %up step %c1) and (%ok = %okIn) iter_args(%sh = %shIn) -> (index, i1, i16) {
         %shNew = fir.call @bar(%sh) : (i16) -> i16
@@ -2762,32 +2762,6 @@ class fir_UnaryArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
   }];
 
   let printer = [{ return printUnaryOp(this->getOperation(), p); }];
-}
-
-def FirRealAttr : Attr<CPred<"$_self.isa<fir::RealAttr>()">, "FIR real attr"> {
-  let storageType = [{ fir::RealAttr }];
-  let returnType = [{ llvm::APFloat }];
-}
-
-def fir_ConstfOp : fir_Op<"constf", [NoSideEffect]> {
-  let summary = "create a floating point constant";
-
-  let description = [{
-    A floating-point constant. This operation is to augment MLIR to be able
-    to represent APFloat values that are not supported in the standard dialect.
-  }];
-
-  let arguments = (ins FirRealAttr:$constant);
-
-  let results = (outs fir_RealType:$res);
-
-  let assemblyFormat = "`(` $constant `)` attr-dict `:` type($res)";
-
-  let verifier = [{
-    if (!getType().isa<fir::RealType>())
-      return emitOpError("must be a !fir.real type");
-    return mlir::success();
-  }];
 }
 
 class RealUnaryArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
@@ -3274,7 +3248,7 @@ def fir_GlobalLenOp : fir_Op<"global_len", []> {
   }];
 
   let printer = [{
-    p << getOperationName() << ' ' << (*this)->getAttr(lenParamAttrName()) 
+    p << getOperationName() << ' ' << (*this)->getAttr(lenParamAttrName())
       << ", " << (*this)->getAttr(intAttrName());
   }];
 
