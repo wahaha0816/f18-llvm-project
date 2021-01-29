@@ -409,12 +409,24 @@ private:
     const auto *typeAndShape = result.GetTypeAndShape();
     assert(typeAndShape && "expect type for non proc pointer result");
     auto dynamicType = typeAndShape->type();
-    // Character result allocated by caller and passed has hidden arguments
+    // Character result allocated by caller and passed as hidden arguments
     if (dynamicType.category() == Fortran::common::TypeCategory::Character) {
       handleImplicitCharacterResult(dynamicType);
+    } else if (dynamicType.category() ==
+               Fortran::common::TypeCategory::Derived) {
+      // Derived result need to be allocated by the caller and passed as hidden
+      // arguments. Derived type in implicit interface cannot have length
+      // parameters.
+      setPassedResult(PassEntityBy::BaseAddress,
+                      getResultEntity(interface.side().getCallDescription()));
+      auto derivedRefTy =
+          fir::ReferenceType::get(translateDynamicType(dynamicType));
+      auto resultPosition = FirPlaceHolder::resultEntityPosition;
+      addFirInput(derivedRefTy, resultPosition, Property::BaseAddress);
+      addFirOutput(derivedRefTy, resultPosition, Property::BaseAddress);
     } else {
-      // All result other than characters are simply returned by value in
-      // implicit interfaces
+      // All result other than characters/derived are simply returned by value
+      // in implicit interfaces
       auto mlirType =
           getConverter().genType(dynamicType.category(), dynamicType.kind());
       addFirOutput(mlirType, FirPlaceHolder::resultEntityPosition,
@@ -522,7 +534,8 @@ private:
     // So far assume that if the argument cannot be passed by implicit interface
     // it must be by box. That may no be always true (e.g for simple optionals)
 
-    auto type = translateDynamicType(obj.type.type());
+    auto dynamicType = obj.type.type();
+    auto type = translateDynamicType(dynamicType);
     fir::SequenceType::Shape bounds = getBounds(obj.type.shape());
     if (!bounds.empty())
       type = fir::SequenceType::get(bounds, type);

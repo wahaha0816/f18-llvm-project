@@ -1267,7 +1267,7 @@ public:
   mlir::Type genType(const Fortran::evaluate::DynamicType &dt) {
     if (dt.category() != Fortran::common::TypeCategory::Derived)
       return converter.genType(dt.category(), dt.kind());
-    llvm::report_fatal_error("derived types not implemented");
+    return converter.genType(dt.GetDerivedTypeSpec());
   }
 
   /// Apply the function `func` and return a reference to the resultant value.
@@ -1506,6 +1506,12 @@ public:
           caller.placeAddressAndLengthInput(*resultArg, temp.getBuffer(),
                                             temp.getLen());
           return fir::ExtendedValue(temp);
+        }
+        if (resultArg->passBy == PassBy::BaseAddress) {
+          auto temp = builder.createTemporary(loc, resultType[0]);
+          caller.placeInput(*resultArg, temp);
+          return fir::ExtendedValue(temp);
+          // allocate and pass derived type result (no length parameters).
         }
         TODO("passing hidden descriptor for result"); // Pass descriptor
       }
