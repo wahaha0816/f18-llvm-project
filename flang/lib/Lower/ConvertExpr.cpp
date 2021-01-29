@@ -2541,7 +2541,44 @@ public:
   CC genarr(const Fortran::evaluate::Substring &) { TODO("substring"); }
 
   template <typename A>
+  mlir::Type genElementalResultType(const Fortran::evaluate::FunctionRef<A> &) {
+    return {};
+  }
+  template <Fortran::common::TypeCategory TC, int KIND>
+  mlir::Type genElementalResultType(
+      const Fortran::evaluate::FunctionRef<Fortran::evaluate::Type<TC, KIND>>
+          &) {
+    return converter.genType(TC, KIND);
+  }
+
+  template <typename A>
   CC genarr(const Fortran::evaluate::FunctionRef<A> &x) {
+    if (x.IsElemental()) {
+      if (const auto *intrinsic = x.proc().GetSpecificIntrinsic()) {
+        llvm::SmallVector<CC, 2> args;
+        for (const auto &arg : x.arguments()) {
+          if (auto *expr = Fortran::evaluate::UnwrapExpr<
+                  Fortran::evaluate::Expr<Fortran::evaluate::SomeType>>(arg)) {
+            args.emplace_back(genarr(*expr));
+          } else {
+            // Is it possible ? (probably yes for the KIND arguments)
+            TODO("absent optional in elemental intrinsic call");
+          }
+        }
+        auto loc = getLoc();
+        auto name = intrinsic->name;
+        auto resultType = genElementalResultType(x);
+        return [=](IterSpace iters) -> ExtValue {
+          llvm::SmallVector<fir::ExtendedValue, 2> operands;
+          for (const auto &cc : args)
+            operands.push_back(fir::getBase(cc(iters)));
+          return Fortran::lower::genIntrinsicCall(builder, loc, name,
+                                                  resultType, operands);
+        };
+      }
+      TODO("elemental user function");
+    }
+    mlir::emitError(getLoc(), "non elemental array function ref");
     return [](IterSpace iters) -> ExtValue {
       TODO("function ref");
       return mlir::Value{}; /* FIXME */
