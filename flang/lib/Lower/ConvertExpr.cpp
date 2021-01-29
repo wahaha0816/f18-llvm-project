@@ -2437,10 +2437,20 @@ public:
     if (inProjection)
       return [=](IterSpace) -> ExtValue { return arrLd; };
     auto eleTy = arrTy.cast<fir::SequenceType>().getEleTy();
-    return [=](IterSpace iters) -> ExtValue {
-      return builder.create<fir::ArrayFetchOp>(loc, eleTy, arrLd,
-                                               iters.iterVec());
-    };
+    return extMemref.match(
+        [&](const fir::CharArrayBoxValue &ch) -> CC {
+          return [=](IterSpace iters) -> ExtValue {
+            return fir::CharBoxValue{builder.create<fir::ArrayFetchOp>(
+                                         loc, eleTy, arrLd, iters.iterVec()),
+                                     ch.getLen()};
+          };
+        },
+        [&](const auto &) -> CC {
+          return [=](IterSpace iters) -> ExtValue {
+            return builder.create<fir::ArrayFetchOp>(loc, eleTy, arrLd,
+                                                     iters.iterVec());
+          };
+        });
   }
 
   /// Reduce the rank of a array to be boxed based on the slice's operands.
@@ -2690,8 +2700,8 @@ public:
     auto lf = genarr(x.left());
     auto rf = genarr(x.right());
     return [=](IterSpace iters) -> ExtValue {
-      auto lhs = fir::getBase(lf(iters));
-      auto rhs = fir::getBase(rf(iters));
+      auto lhs = lf(iters);
+      auto rhs = rf(iters);
       return Fortran::lower::genCharCompare(converter, loc, pred, lhs, rhs);
     };
   }
