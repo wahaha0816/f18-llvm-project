@@ -1,5 +1,6 @@
 add_subdirectory(f18)
 add_subdirectory(f18-parse-demo)
+add_subdirectory(fir-opt)
 add_subdirectory(bbc)
 add_subdirectory(tco)
 if(FLANG_BUILD_NEW_DRIVER)

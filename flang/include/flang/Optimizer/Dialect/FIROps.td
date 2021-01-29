@@ -2676,6 +2676,7 @@ def fir_StringLitOp : fir_Op<"string_lit", [NoSideEffect]> {
     auto &builder = parser.getBuilder();
     mlir::Attribute val;
     mlir::NamedAttrList attrs;
+    llvm::SMLoc trailingTypeLoc;
     if (parser.parseAttribute(val, "fake", attrs))
       return mlir::failure();
     if (auto v = val.dyn_cast<mlir::StringAttr>())
@@ -2690,11 +2691,12 @@ def fir_StringLitOp : fir_Op<"string_lit", [NoSideEffect]> {
     if (parser.parseLParen() ||
         parser.parseAttribute(sz, size(), result.attributes) ||
         parser.parseRParen() ||
+        parser.getCurrentLocation(&trailingTypeLoc) ||
         parser.parseColonType(type))
       return mlir::failure();
     auto charTy = type.dyn_cast<fir::CharacterType>();
     if (!charTy)
-      return parser.emitError(parser.getCurrentLocation(),
+      return parser.emitError(trailingTypeLoc,
                               "must have character type");
     type = fir::CharacterType::get(builder.getContext(), charTy.getFKind(),
                                    sz.getInt());
@@ -2716,7 +2718,7 @@ def fir_StringLitOp : fir_Op<"string_lit", [NoSideEffect]> {
       auto xList = xl.cast<mlir::ArrayAttr>();
       for (auto a : xList)
         if (!a.isa<mlir::IntegerAttr>())
-	  return emitOpError("values in list must be integers");
+	    return emitOpError("values in list must be integers");
     }
     return mlir::success();
   }];
