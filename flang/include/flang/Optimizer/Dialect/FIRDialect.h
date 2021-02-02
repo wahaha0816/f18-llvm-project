@@ -13,14 +13,7 @@
 #ifndef OPTIMIZER_DIALECT_FIRDIALECT_H
 #define OPTIMIZER_DIALECT_FIRDIALECT_H
 
-#include "mlir/Conversion/Passes.h"
-#include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/IR/Dialect.h"
-#include "mlir/InitAllDialects.h"
-#include "mlir/Pass/Pass.h"
-#include "mlir/Pass/PassRegistry.h"
-#include "mlir/Transforms/LocationSnapshot.h"
-#include "mlir/Transforms/Passes.h"
 
 namespace fir {
 
@@ -50,53 +43,6 @@ public:
 
   static llvm::StringRef getDialectNamespace() { return "fircg"; }
 };
-
-/// Register and load all the dialects used by flang.
-inline void registerAndLoadDialects(mlir::MLIRContext &ctx) {
-  auto registry = ctx.getDialectRegistry();
-  // clang-format off
-  registry.insert<mlir::AffineDialect,
-                  FIROpsDialect,
-                  FIRCodeGenDialect,
-                  mlir::LLVM::LLVMDialect,
-                  mlir::acc::OpenACCDialect,
-                  mlir::omp::OpenMPDialect,
-                  mlir::scf::SCFDialect,
-                  mlir::StandardOpsDialect,
-                  mlir::vector::VectorDialect>();
-  // clang-format on
-  registry.loadAll(&ctx);
-}
-
-/// Register the standard passes we use. This comes from registerAllPasses(),
-/// but is a smaller set since we aren't using many of the passes found there.
-inline void registerGeneralPasses() {
-  mlir::registerCanonicalizerPass();
-  mlir::registerCSEPass();
-  mlir::registerAffineLoopFusionPass();
-  mlir::registerLoopInvariantCodeMotionPass();
-  mlir::registerLoopCoalescingPass();
-  mlir::registerStripDebugInfoPass();
-  mlir::registerPrintOpStatsPass();
-  mlir::registerInlinerPass();
-  mlir::registerSCCPPass();
-  mlir::registerMemRefDataFlowOptPass();
-  mlir::registerSymbolDCEPass();
-  mlir::registerLocationSnapshotPass();
-  mlir::registerAffinePipelineDataTransferPass();
-
-  mlir::registerAffineVectorizePass();
-  mlir::registerAffineLoopUnrollPass();
-  mlir::registerAffineLoopUnrollAndJamPass();
-  mlir::registerSimplifyAffineStructuresPass();
-  mlir::registerAffineLoopInvariantCodeMotionPass();
-  mlir::registerAffineLoopTilingPass();
-  mlir::registerAffineDataCopyGenerationPass();
-
-  mlir::registerConvertAffineToStandardPass();
-}
-
-inline void registerFIRPasses() { registerGeneralPasses(); }
 
 } // namespace fir
 
