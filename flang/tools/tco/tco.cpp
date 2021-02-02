@@ -11,9 +11,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "flang/Optimizer/Dialect/FIRDialect.h"
 #include "flang/Optimizer/OptPasses.h"
 #include "flang/Optimizer/Support/FIRContext.h"
+#include "flang/Optimizer/Support/InitFIR.h"
 #include "flang/Optimizer/Support/InternalNames.h"
 #include "flang/Optimizer/Support/KindMapping.h"
 #include "mlir/Conversion/SCFToStandard/SCFToStandard.h"
@@ -73,7 +73,7 @@ compileFIR(const mlir::PassPipelineCLParser &passPipeline) {
   SourceMgr sourceMgr;
   sourceMgr.AddNewSourceBuffer(std::move(*fileOrErr), SMLoc());
   mlir::MLIRContext context;
-  fir::registerAndLoadDialects(context);
+  fir::support::registerAndLoadDialects(context);
   auto owningRef = mlir::parseSourceFile(sourceMgr, &context);
 
   if (!owningRef) {
@@ -145,7 +145,7 @@ compileFIR(const mlir::PassPipelineCLParser &passPipeline) {
 }
 
 int main(int argc, char **argv) {
-  fir::registerFIRPasses();
+  fir::support::registerFIRPasses();
   fir::registerOptPasses();
 
   [[maybe_unused]] InitLLVM y(argc, argv);
