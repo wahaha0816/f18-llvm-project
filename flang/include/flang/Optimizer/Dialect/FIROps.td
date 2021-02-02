@@ -3393,4 +3393,42 @@ def fir_DTEntryOp : fir_Op<"dt_entry", []> {
   }];
 }
 
+def fir_AbsentOp : fir_OneResultOp<"absent", [NoSideEffect]> {
+  let summary = "create value to be passed for absent optional function argument";
+  let description = [{
+    Given the type of a function argument, create a value that will signal that
+    an optional argument is absent in the call. On the caller side, fir.is_present
+    can be used to query if the value of an optional argument was created with
+    a fir.absent operation. 
+    It is undefined to use a value that was created by a fir.absent op in any other
+    operation than fir.call and fir.is_present.
+    ```mlir
+      %1 = fir.absent fir.box<fir.array<?xf32>>
+      fir.call @_QPfoo(%1) : (fir.box<fir.array<?xf32>>) -> ()
+    ```
+  }];
+
+  let results = (outs AnyRefOrBox:$intype);
+
+  let assemblyFormat = "type($intype) attr-dict";
+}
+
+def fir_IsPresentOp : fir_SimpleOp<"is_present", [NoSideEffect]> {
+  let summary = "is this optional function argument present?";
+
+  let description = [{
+    Determine if an optional function argument is PRESENT (i.e. that it was not
+    created by a fir.absent op on the caller side).
+    ```mlir
+      func @_QPfoo(%arg0: !fir.box<!fir.array<?xf32>>) {
+        %0 = fir.is_present %arg0 : (!fir.box<!fir.array<?xf32>>) -> i1
+        ...
+    ```
+  }];
+
+  let arguments = (ins AnyRefOrBox:$val);
+
+  let results = (outs BoolLike);
+}
+
 #endif
