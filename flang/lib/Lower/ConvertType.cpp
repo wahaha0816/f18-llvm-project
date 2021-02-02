@@ -19,6 +19,9 @@
 #include "flang/Semantics/type.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "llvm/Support/Debug.h"
+
+#define DEBUG_TYPE "flang-lower-type"
 
 //===--------------------------------------------------------------------===//
 // Intrinsic type translation helpers
@@ -108,8 +111,7 @@ genFIRType(mlir::MLIRContext *context, Fortran::common::TypeCategory tc,
   case Fortran::common::TypeCategory::Character:
     if (!lenParameters.empty())
       return genCharacterType(context, kind, lenParameters[0]);
-    else
-      return genCharacterType(context, kind);
+    return genCharacterType(context, kind);
   default:
     break;
   }
@@ -221,12 +223,22 @@ struct TypeBuilder {
         std::vector<std::pair<std::string, mlir::Type>> cs;
         auto &symbol = tySpec->typeSymbol();
         auto rec = fir::RecordType::get(context, toStringRef(symbol.name()));
-        // TODO: use Fortran::semantics::ComponentIterator to go through
-        // components. or use similar mechanism. We probably want to go through
-        // the Ordered components.
-        TODO("lower derived type to fir types");
+        Fortran::semantics::OrderedComponentIterator components(*tySpec);
+        for (auto iter = components.begin(), iend = components.end();
+             iter != iend; ++iter) {
+          auto &field = *iter;
+          cs.emplace_back(field.name().ToString(), genSymbolType(field));
+        }
+        for (auto iter : tySpec->parameters())
+          if (iter.second.isLen()) {
+            ps.emplace_back(
+                iter.first.ToString(),
+                /* FIXME - is the type available? Fake with index type. */
+                mlir::IndexType::get(&converter.getMLIRContext()));
+          }
         rec.finalize(ps, cs);
         ty = rec;
+        LLVM_DEBUG(llvm::dbgs() << "derived type: " << rec << '\n');
       } else {
         mlir::emitError(loc, "symbol's type must have a type spec");
         return {};

@@ -1791,7 +1791,7 @@ def fir_ArrayCoorOp : fir_Op<"array_coor",
   let verifier = [{ return ::verify(*this); }];
 }
 
-def fir_CoordinateOp : fir_Op<"coordinate_of", [NoSideEffect]> {
+def fir_CoordinateOp : fir_Op<"coordinate_of", [NoSideEffect, AttrSizedOperandSegments]> {
   let summary = "Finds the coordinate (location) of a value in memory";
 
   let description = [{
@@ -1815,7 +1815,8 @@ def fir_CoordinateOp : fir_Op<"coordinate_of", [NoSideEffect]> {
     array `%h`.
   }];
 
-  let arguments = (ins AnyRefOrBox:$ref, Variadic<AnyCoordinateType>:$coor);
+  let arguments = (ins AnyRefOrBox:$ref, Variadic<AnyCoordinateType>:$coor
+    /*,Variadic<AnyIntegerType>:$lenparams*/);
 
   let results = (outs fir_ReferenceType);
 
