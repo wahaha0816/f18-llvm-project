@@ -36,6 +36,7 @@ set(FLANG_TEST_DEPENDS
   f18 FileCheck count not module_files
   opt llc
   tco bbc
+  fir-opt
   FortranRuntime FortranDecimal
 )
 
