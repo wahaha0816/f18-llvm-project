@@ -634,3 +634,18 @@ func @array_access(%arr : !fir.ref<!fir.array<?x?xf32>>) {
   }
   return
 }
+
+// CHECK-LABEL: @test_is_present
+func @test_is_present(%arg0: !fir.box<!fir.array<?xf32>>) -> i1 {
+  // CHECK: fir.is_present %{{.*}} : (!fir.box<!fir.array<?xf32>>) -> i1
+  %0 = fir.is_present %arg0 : (!fir.box<!fir.array<?xf32>>) -> i1
+  return %0 : i1
+}
+// CHECK-LABEL: @test_absent
+func @test_absent() -> i1 {
+  // CHECK: fir.absent !fir.box<!fir.array<?xf32>>
+  %0 = fir.absent !fir.box<!fir.array<?xf32>>
+  %1 = fir.call @_QPfoo(%0) : (!fir.box<!fir.array<?xf32>>) -> i1
+  return %1 : i1
+}
+
