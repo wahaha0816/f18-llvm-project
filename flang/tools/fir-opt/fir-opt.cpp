@@ -12,17 +12,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Support/MlirOptMain.h"
-#include "flang/Optimizer/Dialect/FIRDialect.h"
 #include "flang/Optimizer/OptPasses.h"
+#include "flang/Optimizer/Support/InitFIR.h"
 
 using namespace mlir;
 
 int main(int argc, char **argv) {
-  fir::registerFIRPasses();
+  fir::support::registerFIRPasses();
   fir::registerOptPasses();
   DialectRegistry registry;
   registerAllDialects(registry);
   registry.insert<fir::FIROpsDialect>();
   return failed(MlirOptMain(argc, argv, "FIR modular optimizer driver\n",
-      registry, /*preloadDialectsInContext*/false));
+      registry, /*preloadDialectsInContext=*/false));
 }
