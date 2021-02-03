@@ -15,6 +15,7 @@
 #include "flang/Lower/Support/Utils.h"
 #include "flang/Lower/Todo.h"
 #include "flang/Optimizer/Dialect/FIRType.h"
+#include "flang/Optimizer/Support/FatalError.h"
 #include "flang/Semantics/tools.h"
 #include "flang/Semantics/type.h"
 #include "mlir/IR/Builders.h"
@@ -222,30 +223,32 @@ struct TypeBuilder {
         std::vector<std::pair<std::string, mlir::Type>> ps;
         std::vector<std::pair<std::string, mlir::Type>> cs;
         auto &symbol = tySpec->typeSymbol();
+        // FIXME: mangle the type name, including KIND parameters, etc.
         auto rec = fir::RecordType::get(context, toStringRef(symbol.name()));
-        Fortran::semantics::OrderedComponentIterator components(*tySpec);
-        for (auto iter = components.begin(), iend = components.end();
-             iter != iend; ++iter) {
-          auto &field = *iter;
-          cs.emplace_back(field.name().ToString(), genSymbolType(field));
+
+        // Gather the record type fields.
+        // (1) The data components.
+        for (const auto &field :
+             Fortran::semantics::OrderedComponentIterator(*tySpec)) {
+          auto ty = genSymbolType(field);
+          // FIXME: may need to adjust the type `ty` here...
+          cs.emplace_back(field.name().ToString(), ty);
         }
-        for (auto iter : tySpec->parameters())
-          if (iter.second.isLen()) {
-            ps.emplace_back(
-                iter.first.ToString(),
-                /* FIXME - is the type available? Fake with index type. */
-                mlir::IndexType::get(&converter.getMLIRContext()));
-          }
+        // (2) The LEN type parameters.
+        for (const auto &param : Fortran::semantics::OrderParameterDeclarations(
+                 tySpec->typeSymbol()))
+          if (param->get<Fortran::semantics::TypeParamDetails>().attr() ==
+              Fortran::common::TypeParamAttr::Len)
+            ps.emplace_back(param->name().ToString(), genSymbolType(*param));
+
         rec.finalize(ps, cs);
         ty = rec;
         LLVM_DEBUG(llvm::dbgs() << "derived type: " << rec << '\n');
       } else {
-        mlir::emitError(loc, "symbol's type must have a type spec");
-        return {};
+        fir::emitFatalError(loc, "symbol's type must have a type spec");
       }
     } else {
-      mlir::emitError(loc, "symbol must have a type");
-      return {};
+      fir::emitFatalError(loc, "symbol must have a type");
     }
     if (ultimate.IsObjectArray()) {
       auto shapeExpr = Fortran::evaluate::GetShapeHelper{

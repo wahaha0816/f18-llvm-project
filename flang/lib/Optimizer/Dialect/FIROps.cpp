@@ -452,48 +452,46 @@ bool fir::ConvertOp::isPointerCompatible(mlir::Type ty) {
 // CoordinateOp
 //===----------------------------------------------------------------------===//
 
-static mlir::ParseResult parseCoordinateOp(mlir::OpAsmParser &parser,
-                                           mlir::OperationState &result) {
-  auto loc = parser.getCurrentLocation();
-  llvm::SmallVector<mlir::OpAsmParser::OperandType, 4> allOperands;
+static void print(mlir::OpAsmPrinter &p, fir::CoordinateOp op) {
+  p << op.getOperationName() << ' ' << op.ref() << ", " << op.coor();
+  if (!op.lenParams().empty())
+    p << "typeparams " << op.lenParams();
+  p.printOptionalAttrDict(op.getAttrs(),
+                          /*elideAttrs=*/{"baseType", "operand_segment_sizes"});
+  p << " : ";
+  p.printFunctionalType(op.getOperandTypes(), op->getResultTypes());
+}
+
+static mlir::ParseResult parseCoordinateCustom(mlir::OpAsmParser &parser,
+                                               mlir::OperationState &result) {
+  mlir::OpAsmParser::OperandType memref;
+  if (parser.parseOperand(memref) || parser.parseComma())
+    return mlir::failure();
+  llvm::SmallVector<mlir::OpAsmParser::OperandType, 8> coorOperands;
+  if (parser.parseOperandList(coorOperands))
+    return mlir::failure();
+  llvm::SmallVector<mlir::OpAsmParser::OperandType, 2> lenParamOperands;
+  if (mlir::succeeded(parser.parseOptionalKeyword("typeparams")))
+    if (parser.parseOperandList(lenParamOperands))
+      return mlir::failure();
+  llvm::SmallVector<mlir::OpAsmParser::OperandType, 16> allOperands;
+  allOperands.push_back(memref);
+  allOperands.append(coorOperands.begin(), coorOperands.end());
+  allOperands.append(lenParamOperands.begin(), lenParamOperands.end());
   mlir::FunctionType funcTy;
-  if (parser.parseOperandList(allOperands) ||
-      parser.parseOptionalAttrDict(result.attributes) ||
+  auto loc = parser.getCurrentLocation();
+  if (parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(funcTy) ||
       parser.resolveOperands(allOperands, funcTy.getInputs(), loc,
                              result.operands))
     return failure();
   parser.addTypesToList(funcTy.getResults(), result.types);
-  if (funcTy.getNumInputs())
-    result.addAttribute(fir::CoordinateOp::baseType(),
-                        mlir::TypeAttr::get(funcTy.getInput(0)));
-  return success();
-}
-
-mlir::Type fir::CoordinateOp::getBaseType() {
-  return (*this)
-      ->getAttr(CoordinateOp::baseType())
-      .cast<mlir::TypeAttr>()
-      .getValue();
-}
-
-void fir::CoordinateOp::build(OpBuilder &, OperationState &result,
-                              mlir::Type resType, ValueRange operands,
-                              ArrayRef<NamedAttribute> attrs) {
-  assert(operands.size() >= 1u && "mismatched number of parameters");
-  result.addOperands(operands);
-  result.addAttribute(fir::CoordinateOp::baseType(),
-                      mlir::TypeAttr::get(operands[0].getType()));
-  result.attributes.append(attrs.begin(), attrs.end());
-  result.addTypes({resType});
-}
-
-void fir::CoordinateOp::build(OpBuilder &builder, OperationState &result,
-                              mlir::Type resType, mlir::Value ref,
-                              ValueRange coor, ArrayRef<NamedAttribute> attrs) {
-  llvm::SmallVector<mlir::Value, 16> operands{ref};
-  operands.append(coor.begin(), coor.end());
-  build(builder, result, resType, operands, attrs);
+  result.addAttribute("baseType", mlir::TypeAttr::get(funcTy.getInput(0)));
+  result.addAttribute("operand_segment_sizes",
+                      parser.getBuilder().getI32VectorAttr(
+                          {1, static_cast<int32_t>(coorOperands.size()),
+                           static_cast<int32_t>(lenParamOperands.size())}));
+  return mlir::success();
 }
 
 static mlir::LogicalResult verify(fir::CoordinateOp op) {
@@ -510,7 +508,9 @@ static mlir::LogicalResult verify(fir::CoordinateOp op) {
           fir::isa_char_string(eleTy)))
       return op.emitOpError("cannot apply coordinate_of to this type");
   }
-  // Recovering a LEN type parameter only makes sense from a boxed value
+  // Recovering a LEN type parameter only makes sense from a boxed value. For a
+  // bare reference, the LEN type parameters must be passed as additional
+  // arguments to `op`.
   for (auto co : op.coor())
     if (dyn_cast_or_null<fir::LenParamIndexOp>(co.getDefiningOp())) {
       if (op.getNumOperands() != 2)
@@ -518,12 +518,6 @@ static mlir::LogicalResult verify(fir::CoordinateOp op) {
       if (!op.ref().getType().isa<BoxType>())
         return op.emitOpError("len_param_index must be used on box type");
     }
-  if (auto attr = op->getAttr(CoordinateOp::baseType())) {
-    if (!attr.isa<mlir::TypeAttr>())
-      return op.emitOpError("improperly constructed");
-  } else {
-    return op.emitOpError("must have base type");
-  }
   return mlir::success();
 }
 

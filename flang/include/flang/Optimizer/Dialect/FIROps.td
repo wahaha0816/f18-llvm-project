@@ -1791,7 +1791,9 @@ def fir_ArrayCoorOp : fir_Op<"array_coor",
   let verifier = [{ return ::verify(*this); }];
 }
 
-def fir_CoordinateOp : fir_Op<"coordinate_of", [NoSideEffect, AttrSizedOperandSegments]> {
+def fir_CoordinateOp : fir_Op<"coordinate_of",
+    [NoSideEffect, AttrSizedOperandSegments]> {
+
   let summary = "Finds the coordinate (location) of a value in memory";
 
   let description = [{
@@ -1815,34 +1817,34 @@ def fir_CoordinateOp : fir_Op<"coordinate_of", [NoSideEffect, AttrSizedOperandSe
     array `%h`.
   }];
 
-  let arguments = (ins AnyRefOrBox:$ref, Variadic<AnyCoordinateType>:$coor
-    /*,Variadic<AnyIntegerType>:$lenparams*/);
+  let arguments = (ins
+    AnyRefOrBox:$ref,
+    Variadic<AnyCoordinateType>:$coor,
+    Variadic<AnyIntegerType>:$lenParams,
+    TypeAttr:$baseType
+  );
 
   let results = (outs fir_ReferenceType);
 
-  let parser = "return parseCoordinateOp(parser, result);";
-
-  let printer = [{
-    p << getOperationName() << ' ' << (*this)->getOperands();
-    p.printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{baseType()});
-    p << " : ";
-    p.printFunctionalType((*this)->getOperandTypes(),
-        (*this)->getResultTypes());
-  }];
-
+  let parser =  [{ return parseCoordinateCustom(parser, result); }];
+  let printer = [{ ::print(p, *this); }];
   let verifier = [{ return ::verify(*this); }];
 
-  let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilderDAG<(ins "mlir::Type":$type, "mlir::Value":$ref,
-      "mlir::ValueRange":$coor,
-      CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attrs)>,
-    OpBuilderDAG<(ins "mlir::Type":$type, "mlir::ValueRange":$operands,
-      CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attrs)>];
+    OpBuilderDAG<(ins "mlir::Type":$resultType,
+      "mlir::Value":$ref, "mlir::ValueRange":$coor),
+    [{ return build($_builder, $_state, resultType, ref, coor,
+           /*lenParams=*/mlir::ValueRange{}); }]>,
+    OpBuilderDAG<(ins "mlir::Type":$resultType,
+      "mlir::Value":$ref, "mlir::ValueRange":$coor,
+      "mlir::ValueRange":$lenParams),
+    [{ return build($_builder, $_state, resultType, ref, coor,
+           lenParams, mlir::TypeAttr::get(ref.getType())); }]>,
+  ];
 
   let extraClassDeclaration = [{
-    static constexpr llvm::StringRef baseType() { return "base_type"; }
-    mlir::Type getBaseType();
+    /// Get the type of the base object.
+    mlir::Type getBaseType() { return baseType(); }
   }];
 }
 
