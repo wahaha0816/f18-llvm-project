@@ -59,6 +59,21 @@ fir::GlobalOp createGlobalOp(mlir::Location loc, mlir::ModuleOp module,
                              llvm::StringRef name, mlir::Type type,
                              llvm::ArrayRef<mlir::NamedAttribute> attrs = {});
 
+/// Attribute to mark Fortran entities with the CONTIGUOUS attribute.
+constexpr llvm::StringRef getContiguousAttrName() { return "fir.contiguous"; }
+/// Attribute to mark Fortran entities with the OPTIONAL attribute.
+constexpr llvm::StringRef getOptionalAttrName() { return "fir.optional"; }
+
+/// Tell if \p value is:
+///   - a function argument that has attribute \p attributeName
+///   - or, the result of fir.alloca/fir.allocamem op that has attribute \p
+///     attributeName
+///   - or, the result of a fir.address_of of a fir.global that has attribute \p
+///     attributeName
+///   - or, a fir.box loaded from a fir.ref<fir.box> that matches one of the
+///     previous cases.
+bool valueHasFirAttribute(mlir::Value value, llvm::StringRef attributeName);
+
 } // namespace fir
 
 #endif // OPTIMIZER_DIALECT_FIROPSSUPPORT_H
