@@ -1,6 +1,6 @@
 // Test the FIR operations
 
-// RUN: tco -emit-fir %s | tco -emit-fir | FileCheck %s
+// RUN: fir-opt %s | tco -emit-fir | FileCheck %s
 
 // CHECK-LABEL: func private @it1() -> !fir.int<4>
 // CHECK: func private @box1() -> !fir.boxchar<2>
