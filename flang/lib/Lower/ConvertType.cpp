@@ -15,10 +15,14 @@
 #include "flang/Lower/Support/Utils.h"
 #include "flang/Lower/Todo.h"
 #include "flang/Optimizer/Dialect/FIRType.h"
+#include "flang/Optimizer/Support/FatalError.h"
 #include "flang/Semantics/tools.h"
 #include "flang/Semantics/type.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "llvm/Support/Debug.h"
+
+#define DEBUG_TYPE "flang-lower-type"
 
 //===--------------------------------------------------------------------===//
 // Intrinsic type translation helpers
@@ -108,8 +112,7 @@ genFIRType(mlir::MLIRContext *context, Fortran::common::TypeCategory tc,
   case Fortran::common::TypeCategory::Character:
     if (!lenParameters.empty())
       return genCharacterType(context, kind, lenParameters[0]);
-    else
-      return genCharacterType(context, kind);
+    return genCharacterType(context, kind);
   default:
     break;
   }
@@ -220,20 +223,32 @@ struct TypeBuilder {
         std::vector<std::pair<std::string, mlir::Type>> ps;
         std::vector<std::pair<std::string, mlir::Type>> cs;
         auto &symbol = tySpec->typeSymbol();
+        // FIXME: mangle the type name, including KIND parameters, etc.
         auto rec = fir::RecordType::get(context, toStringRef(symbol.name()));
-        // TODO: use Fortran::semantics::ComponentIterator to go through
-        // components. or use similar mechanism. We probably want to go through
-        // the Ordered components.
-        TODO("lower derived type to fir types");
+
+        // Gather the record type fields.
+        // (1) The data components.
+        for (const auto &field :
+             Fortran::semantics::OrderedComponentIterator(*tySpec)) {
+          auto ty = genSymbolType(field);
+          // FIXME: may need to adjust the type `ty` here...
+          cs.emplace_back(field.name().ToString(), ty);
+        }
+        // (2) The LEN type parameters.
+        for (const auto &param : Fortran::semantics::OrderParameterDeclarations(
+                 tySpec->typeSymbol()))
+          if (param->get<Fortran::semantics::TypeParamDetails>().attr() ==
+              Fortran::common::TypeParamAttr::Len)
+            ps.emplace_back(param->name().ToString(), genSymbolType(*param));
+
         rec.finalize(ps, cs);
         ty = rec;
+        LLVM_DEBUG(llvm::dbgs() << "derived type: " << rec << '\n');
       } else {
-        mlir::emitError(loc, "symbol's type must have a type spec");
-        return {};
+        fir::emitFatalError(loc, "symbol's type must have a type spec");
       }
     } else {
-      mlir::emitError(loc, "symbol must have a type");
-      return {};
+      fir::emitFatalError(loc, "symbol must have a type");
     }
     if (ultimate.IsObjectArray()) {
       auto shapeExpr = Fortran::evaluate::GetShapeHelper{

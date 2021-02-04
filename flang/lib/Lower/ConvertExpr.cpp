@@ -957,20 +957,27 @@ public:
   fir::ExtendedValue gen(const Fortran::evaluate::Component &cmpt) {
     std::list<const Fortran::evaluate::Component *> list;
     auto *base = reverseComponents(cmpt, list);
-    llvm::SmallVector<mlir::Value, 2> coorArgs;
-    auto obj = genunbox(*base);
-    auto *sym = &cmpt.GetFirstSymbol();
+    llvm::SmallVector<mlir::Value, 4> coorArgs;
+    auto obj = gen(*base);
+    const auto *sym = &cmpt.GetFirstSymbol();
     auto ty = converter.genType(*sym);
+    auto loc = getLoc();
+    auto fldTy = fir::FieldType::get(&converter.getMLIRContext());
+    // FIXME: need to thread the LEN type parameters here.
     for (auto *field : list) {
+      auto recTy = ty.cast<fir::RecordType>();
       sym = &field->GetLastSymbol();
-      auto name = sym->name().ToString();
-      // FIXME: as we're walking the chain of field names, we need to update the
-      // subtype as we drill down
-      coorArgs.push_back(builder.create<fir::FieldIndexOp>(getLoc(), name, ty));
+      auto name = toStringRef(sym->name());
+      coorArgs.push_back(builder.create<fir::FieldIndexOp>(
+          loc, fldTy, name, mlir::TypeAttr::get(recTy),
+          /*lenparams=*/mlir::ValueRange{}));
+      ty = recTy.getType(name);
     }
     assert(sym && "no component(s)?");
     ty = builder.getRefType(ty);
-    return builder.create<fir::CoordinateOp>(getLoc(), ty, obj, coorArgs);
+    return fir::substBase(obj, builder.create<fir::CoordinateOp>(
+                                   loc, ty, fir::getBase(obj), coorArgs,
+                                   /*lenParams=*/mlir::ValueRange{}));
   }
 
   fir::ExtendedValue genval(const Fortran::evaluate::Component &cmpt) {
@@ -987,7 +994,7 @@ public:
     assert(dims <= shape.size() && "removing more columns than exist");
     fir::SequenceType::Shape newBnds;
     // follow Fortran semantics and remove columns (from right)
-    auto e{shape.size() - dims};
+    auto e = shape.size() - dims;
     for (decltype(e) i{0}; i < e; ++i)
       newBnds.push_back(shape[i]);
     if (!newBnds.empty())
