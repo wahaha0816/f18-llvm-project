@@ -284,11 +284,9 @@ genOMP(Fortran::lower::AbstractConverter &converter,
         converter, eval,
         std::get<Fortran::parser::OmpBeginBlockDirective>(blockConstruct.t));
   } else if (blockDirective.v == llvm::omp::OMPD_master) {
-    llvm::ArrayRef<mlir::Type> argTy;
     auto &firOpBuilder = converter.getFirOpBuilder();
     auto currentLocation = converter.getCurrentLocation();
-    auto masterOp =
-        firOpBuilder.create<mlir::omp::MasterOp>(currentLocation, argTy);
+    auto masterOp = firOpBuilder.create<mlir::omp::MasterOp>(currentLocation);
     createBodyOfOp<omp::MasterOp>(masterOp, firOpBuilder, currentLocation);
   }
 }
