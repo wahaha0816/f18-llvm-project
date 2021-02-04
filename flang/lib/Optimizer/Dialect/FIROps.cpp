@@ -128,9 +128,9 @@ mlir::Type fir::AllocMemOp::wrapResultType(mlir::Type intype) {
 //===----------------------------------------------------------------------===//
 
 static mlir::LogicalResult verify(fir::ArrayCoorOp op) {
-  auto eleTy = fir::dyn_cast_ptrEleTy(op.memref().getType());
+  auto eleTy = fir::dyn_cast_ptrOrBoxEleTy(op.memref().getType());
   if (!eleTy)
-    return op.emitOpError("must be a reference type");
+    return op.emitOpError("must be a reference or box type");
   auto arrTy = eleTy.dyn_cast<fir::SequenceType>();
   if (!arrTy)
     return op.emitOpError("must be a reference to an array");
@@ -174,9 +174,9 @@ std::vector<mlir::Value> fir::ArrayLoadOp::getExtents() {
 }
 
 static mlir::LogicalResult verify(fir::ArrayLoadOp op) {
-  auto eleTy = fir::dyn_cast_ptrEleTy(op.memref().getType());
+  auto eleTy = fir::dyn_cast_ptrOrBoxEleTy(op.memref().getType());
   if (!eleTy)
-    return op.emitOpError("must be a reference type");
+    return op.emitOpError("must be a reference or box type");
   auto arrTy = eleTy.dyn_cast<fir::SequenceType>();
   if (!arrTy)
     return op.emitOpError("must be a reference to an array");
@@ -1298,7 +1298,7 @@ static constexpr llvm::StringRef getTargetOffsetAttr() {
 template <typename A, typename... AdditionalArgs>
 static A getSubOperands(unsigned pos, A allArgs,
                         mlir::DenseIntElementsAttr ranges,
-                        AdditionalArgs &&...additionalArgs) {
+                        AdditionalArgs &&... additionalArgs) {
   unsigned start = 0;
   for (unsigned i = 0; i < pos; ++i)
     start += (*(ranges.begin() + i)).getZExtValue();

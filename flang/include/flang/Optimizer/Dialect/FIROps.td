@@ -78,10 +78,6 @@ def fir_BoxProcType : Type<CPred<"$_self.isa<fir::BoxProcType>()">,
 def AnyBoxLike : TypeConstraint<Or<[fir_BoxType.predicate,
     fir_BoxCharType.predicate, fir_BoxProcType.predicate]>, "any box">;
 
-def AnyRefOrBox : TypeConstraint<Or<[fir_ReferenceType.predicate,
-    fir_HeapType.predicate, fir_PointerType.predicate, fir_BoxType.predicate]>,
-    "any reference or box">;
-
 def fir_ShapeType : Type<CPred<"$_self.isa<fir::ShapeType>()">, "shape type">;
 def fir_ShapeShiftType : Type<CPred<"$_self.isa<fir::ShapeShiftType>()">,
     "shape shift type">;
@@ -1568,7 +1564,7 @@ def fir_ArrayLoadOp : fir_Op<"array_load", [AttrSizedOperandSegments]> {
   }];
 
   let arguments = (ins
-    Arg<AnyReferenceLike, "", [MemRead]>:$memref,
+    Arg<AnyRefOrBox, "", [MemRead]>:$memref,
     Optional<AnyShapeType>:$shape,
     Optional<fir_SliceType>:$slice,
     Variadic<AnyIntegerType>:$lenParams
@@ -1698,10 +1694,10 @@ def fir_ArrayUpdateOp : fir_Op<"array_update", [NoSideEffect]> {
 def fir_ArrayMergeStoreOp : fir_Op<"array_merge_store", [
     TypesMatchWith<"type of 'original' matches element type of 'memref'",
                      "memref", "original",
-                     "fir::dyn_cast_ptrEleTy($_self)">,
+                     "fir::dyn_cast_ptrOrBoxEleTy($_self)">,
     TypesMatchWith<"type of 'sequence' matches element type of 'memref'",
                      "memref", "sequence",
-                     "fir::dyn_cast_ptrEleTy($_self)">]> {
+                     "fir::dyn_cast_ptrOrBoxEleTy($_self)">]> {
 
   let summary = "Store merged array value to memory.";
 
@@ -1730,7 +1726,7 @@ def fir_ArrayMergeStoreOp : fir_Op<"array_merge_store", [
   let arguments = (ins
     fir_SequenceType:$original,
     fir_SequenceType:$sequence,
-    Arg<AnyReferenceLike, "", [MemWrite]>:$memref
+    Arg<AnyRefOrBox, "", [MemWrite]>:$memref
   );
 
   let assemblyFormat = "$original `,` $sequence `to` $memref attr-dict `:` type($memref)";
@@ -1774,7 +1770,7 @@ def fir_ArrayCoorOp : fir_Op<"array_coor",
   }];
 
   let arguments = (ins
-    AnyReferenceLike:$memref,
+    AnyRefOrBox:$memref,
     Optional<AnyShapeType>:$shape,
     Optional<fir_SliceType>:$slice,
     Variadic<AnyCoordinateType>:$indices,
