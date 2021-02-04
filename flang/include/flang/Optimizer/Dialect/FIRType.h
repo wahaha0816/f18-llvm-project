@@ -432,8 +432,9 @@ inline bool isa_integer(mlir::Type t) {
          t.isa<fir::IntegerType>();
 }
 
-/// Replacement for the standard dialect's vector type. Relaxes some of the
-/// constraints and imposes some new ones.
+/// Replacement for the builtin vector type.
+/// The FIR vector type is always rank one. It's size is always a constant.
+/// A vector's element type must be real or integer.
 class VectorType : public mlir::Type::TypeBase<fir::VectorType, mlir::Type,
                                                detail::VectorTypeStorage> {
 public:
