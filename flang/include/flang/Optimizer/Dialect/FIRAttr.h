@@ -30,6 +30,8 @@ struct RealAttributeStorage;
 struct TypeAttributeStorage;
 } // namespace detail
 
+using KindTy = unsigned;
+
 class ExactTypeAttr
     : public mlir::Attribute::AttrBase<ExactTypeAttr, mlir::Attribute,
                                        detail::TypeAttributeStorage> {
@@ -128,7 +130,7 @@ public:
   static constexpr llvm::StringRef getAttrName() { return "real"; }
   static RealAttr get(mlir::MLIRContext *ctxt, const ValueType &key);
 
-  int getFKind() const;
+  KindTy getFKind() const;
   llvm::APFloat getValue() const;
 };
 

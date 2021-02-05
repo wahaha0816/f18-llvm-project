@@ -43,7 +43,7 @@ struct RealAttributeStorage : public mlir::AttributeStorage {
         RealAttributeStorage(key);
   }
 
-  int getFKind() const { return kind; }
+  KindTy getFKind() const { return kind; }
   llvm::APFloat getValue() const { return value; }
 
 private:
@@ -145,7 +145,7 @@ RealAttr fir::RealAttr::get(mlir::MLIRContext *ctxt,
   return Base::get(ctxt, key);
 }
 
-int fir::RealAttr::getFKind() const { return getImpl()->getFKind(); }
+KindTy fir::RealAttr::getFKind() const { return getImpl()->getFKind(); }
 
 llvm::APFloat fir::RealAttr::getValue() const { return getImpl()->getValue(); }
 
