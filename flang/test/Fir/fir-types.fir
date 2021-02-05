@@ -81,3 +81,7 @@ func private @oth2() -> !fir.field
 func private @oth3() -> !fir.tdesc<!fir.type<derived7{f1:f32,f2:f32}>>
 func private @oth4() -> !fir.shapeshift<15>
 func private @oth5() -> !fir.slice<8>
+
+// FIR vector
+// CHECK-LABEL: func private @vecty(i1) -> !fir.vector<10:i32>
+func private @vecty(i1) -> !fir.vector<10:i32>
