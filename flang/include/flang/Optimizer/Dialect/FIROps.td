@@ -82,7 +82,6 @@ def AnyRefOrBox : TypeConstraint<Or<[fir_ReferenceType.predicate,
     fir_HeapType.predicate, fir_PointerType.predicate, fir_BoxType.predicate]>,
     "any reference or box">;
 
-// A vector of Fortran triple notation describing a multidimensional array
 def fir_ShapeType : Type<CPred<"$_self.isa<fir::ShapeType>()">, "shape type">;
 def fir_ShapeShiftType : Type<CPred<"$_self.isa<fir::ShapeShiftType>()">,
     "shape shift type">;

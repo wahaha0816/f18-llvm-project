@@ -465,6 +465,7 @@ private:
   ShapeTypeStorage() = delete;
   explicit ShapeTypeStorage(unsigned rank) : rank{rank} {}
 };
+
 struct ShapeShiftTypeStorage : public mlir::TypeStorage {
   using KeyTy = unsigned;
 
@@ -487,6 +488,7 @@ private:
   ShapeShiftTypeStorage() = delete;
   explicit ShapeShiftTypeStorage(unsigned rank) : rank{rank} {}
 };
+
 struct SliceTypeStorage : public mlir::TypeStorage {
   using KeyTy = unsigned;
 
