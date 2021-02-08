@@ -544,6 +544,7 @@ func @arith_real(%a : !fir.real<16>, %b : !fir.real<16>) -> !fir.real<16> {
 // CHECK: [[VAL_175:%.*]] = fir.subf [[VAL_174]], [[VAL_170]] : !fir.real<16>
 // CHECK: [[VAL_176:%.*]] = fir.mulf [[VAL_173]], [[VAL_175]] : !fir.real<16>
 // CHECK: [[VAL_177:%.*]] = fir.divf [[VAL_176]], [[VAL_169]] : !fir.real<16>
+// CHECK: [[VAL_178:%.*]] = fir.modf [[VAL_177]], [[VAL_170]] : !fir.real<16>
   %c1 = constant 1.0 : f32
   %0 = fir.convert %c1 : (f32) -> !fir.real<16>
   %1 = fir.negf %a : !fir.real<16>
@@ -551,34 +552,35 @@ func @arith_real(%a : !fir.real<16>, %b : !fir.real<16>) -> !fir.real<16> {
   %3 = fir.subf %2, %b : !fir.real<16>
   %4 = fir.mulf %1, %3 : !fir.real<16>
   %5 = fir.divf %4, %a : !fir.real<16>
-// CHECK: return [[VAL_177]] : !fir.real<16>
+  %6 = fir.modf %5, %b : !fir.real<16>
+// CHECK: return [[VAL_178]] : !fir.real<16>
 // CHECK: }
-  return %5 : !fir.real<16>
+  return %6 : !fir.real<16>
 }
 
 // CHECK-LABEL: func @arith_complex(
-// CHECK-SAME: [[VAL_178:%.*]]: !fir.complex<16>, [[VAL_179:%.*]]: !fir.complex<16>) -> !fir.complex<16> {
+// CHECK-SAME: [[VAL_179:%.*]]: !fir.complex<16>, [[VAL_180:%.*]]: !fir.complex<16>) -> !fir.complex<16> {
 func @arith_complex(%a : !fir.complex<16>, %b : !fir.complex<16>) -> !fir.complex<16> {
-// CHECK: [[VAL_180:%.*]] = fir.negc [[VAL_178]] : !fir.complex<16>
-// CHECK: [[VAL_181:%.*]] = fir.addc [[VAL_179]], [[VAL_180]] : !fir.complex<16>
-// CHECK: [[VAL_182:%.*]] = fir.subc [[VAL_181]], [[VAL_179]] : !fir.complex<16>
-// CHECK: [[VAL_183:%.*]] = fir.mulc [[VAL_180]], [[VAL_182]] : !fir.complex<16>
-// CHECK: [[VAL_184:%.*]] = fir.divc [[VAL_183]], [[VAL_178]] : !fir.complex<16>
+// CHECK: [[VAL_181:%.*]] = fir.negc [[VAL_179]] : !fir.complex<16>
+// CHECK: [[VAL_182:%.*]] = fir.addc [[VAL_180]], [[VAL_181]] : !fir.complex<16>
+// CHECK: [[VAL_183:%.*]] = fir.subc [[VAL_182]], [[VAL_180]] : !fir.complex<16>
+// CHECK: [[VAL_184:%.*]] = fir.mulc [[VAL_181]], [[VAL_183]] : !fir.complex<16>
+// CHECK: [[VAL_185:%.*]] = fir.divc [[VAL_184]], [[VAL_179]] : !fir.complex<16>
   %1 = fir.negc %a : !fir.complex<16>
   %2 = fir.addc %b, %1 : !fir.complex<16>
   %3 = fir.subc %2, %b : !fir.complex<16>
   %4 = fir.mulc %1, %3 : !fir.complex<16>
   %5 = fir.divc %4, %a : !fir.complex<16>
-// CHECK: return [[VAL_184]] : !fir.complex<16>
+// CHECK: return [[VAL_185]] : !fir.complex<16>
 // CHECK: }
   return %5 : !fir.complex<16>
 }
 
 // CHECK-LABEL: func @character_literal() -> !fir.char<1,13> {
 func @character_literal() -> !fir.char<1,13> {
-// CHECK: [[VAL_185:%.*]] = fir.string_lit "Hello, World!"(13) : !fir.char<1,13>
+// CHECK: [[VAL_186:%.*]] = fir.string_lit "Hello, World!"(13) : !fir.char<1,13>
   %0 = fir.string_lit "Hello, World!"(13) : !fir.char<1,13>
-// CHECK: return [[VAL_185]] : !fir.char<1,13>
+// CHECK: return [[VAL_186]] : !fir.char<1,13>
   return %0 : !fir.char<1,13>
 // CHECK: }
 }
@@ -587,14 +589,14 @@ func @character_literal() -> !fir.char<1,13> {
 func private @earlyexit2(%a : i32) -> i1
 
 // CHECK-LABEL: func @early_exit(
-// CHECK-SAME: [[VAL_186:%.*]]: i1, [[VAL_187:%.*]]: i32) -> i1 {
+// CHECK-SAME: [[VAL_187:%.*]]: i1, [[VAL_188:%.*]]: i32) -> i1 {
 func @early_exit(%ok : i1, %k : i32) -> i1 {
-// CHECK: [[VAL_188:%.*]] = constant 1 : index
-// CHECK: [[VAL_189:%.*]] = constant 100 : index
+// CHECK: [[VAL_189:%.*]] = constant 1 : index
+// CHECK: [[VAL_190:%.*]] = constant 100 : index
   %c1 = constant 1 : index
   %c100 = constant 100 : index
 
-// CHECK: %[[VAL_190:.*]]:2 = fir.iterate_while ([[VAL_192:%.*]] = [[VAL_188]] to [[VAL_189]] step [[VAL_188]]) and ([[VAL_193:%.*]] = [[VAL_186]]) iter_args([[VAL_194:%.*]] = [[VAL_187]]) -> (i32) {
+// CHECK: %[[VAL_191:.*]]:2 = fir.iterate_while ([[VAL_192:%.*]] = [[VAL_189]] to [[VAL_190]] step [[VAL_189]]) and ([[VAL_193:%.*]] = [[VAL_187]]) iter_args([[VAL_194:%.*]] = [[VAL_188]]) -> (i32) {
 // CHECK: [[VAL_195:%.*]] = call @earlyexit2([[VAL_194]]) : (i32) -> i1
 // CHECK: fir.result [[VAL_195]], [[VAL_194]] : i1, i32
 // CHECK: }
@@ -602,7 +604,7 @@ func @early_exit(%ok : i1, %k : i32) -> i1 {
     %stop = call @earlyexit2(%v) : (i32) -> i1
     fir.result %stop, %v : i1, i32
   }
-// CHECK: return %[[VAL_190]]#0 : i1
+// CHECK: return %[[VAL_191]]#0 : i1
 // CHECK: }
   return %newOk#0 : i1
 }
