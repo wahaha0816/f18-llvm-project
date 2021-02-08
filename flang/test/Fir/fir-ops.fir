@@ -574,7 +574,7 @@ func @arith_complex(%a : !fir.complex<16>, %b : !fir.complex<16>) -> !fir.comple
 // CHECK-LABEL: func @character_literal() -> !fir.char<1,13> {
 func @character_literal() -> !fir.char<1,13> {
 // CHECK: [[VAL_185:%.*]] = fir.string_lit "Hello, World!"(13) : !fir.char<1,13>
-  %0 = fir.string_lit "Hello, World!"(13) : !fir.char<1>
+  %0 = fir.string_lit "Hello, World!"(13) : !fir.char<1,13>
 // CHECK: return [[VAL_185]] : !fir.char<1,13>
   return %0 : !fir.char<1,13>
 // CHECK: }
