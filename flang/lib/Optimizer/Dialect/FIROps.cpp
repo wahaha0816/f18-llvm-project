@@ -141,9 +141,13 @@ static mlir::LogicalResult verify(fir::ArrayCoorOp op) {
     unsigned shapeTyRank = 0;
     if (auto s = shapeTy.dyn_cast<fir::ShapeType>()) {
       shapeTyRank = s.getRank();
-    } else {
-      auto ss = shapeTy.cast<fir::ShapeShiftType>();
+    } else if (auto ss = shapeTy.dyn_cast<fir::ShapeShiftType>()) {
       shapeTyRank = ss.getRank();
+    } else {
+      auto s = shapeTy.cast<fir::ShiftType>();
+      shapeTyRank = s.getRank();
+      if (!op.memref().getType().isa<fir::BoxType>())
+        return op.emitOpError("shift can only be provided with fir.box memref");
     }
     if (arrDim && arrDim != shapeTyRank)
       return op.emitOpError("rank of dimension mismatched");
@@ -187,9 +191,13 @@ static mlir::LogicalResult verify(fir::ArrayLoadOp op) {
     unsigned shapeTyRank = 0;
     if (auto s = shapeTy.dyn_cast<fir::ShapeType>()) {
       shapeTyRank = s.getRank();
-    } else {
-      auto ss = shapeTy.cast<fir::ShapeShiftType>();
+    } else if (auto ss = shapeTy.dyn_cast<fir::ShapeShiftType>()) {
       shapeTyRank = ss.getRank();
+    } else {
+      auto s = shapeTy.cast<fir::ShiftType>();
+      shapeTyRank = s.getRank();
+      if (!op.memref().getType().isa<fir::BoxType>())
+        return op.emitOpError("shift can only be provided with fir.box memref");
     }
     if (arrDim && arrDim != shapeTyRank)
       return op.emitOpError("rank of dimension mismatched");

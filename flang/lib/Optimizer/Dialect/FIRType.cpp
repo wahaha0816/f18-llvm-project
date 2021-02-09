@@ -193,8 +193,8 @@ static bool isaIntegerType(mlir::Type ty) {
 bool verifyRecordMemberType(mlir::Type ty) {
   return !(ty.isa<BoxType>() || ty.isa<BoxCharType>() ||
            ty.isa<BoxProcType>() || ty.isa<ShapeType>() ||
-           ty.isa<ShapeShiftType>() || ty.isa<SliceType>() ||
-           ty.isa<FieldType>() || ty.isa<LenType>() ||
+           ty.isa<ShapeShiftType>() || ty.isa<ShiftType>() ||
+           ty.isa<SliceType>() || ty.isa<FieldType>() || ty.isa<LenType>() ||
            ty.isa<ReferenceType>() || ty.isa<TypeDescType>());
 }
 
@@ -357,6 +357,8 @@ mlir::Type fir::parseFirType(FIROpsDialect *dialect,
     return ShapeType::parse(dialect->getContext(), parser);
   if (typeNameLit == "shapeshift")
     return parseShapeShift(parser);
+  if (typeNameLit == "shift")
+    return generatedTypeParser(dialect->getContext(), parser, typeNameLit);
   if (typeNameLit == "slice")
     return parseSlice(parser);
   if (typeNameLit == "tdesc")
@@ -932,9 +934,9 @@ mlir::LogicalResult
 fir::ReferenceType::verifyConstructionInvariants(mlir::Location loc,
                                                  mlir::Type eleTy) {
   if (eleTy.isa<ShapeType>() || eleTy.isa<ShapeShiftType>() ||
-      eleTy.isa<SliceType>() || eleTy.isa<FieldType>() ||
-      eleTy.isa<LenType>() || eleTy.isa<ReferenceType>() ||
-      eleTy.isa<TypeDescType>())
+      eleTy.isa<ShiftType>() || eleTy.isa<SliceType>() ||
+      eleTy.isa<FieldType>() || eleTy.isa<LenType>() ||
+      eleTy.isa<ReferenceType>() || eleTy.isa<TypeDescType>())
     return mlir::emitError(loc, "cannot build a reference to type: ")
            << eleTy << '\n';
   return mlir::success();
@@ -954,10 +956,11 @@ mlir::Type fir::PointerType::getEleTy() const {
 static bool canBePointerOrHeapElementType(mlir::Type eleTy) {
   return eleTy.isa<BoxType>() || eleTy.isa<BoxCharType>() ||
          eleTy.isa<BoxProcType>() || eleTy.isa<ShapeType>() ||
-         eleTy.isa<ShapeShiftType>() || eleTy.isa<SliceType>() ||
-         eleTy.isa<FieldType>() || eleTy.isa<LenType>() ||
-         eleTy.isa<HeapType>() || eleTy.isa<PointerType>() ||
-         eleTy.isa<ReferenceType>() || eleTy.isa<TypeDescType>();
+         eleTy.isa<ShiftType>() || eleTy.isa<ShapeShiftType>() ||
+         eleTy.isa<SliceType>() || eleTy.isa<FieldType>() ||
+         eleTy.isa<LenType>() || eleTy.isa<HeapType>() ||
+         eleTy.isa<PointerType>() || eleTy.isa<ReferenceType>() ||
+         eleTy.isa<TypeDescType>();
 }
 
 mlir::LogicalResult
@@ -1043,8 +1046,9 @@ mlir::LogicalResult fir::SequenceType::verifyConstructionInvariants(
   // DIMENSION attribute can only be applied to an intrinsic or record type
   if (eleTy.isa<BoxType>() || eleTy.isa<BoxCharType>() ||
       eleTy.isa<BoxProcType>() || eleTy.isa<ShapeType>() ||
-      eleTy.isa<ShapeShiftType>() || eleTy.isa<SliceType>() ||
-      eleTy.isa<FieldType>() || eleTy.isa<LenType>() || eleTy.isa<HeapType>() ||
+      eleTy.isa<ShapeShiftType>() || eleTy.isa<ShiftType>() ||
+      eleTy.isa<SliceType>() || eleTy.isa<FieldType>() ||
+      eleTy.isa<LenType>() || eleTy.isa<HeapType>() ||
       eleTy.isa<PointerType>() || eleTy.isa<ReferenceType>() ||
       eleTy.isa<TypeDescType>() || eleTy.isa<fir::VectorType>() ||
       eleTy.isa<SequenceType>())
@@ -1148,9 +1152,10 @@ fir::TypeDescType::verifyConstructionInvariants(mlir::Location loc,
                                                 mlir::Type eleTy) {
   if (eleTy.isa<BoxType>() || eleTy.isa<BoxCharType>() ||
       eleTy.isa<BoxProcType>() || eleTy.isa<ShapeType>() ||
-      eleTy.isa<ShapeShiftType>() || eleTy.isa<SliceType>() ||
-      eleTy.isa<FieldType>() || eleTy.isa<LenType>() ||
-      eleTy.isa<ReferenceType>() || eleTy.isa<TypeDescType>())
+      eleTy.isa<ShapeShiftType>() || eleTy.isa<ShiftType>() ||
+      eleTy.isa<SliceType>() || eleTy.isa<FieldType>() ||
+      eleTy.isa<LenType>() || eleTy.isa<ReferenceType>() ||
+      eleTy.isa<TypeDescType>())
     return mlir::emitError(loc, "cannot build a type descriptor of type: ")
            << eleTy << '\n';
   return mlir::success();

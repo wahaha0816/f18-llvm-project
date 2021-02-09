@@ -69,6 +69,9 @@ def fir_ShapeShiftType : Type<CPred<"$_self.isa<fir::ShapeShiftType>()">,
 def AnyShapeLike : TypeConstraint<Or<[ShapeType.predicate,
     fir_ShapeShiftType.predicate]>, "any legal shape type">;
 def AnyShapeType : Type<AnyShapeLike.predicate, "any legal shape type">;
+def AnyShapeOrShiftLike : TypeConstraint<Or<[ShapeType.predicate,
+    fir_ShapeShiftType.predicate, fir_ShiftType.predicate]>, "any legal shape or shift type">;
+def AnyShapeOrShiftType : Type<AnyShapeOrShiftLike.predicate, "any legal shape or shift type">;
 def fir_SliceType : Type<CPred<"$_self.isa<fir::SliceType>()">, "slice type">;
 
 // A type descriptor's type
@@ -1554,7 +1557,7 @@ def fir_ArrayLoadOp : fir_Op<"array_load", [AttrSizedOperandSegments]> {
 
   let arguments = (ins
     Arg<AnyRefOrBox, "", [MemRead]>:$memref,
-    Optional<AnyShapeType>:$shape,
+    Optional<AnyShapeOrShiftType>:$shape,
     Optional<fir_SliceType>:$slice,
     Variadic<AnyIntegerType>:$lenParams
   );
@@ -1760,7 +1763,7 @@ def fir_ArrayCoorOp : fir_Op<"array_coor",
 
   let arguments = (ins
     AnyRefOrBox:$memref,
-    Optional<AnyShapeType>:$shape,
+    Optional<AnyShapeOrShiftType>:$shape,
     Optional<fir_SliceType>:$slice,
     Variadic<AnyCoordinateType>:$indices,
     Variadic<AnyIntegerType>:$lenParams
@@ -2046,6 +2049,46 @@ def fir_ShapeShiftOp : fir_Op<"shape_shift", [NoSideEffect]> {
         if (i.index() & 1)
           result.push_back(i.value());
       return result;
+    }
+  }];
+}
+
+def fir_ShiftOp : fir_Op<"shift", [NoSideEffect]> {
+
+  let summary = "generate an abstract shift vector of type `!fir.shift`";
+
+  let description = [{
+    The arguments are an ordered list of integral type values that define the
+    runtime lower bound of each dimension of an array. The shape information is
+    given in the same row-to-column order as Fortran. This abstract shift value
+    must be applied to a reified object, so all shift information must be
+    specified.
+
+    ```mlir
+      %d = fir.shift %row_lb, %col_lb : (index, index) -> !fir.shift<2>
+    ```
+  }];
+
+  let arguments = (ins Variadic<AnyIntegerType>:$origins);
+
+  let results = (outs fir_ShiftType);
+
+  let assemblyFormat = [{
+    operands attr-dict `:` functional-type(operands, results)
+  }];
+
+  let verifier = [{
+    auto size = origins().size();
+    auto shiftTy = getType().dyn_cast<fir::ShiftType>();
+    assert(shiftTy && "must be a shift type");
+    if (shiftTy.getRank() != size)
+      return emitOpError("shift type rank mismatch");
+    return mlir::success();
+  }];
+
+  let extraClassDeclaration = [{
+    std::vector<mlir::Value> getOrigins() {
+      return {origins().begin(), origins().end()};
     }
   }];
 }
