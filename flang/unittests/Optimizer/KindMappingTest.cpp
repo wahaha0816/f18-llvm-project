@@ -34,8 +34,8 @@ public:
 struct commandLineStringTests : public testing::Test {
 public:
   void SetUp() {
-    commandLineString = new KindMapping(
-        context, "i10:80,l3:24,a1:8,r54:Double,c20:X86_FP80,r11:PPC_FP128,"
+    commandLineString = new KindMapping(context,
+        "i10:80,l3:24,a1:8,r54:Double,c20:X86_FP80,r11:PPC_FP128,"
         "r12:FP128,r13:X86_FP80,r14:Double,r15:Float,r16:Half,r23:BFloat");
     clStringConflict =
         new KindMapping(context, "i10:80,i10:40,r54:Double,r54:X86_FP80");
@@ -117,18 +117,18 @@ TEST_F(commandLineStringTests, getIntegerBitsizeTest) {
   EXPECT_EQ(commandLineString->getRealTypeID(11), LLVMTypeID::PPC_FP128TyID);
   EXPECT_EQ(&commandLineString->getFloatSemantics(11),
       &llvm::APFloat::PPCDoubleDouble());
-  EXPECT_EQ(&commandLineString->getFloatSemantics(12),
-      &llvm::APFloat::IEEEquad());
+  EXPECT_EQ(
+      &commandLineString->getFloatSemantics(12), &llvm::APFloat::IEEEquad());
   EXPECT_EQ(&commandLineString->getFloatSemantics(13),
       &llvm::APFloat::x87DoubleExtended());
-  EXPECT_EQ(&commandLineString->getFloatSemantics(14),
-      &llvm::APFloat::IEEEdouble());
-  EXPECT_EQ(&commandLineString->getFloatSemantics(15),
-      &llvm::APFloat::IEEEsingle());
-  EXPECT_EQ(&commandLineString->getFloatSemantics(16),
-      &llvm::APFloat::IEEEhalf());
-  EXPECT_EQ(&commandLineString->getFloatSemantics(23),
-      &llvm::APFloat::BFloat());
+  EXPECT_EQ(
+      &commandLineString->getFloatSemantics(14), &llvm::APFloat::IEEEdouble());
+  EXPECT_EQ(
+      &commandLineString->getFloatSemantics(15), &llvm::APFloat::IEEEsingle());
+  EXPECT_EQ(
+      &commandLineString->getFloatSemantics(16), &llvm::APFloat::IEEEhalf());
+  EXPECT_EQ(
+      &commandLineString->getFloatSemantics(23), &llvm::APFloat::BFloat());
 
   // Converts to default case
   EXPECT_EQ(
