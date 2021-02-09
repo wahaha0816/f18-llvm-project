@@ -97,6 +97,10 @@ bool isa_aggregate(mlir::Type t);
 /// not a memory reference type, then returns a null `Type`.
 mlir::Type dyn_cast_ptrEleTy(mlir::Type t);
 
+/// Extract the `Type` pointed to from a FIR memory reference or box type. If
+/// `t` is not a memory reference or box type, then returns a null `Type`.
+mlir::Type dyn_cast_ptrOrBoxEleTy(mlir::Type t);
+
 // Intrinsic types
 
 /// Model of the Fortran CHARACTER intrinsic type, including the KIND type
