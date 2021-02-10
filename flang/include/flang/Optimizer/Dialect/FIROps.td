@@ -26,6 +26,8 @@ def fir_Dialect : Dialect {
   let cppNamespace = "::fir";
 }
 
+include "flang/Optimizer/Dialect/FIRTypes.td"
+
 // Types and predicates
 
 def fir_Type : Type<CPred<"fir::isa_fir_or_std_type($_self)">,
@@ -78,10 +80,9 @@ def fir_BoxProcType : Type<CPred<"$_self.isa<fir::BoxProcType>()">,
 def AnyBoxLike : TypeConstraint<Or<[fir_BoxType.predicate,
     fir_BoxCharType.predicate, fir_BoxProcType.predicate]>, "any box">;
 
-def fir_ShapeType : Type<CPred<"$_self.isa<fir::ShapeType>()">, "shape type">;
 def fir_ShapeShiftType : Type<CPred<"$_self.isa<fir::ShapeShiftType>()">,
     "shape shift type">;
-def AnyShapeLike : TypeConstraint<Or<[fir_ShapeType.predicate,
+def AnyShapeLike : TypeConstraint<Or<[ShapeType.predicate,
     fir_ShapeShiftType.predicate]>, "any legal shape type">;
 def AnyShapeType : Type<AnyShapeLike.predicate, "any legal shape type">;
 def fir_SliceType : Type<CPred<"$_self.isa<fir::SliceType>()">, "slice type">;
@@ -1978,7 +1979,7 @@ def fir_ShapeOp : fir_Op<"shape", [NoSideEffect]> {
 
   let arguments = (ins Variadic<AnyIntegerType>:$extents);
 
-  let results = (outs fir_ShapeType);
+  let results = (outs ShapeType);
 
   let assemblyFormat = [{
     operands attr-dict `:` functional-type(operands, results)
@@ -3399,7 +3400,7 @@ def fir_AbsentOp : fir_OneResultOp<"absent", [NoSideEffect]> {
     Given the type of a function argument, create a value that will signal that
     an optional argument is absent in the call. On the caller side, fir.is_present
     can be used to query if the value of an optional argument was created with
-    a fir.absent operation. 
+    a fir.absent operation.
     It is undefined to use a value that was created by a fir.absent op in any other
     operation than fir.call and fir.is_present.
     ```mlir
