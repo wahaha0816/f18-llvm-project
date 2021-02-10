@@ -52,6 +52,11 @@ public:
   using LLVMTypeID = llvm::Type::TypeID;
   using MatchResult = mlir::ParseResult;
 
+  /// KindMapping constructors take an optional `defs` argument to specify the
+  /// default kinds for intrinsic types. To set the default kinds, an ArrayRef
+  /// of 6 KindTy must be passed. The kinds must be the given in the following
+  /// order: CHARACTER, COMPLEX, DOUBLE PRECISION, INTEGER, LOGICAL, and REAL.
+  /// If `defs` is not specified, default default kinds will be used.
   explicit KindMapping(mlir::MLIRContext *context,
                        llvm::ArrayRef<KindTy> defs = llvm::None);
   explicit KindMapping(mlir::MLIRContext *context, llvm::StringRef map,

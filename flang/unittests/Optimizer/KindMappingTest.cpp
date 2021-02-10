@@ -31,7 +31,7 @@ public:
   mlir::MLIRContext *context{};
 };
 
-struct commandLineStringTests : public testing::Test {
+struct CommandLineStringTests : public testing::Test {
 public:
   void SetUp() {
     commandLineString = new KindMapping(context,
@@ -48,6 +48,23 @@ public:
   KindMapping *commandLineString{};
   KindMapping *clStringConflict{};
   mlir::MLIRContext *context{};
+};
+
+struct KindDefaultsTests : public testing::Test {
+public:
+  void SetUp() {
+    defaultDefaultKinds = new KindMapping(context);
+    overrideDefaultKinds =
+        new KindMapping(context, {20, 121, 32, 133, 44, 145});
+  }
+  void TearDown() {
+    delete defaultDefaultKinds;
+    delete overrideDefaultKinds;
+  }
+
+  mlir::MLIRContext *context{};
+  KindMapping *defaultDefaultKinds{};
+  KindMapping *overrideDefaultKinds{};
 };
 
 TEST_F(DefaultStringTests, getIntegerBitsizeTest) {
@@ -107,7 +124,7 @@ TEST_F(DefaultStringTests, getFloatSemanticsTest) {
   EXPECT_EQ(&defaultString->getFloatSemantics(1), &llvm::APFloat::IEEEsingle());
 }
 
-TEST_F(commandLineStringTests, getIntegerBitsizeTest) {
+TEST_F(CommandLineStringTests, getIntegerBitsizeTest) {
   // KEY is present in map.
   EXPECT_EQ(commandLineString->getIntegerBitsize(10), 80u);
   EXPECT_EQ(commandLineString->getCharacterBitsize(1), 8u);
@@ -156,6 +173,22 @@ TEST(KindMappingDeathTests, mapTest) {
   ASSERT_DEATH(new KindMapping(context, "rr:Double MoreContent"), "");
   // length of 'size' > 10
   ASSERT_DEATH(new KindMapping(context, "i11111111111:10"), "");
+}
+
+TEST_F(KindDefaultsTests, getIntegerBitsizeTest) {
+   EXPECT_EQ(defaultDefaultKinds->defaultCharacterKind(), 1u);
+   EXPECT_EQ(defaultDefaultKinds->defaultComplexKind(), 4u);
+   EXPECT_EQ(defaultDefaultKinds->defaultDoubleKind(), 8u);
+   EXPECT_EQ(defaultDefaultKinds->defaultIntegerKind(), 4u);
+   EXPECT_EQ(defaultDefaultKinds->defaultLogicalKind(), 4u);
+   EXPECT_EQ(defaultDefaultKinds->defaultRealKind(), 4u);
+
+   EXPECT_EQ(overrideDefaultKinds->defaultCharacterKind(), 20u);
+   EXPECT_EQ(overrideDefaultKinds->defaultComplexKind(), 121u);
+   EXPECT_EQ(overrideDefaultKinds->defaultDoubleKind(), 32u);
+   EXPECT_EQ(overrideDefaultKinds->defaultIntegerKind(), 133u);
+   EXPECT_EQ(overrideDefaultKinds->defaultLogicalKind(), 44u);
+   EXPECT_EQ(overrideDefaultKinds->defaultRealKind(), 145u);
 }
 
 // main() from gtest_main

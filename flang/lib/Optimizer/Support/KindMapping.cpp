@@ -186,15 +186,10 @@ static MatchResult parseTypeID(LLVMTypeID &result, const char *&ptr) {
 fir::KindMapping::KindMapping(mlir::MLIRContext *context, llvm::StringRef map,
                               llvm::ArrayRef<KindTy> defs)
     : context{context} {
-  if (mlir::failed(setDefaultKinds(defs))) {
-    mlir::emitError(mlir::UnknownLoc::get(context), "bad default kinds");
-    return;
-  }
-  if (mlir::failed(parse(map))) {
-    mlir::emitError(mlir::UnknownLoc::get(context), "could not parse kind map");
-    intMap.clear();
-    floatMap.clear();
-  }
+  if (mlir::failed(setDefaultKinds(defs)))
+    llvm::report_fatal_error("bad default kinds");
+  if (mlir::failed(parse(map)))
+    llvm::report_fatal_error("could not parse kind map");
 }
 
 fir::KindMapping::KindMapping(mlir::MLIRContext *context,
@@ -270,7 +265,7 @@ fir::KindMapping::getFloatSemantics(KindTy kind) const {
 
 mlir::LogicalResult
 fir::KindMapping::setDefaultKinds(llvm::ArrayRef<KindTy> defs) {
-  if (defs.size() == 0) {
+  if (defs.empty()) {
     // generic front-end defaults
     const KindTy genericKind = 4;
     defaultMap.insert({'a', 1});
