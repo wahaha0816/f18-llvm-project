@@ -1104,6 +1104,57 @@ def fir_EmboxOp : fir_Op<"embox", [NoSideEffect, AttrSizedOperandSegments]> {
   }];
 }
 
+def fir_ReboxOp : fir_Op<"rebox", [NoSideEffect, AttrSizedOperandSegments]> {
+  let summary = "create a box given another box and (optional) dimension information";
+
+  let description = [{
+    Create a new boxed reference value from another box. This is meant to be used
+    when the taking a reference to part of a boxed value, or to an entire boxed value with
+    new shape or type information.
+
+    The new extra information can be:
+      - new shape information (new lower bounds, new rank, or new extents.
+        New rank/extents can only be provided if the original fir.box is
+        contiguous in all dimension but maybe the first one). The shape
+        operand must be provided to set new shape information.
+      - new type (only for derived types). It is possible to set the dynamic type
+        of the new box to one of the parent types of the input box dynamic type.
+        Type parameters cannot be changed. This change is reflected in the requested
+        result type of the new box.
+
+    A slice argument can be provided to build a reference to part of a boxed value.
+    In this case, the shape operand must be absent or be a fir.shift that can be
+    used to provide a non default origin for the slice.
+
+    The following example illustrates creating a fir.box for x(10:33:2)
+    where x is described by a fir.box and has non default lower bounds,
+    and then applying a new 2-dimension shape to this fir.box.
+
+    ```mlir
+      %0 = fir.slice %c10, %c33, %c2 : (index, index, index) -> !fir.slice<1>
+      %1 = fir.shift %c0 : (index) -> !fir.shift<1>
+      %2 = fir.rebox %x(%1) [%0] : (!fir.box<!fir.array<?xf32>>, !fir.shift<1>, !fir.slice<1>) -> !fir.box<!fir.array<?xf32>>
+      %3 = fir.shape %c3, %c4 : (index, index) -> !fir.shape<2>
+      %4 = fir.rebox %2(%3) : (!fir.box<!fir.array<?xf32>>, !fir.shape<2>) -> !fir.box<!fir.array<?x?xf32>>
+    ```
+
+  }];
+
+  let arguments = (ins
+    fir_BoxType:$box,
+    Optional<AnyShapeOrShiftType>:$shape,
+    Optional<fir_SliceType>:$slice
+  );
+
+  let results = (outs fir_BoxType);
+
+  let assemblyFormat = [{
+    $box (`(` $shape^ `)`)? (`[` $slice^ `]`)? attr-dict `:` functional-type(operands, results)
+  }];
+
+  let verifier = [{ return ::verify(*this); }];
+}
+
 def fir_EmboxCharOp : fir_Op<"emboxchar", [NoSideEffect]> {
   let summary = "boxes a given CHARACTER reference and its LEN parameter";
 

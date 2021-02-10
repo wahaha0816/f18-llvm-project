@@ -695,3 +695,24 @@ func @test_shift(%arg0: !fir.box<!fir.array<?xf32>>) -> !fir.ref<f32> {
   %1 = fir.array_coor %arg0(%0) %c100 : (!fir.box<!fir.array<?xf32>>, !fir.shift<1>, index) -> !fir.ref<f32>
   return %1 : !fir.ref<f32>
 } 
+
+func private @bar_rebox_test(!fir.box<!fir.array<?x?xf32>>)
+// CHECK-LABEL: @test_rebox(
+func @test_rebox(%arg0: !fir.box<!fir.array<?xf32>>) {
+  %c0 = constant 0 : index
+  %c1 = constant 1 : index
+  %c2 = constant 2 : index
+  %c3 = constant 3 : index
+  %c4 = constant 4 : index
+  %c10 = constant 10 : index
+  %c33 = constant 33 : index
+  %0 = fir.slice %c10, %c33, %c2 : (index, index, index) -> !fir.slice<1>
+  %1 = fir.shift %c0 : (index) -> !fir.shift<1>
+  // CHECK: fir.rebox %{{.*}}(%{{.*}}) [%{{.*}}] : (!fir.box<!fir.array<?xf32>>, !fir.shift<1>, !fir.slice<1>) -> !fir.box<!fir.array<?xf32>>
+  %2 = fir.rebox %arg0(%1) [%0] : (!fir.box<!fir.array<?xf32>>, !fir.shift<1>, !fir.slice<1>) -> !fir.box<!fir.array<?xf32>>
+  %3 = fir.shape %c3, %c4 : (index, index) -> !fir.shape<2>
+  // CHECK: fir.rebox %{{.*}}(%{{.*}}) : (!fir.box<!fir.array<?xf32>>, !fir.shape<2>) -> !fir.box<!fir.array<?x?xf32>>
+  %4 = fir.rebox %2(%3) : (!fir.box<!fir.array<?xf32>>, !fir.shape<2>) -> !fir.box<!fir.array<?x?xf32>>
+  fir.call @bar_rebox_test(%4) : (!fir.box<!fir.array<?x?xf32>>) -> ()
+  return
+}

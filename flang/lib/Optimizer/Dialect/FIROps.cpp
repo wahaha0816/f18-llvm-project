@@ -1273,6 +1273,89 @@ mlir::OpFoldResult fir::MulfOp::fold(llvm::ArrayRef<mlir::Attribute> opnds) {
 }
 
 //===----------------------------------------------------------------------===//
+// ReboxOp
+//===----------------------------------------------------------------------===//
+
+/// Get the scalar type related to a fir.box type.
+/// Example: return f32 for !fir.box<!fir.heap<!fir.array<?x?xf32>>.
+static mlir::Type getBoxScalarEleTy(mlir::Type boxTy) {
+  auto eleTy = fir::dyn_cast_ptrOrBoxEleTy(boxTy);
+  if (auto seqTy = eleTy.dyn_cast<fir::SequenceType>())
+    return seqTy.getEleTy();
+  return eleTy;
+}
+
+/// Get the rank from a !fir.box type
+static unsigned getBoxRank(mlir::Type boxTy) {
+  auto eleTy = fir::dyn_cast_ptrOrBoxEleTy(boxTy);
+  if (auto seqTy = eleTy.dyn_cast<fir::SequenceType>())
+    return seqTy.getDimension();
+  return 0;
+}
+
+static mlir::LogicalResult verify(fir::ReboxOp op) {
+  auto inputBoxTy = op.box().getType();
+  if (fir::isa_unknown_size_box(inputBoxTy))
+    return op.emitOpError("box operand must not have unknown rank or type");
+  auto outBoxTy = op.getType();
+  if (fir::isa_unknown_size_box(outBoxTy))
+    return op.emitOpError("result type must not have unknown rank or type");
+  auto inputRank = getBoxRank(inputBoxTy);
+  auto inputEleTy = getBoxScalarEleTy(inputBoxTy);
+  auto outRank = getBoxRank(outBoxTy);
+  auto outEleTy = getBoxScalarEleTy(outBoxTy);
+
+  if (auto slice = op.slice()) {
+    // Slicing case
+    if (slice.getType().cast<fir::SliceType>().getRank() != inputRank)
+      return op.emitOpError("slice operand rank must match box operand rank");
+    if (auto shape = op.shape()) {
+      if (auto shiftTy = shape.getType().dyn_cast<fir::ShiftType>()) {
+        if (shiftTy.getRank() != inputRank)
+          return op.emitOpError("shape operand and input box ranks must match "
+                                "when there is a slice");
+      } else {
+        return op.emitOpError("shape operand must absent or be a fir.shift "
+                              "when there is a slice");
+      }
+    }
+    if (auto sliceOp = slice.getDefiningOp()) {
+      auto slicedRank = mlir::cast<fir::SliceOp>(sliceOp).getOutRank();
+      if (slicedRank != outRank)
+        return op.emitOpError("result type rank and rank after applying slice "
+                              "operand must match");
+    }
+  } else {
+    // Reshaping case
+    unsigned shapeRank = inputRank;
+    if (auto shape = op.shape()) {
+      auto ty = shape.getType();
+      if (auto shapeTy = ty.dyn_cast<fir::ShapeType>()) {
+        shapeRank = shapeTy.getRank();
+      } else if (auto shapeShiftTy = ty.dyn_cast<fir::ShapeShiftType>()) {
+        shapeRank = shapeShiftTy.getRank();
+      } else {
+        auto shiftTy = ty.cast<fir::ShiftType>();
+        shapeRank = shiftTy.getRank();
+        if (shapeRank != inputRank)
+          return op.emitOpError("shape operand and input box ranks must match "
+                                "when the shape is a fir.shift");
+      }
+    }
+    if (shapeRank != outRank)
+      return op.emitOpError("result type and shape operand ranks must match");
+  }
+
+  if (inputEleTy != outEleTy)
+    // TODO: check that outBoxTy is a parent type of inputBoxTy for derived
+    // types.
+    if (!inputEleTy.isa<fir::RecordType>())
+      return op.emitOpError(
+          "op input and output element types must match for intrinsic types");
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
 // ResultOp
 //===----------------------------------------------------------------------===//
 
