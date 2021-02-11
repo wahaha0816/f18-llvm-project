@@ -25,7 +25,7 @@
 namespace fir::support {
 
 /// Register and load all the dialects used by flang.
-inline void registerAndLoadDialects(mlir::MLIRContext &ctx) {
+inline void registerDialects(mlir::MLIRContext &ctx) {
   auto registry = ctx.getDialectRegistry();
   // clang-format off
   registry.insert<mlir::AffineDialect,
@@ -43,7 +43,7 @@ inline void registerAndLoadDialects(mlir::MLIRContext &ctx) {
 
 /// Register the standard passes we use. This comes from registerAllPasses(),
 /// but is a smaller set since we aren't using many of the passes found there.
-inline void registerGeneralPasses() {
+inline void registerFIRPasses() {
   mlir::registerCanonicalizerPass();
   mlir::registerCSEPass();
   mlir::registerAffineLoopFusionPass();
@@ -68,8 +68,6 @@ inline void registerGeneralPasses() {
 
   mlir::registerConvertAffineToStandardPass();
 }
-
-inline void registerFIRPasses() { registerGeneralPasses(); }
 
 } // namespace fir::support
 
