@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef OPTIMIZER_SUPPORT_INTERNALNAMES_H
-#define OPTIMIZER_SUPPORT_INTERNALNAMES_H
+#ifndef FORTRAN_OPTIMIZER_SUPPORT_INTERNALNAMES_H
+#define FORTRAN_OPTIMIZER_SUPPORT_INTERNALNAMES_H
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
@@ -129,4 +129,4 @@ private:
 
 } // namespace fir
 
-#endif // OPTIMIZER_SUPPORT_INTERNALNAMES_H
+#endif // FORTRAN_OPTIMIZER_SUPPORT_INTERNALNAMES_H

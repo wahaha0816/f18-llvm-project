@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef OPTIMIZER_DIALECT_FIRDIALECT_H
-#define OPTIMIZER_DIALECT_FIRDIALECT_H
+#ifndef FORTRAN_OPTIMIZER_DIALECT_FIRDIALECT_H
+#define FORTRAN_OPTIMIZER_DIALECT_FIRDIALECT_H
 
 #include "mlir/IR/Dialect.h"
 
@@ -46,4 +46,4 @@ public:
 
 } // namespace fir
 
-#endif // OPTIMIZER_DIALECT_FIRDIALECT_H
+#endif // FORTRAN_OPTIMIZER_DIALECT_FIRDIALECT_H

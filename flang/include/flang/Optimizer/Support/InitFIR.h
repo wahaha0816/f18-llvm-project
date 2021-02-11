@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef OPTIMIZER_SUPPORT_INITFIR_H
-#define OPTIMIZER_SUPPORT_INITFIR_H
+#ifndef FORTRAN_OPTIMIZER_SUPPORT_INITFIR_H
+#define FORTRAN_OPTIMIZER_SUPPORT_INITFIR_H
 
 #include "flang/Optimizer/Dialect/FIRDialect.h"
 #include "mlir/Conversion/Passes.h"
@@ -73,4 +73,4 @@ inline void registerFIRPasses() { registerGeneralPasses(); }
 
 } // namespace fir::support
 
-#endif // OPTIMIZER_SUPPORT_INITFIR_H
+#endif // FORTRAN_OPTIMIZER_SUPPORT_INITFIR_H

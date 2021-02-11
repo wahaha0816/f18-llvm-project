@@ -14,8 +14,8 @@
 /// determine how to correctly generate code.
 //===----------------------------------------------------------------------===//
 
-#ifndef OPTIMIZER_SUPPORT_FIRCONTEXT_H
-#define OPTIMIZER_SUPPORT_FIRCONTEXT_H
+#ifndef FORTRAN_OPTIMIZER_SUPPORT_FIRCONTEXT_H
+#define FORTRAN_OPTIMIZER_SUPPORT_FIRCONTEXT_H
 
 #include "llvm/ADT/Triple.h"
 
@@ -61,4 +61,4 @@ std::string determineTargetTriple(llvm::StringRef triple);
 
 } // namespace fir
 
-#endif // OPTIMIZER_SUPPORT_FIRCONTEXT_H
+#endif // FORTRAN_OPTIMIZER_SUPPORT_FIRCONTEXT_H
