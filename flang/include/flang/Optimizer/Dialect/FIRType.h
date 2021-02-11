@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef OPTIMIZER_DIALECT_FIRTYPE_H
-#define OPTIMIZER_DIALECT_FIRTYPE_H
+#ifndef FORTRAN_OPTIMIZER_DIALECT_FIRTYPE_H
+#define FORTRAN_OPTIMIZER_DIALECT_FIRTYPE_H
 
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -481,4 +481,4 @@ bool isa_unknown_size_box(mlir::Type t);
 
 } // namespace fir
 
-#endif // OPTIMIZER_DIALECT_FIRTYPE_H
+#endif // FORTRAN_OPTIMIZER_DIALECT_FIRTYPE_H

@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef FLANG_OPTIMIZER_TRANSFORMS_PASSES
-#define FLANG_OPTIMIZER_TRANSFORMS_PASSES
+#ifndef FORTRAN_OPTIMIZER_TRANSFORMS_FIR_PASSES
+#define FORTRAN_OPTIMIZER_TRANSFORMS_FIR_PASSES
 
 include "mlir/Pass/PassBase.td"
 
@@ -118,4 +118,4 @@ def ArrayValueCopy : FunctionPass<"array-value-copy"> {
   let constructor = "::fir::createArrayValueCopyPass()";
 }
 
-#endif // FLANG_OPTIMIZER_TRANSFORMS_PASSES
+#endif // FORTRAN_OPTIMIZER_TRANSFORMS_FIR_PASSES

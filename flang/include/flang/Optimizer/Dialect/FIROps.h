@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef OPTIMIZER_DIALECT_FIROPS_H
-#define OPTIMIZER_DIALECT_FIROPS_H
+#ifndef FORTRAN_OPTIMIZER_DIALECT_FIROPS_H
+#define FORTRAN_OPTIMIZER_DIALECT_FIROPS_H
 
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Interfaces/LoopLikeInterface.h"
@@ -47,4 +47,4 @@ mlir::ParseResult parseSelector(mlir::OpAsmParser &parser,
 #include "flang/Optimizer/Dialect/FIROps.h.inc"
 
 
-#endif // OPTIMIZER_DIALECT_FIROPS_H
+#endif // FORTRAN_OPTIMIZER_DIALECT_FIROPS_H

@@ -11,8 +11,8 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#ifndef FIR_DIALECT_FIR_OPS
-#define FIR_DIALECT_FIR_OPS
+#ifndef FORTRAN_DIALECT_FIR_OPS
+#define FORTRAN_DIALECT_FIR_OPS
 
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"

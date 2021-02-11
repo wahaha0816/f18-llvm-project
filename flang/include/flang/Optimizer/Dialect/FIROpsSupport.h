@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef OPTIMIZER_DIALECT_FIROPSSUPPORT_H
-#define OPTIMIZER_DIALECT_FIROPSSUPPORT_H
+#ifndef FORTRAN_OPTIMIZER_DIALECT_FIROPSSUPPORT_H
+#define FORTRAN_OPTIMIZER_DIALECT_FIROPSSUPPORT_H
 
 #include "flang/Optimizer/Dialect/FIROps.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
@@ -76,4 +76,4 @@ bool valueHasFirAttribute(mlir::Value value, llvm::StringRef attributeName);
 
 } // namespace fir
 
-#endif // OPTIMIZER_DIALECT_FIROPSSUPPORT_H
+#endif // FORTRAN_OPTIMIZER_DIALECT_FIROPSSUPPORT_H

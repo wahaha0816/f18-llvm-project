@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef OPTIMIZER_SUPPORT_KINDMAPPING_H
-#define OPTIMIZER_SUPPORT_KINDMAPPING_H
+#ifndef FORTRAN_OPTIMIZER_SUPPORT_KINDMAPPING_H
+#define FORTRAN_OPTIMIZER_SUPPORT_KINDMAPPING_H
 
 #include "mlir/IR/OpDefinition.h"
 #include "llvm/ADT/DenseMap.h"
@@ -109,4 +109,4 @@ private:
 
 } // namespace fir
 
-#endif // OPTIMIZER_SUPPORT_KINDMAPPING_H
+#endif // FORTRAN_OPTIMIZER_SUPPORT_KINDMAPPING_H

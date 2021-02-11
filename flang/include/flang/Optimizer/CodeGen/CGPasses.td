@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef FLANG_OPTIMIZER_CODEGEN_PASSES
-#define FLANG_OPTIMIZER_CODEGEN_PASSES
+#ifndef FORTRAN_OPTIMIZER_CODEGEN_FIR_PASSES
+#define FORTRAN_OPTIMIZER_CODEGEN_FIR_PASSES
 
 include "mlir/Pass/PassBase.td"
 
@@ -42,4 +42,4 @@ def TargetRewrite : Pass<"target-rewrite", "mlir::ModuleOp"> {
   ];
 }
 
-#endif // FLANG_OPTIMIZER_CODEGEN_PASSES
+#endif // FORTRAN_OPTIMIZER_CODEGEN_FIR_PASSES

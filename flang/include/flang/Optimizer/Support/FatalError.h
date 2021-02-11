@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef OPTIMIZER_SUPPORT_FATALERROR_H
-#define OPTIMIZER_SUPPORT_FATALERROR_H
+#ifndef FORTRAN_OPTIMIZER_SUPPORT_FATALERROR_H
+#define FORTRAN_OPTIMIZER_SUPPORT_FATALERROR_H
 
 #include "mlir/IR/Diagnostics.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -34,4 +34,4 @@ LLVM_ATTRIBUTE_NORETURN inline void emitFatalError(const llvm::Twine &message) {
 
 } // namespace fir
 
-#endif // OPTIMIZER_SUPPORT_FATALERROR_H
+#endif // FORTRAN_OPTIMIZER_SUPPORT_FATALERROR_H

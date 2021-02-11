@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef OPTIMIZER_CODEGEN_CODEGEN_H
-#define OPTIMIZER_CODEGEN_CODEGEN_H
+#ifndef FORTRAN_OPTIMIZER_CODEGEN_CODEGEN_H
+#define FORTRAN_OPTIMIZER_CODEGEN_CODEGEN_H
 
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
@@ -46,4 +46,4 @@ createLLVMDialectToLLVMPass(llvm::raw_ostream &output);
 
 } // namespace fir
 
-#endif // OPTIMIZER_CODEGEN_CODEGEN_H
+#endif // FORTRAN_OPTIMIZER_CODEGEN_CODEGEN_H
