@@ -29,18 +29,6 @@ llvm::Triple *fir::getTargetTriple(mlir::ModuleOp mod) {
   return nullptr;
 }
 
-static constexpr const char *uniquerName = "fir.uniquer";
-
-void fir::setNameUniquer(mlir::ModuleOp mod, fir::NameUniquer &uniquer) {
-  mod->setAttr(uniquerName, fir::OpaqueAttr::get(mod.getContext(), &uniquer));
-}
-
-fir::NameUniquer *fir::getNameUniquer(mlir::ModuleOp mod) {
-  if (auto triple = mod->getAttrOfType<fir::OpaqueAttr>(uniquerName))
-    return static_cast<fir::NameUniquer *>(triple.getPointer());
-  return nullptr;
-}
-
 static constexpr const char *kindMapName = "fir.kindmap";
 
 void fir::setKindMapping(mlir::ModuleOp mod, fir::KindMapping &kindMap) {

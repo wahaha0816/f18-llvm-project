@@ -35,14 +35,6 @@ void setTargetTriple(mlir::ModuleOp mod, llvm::Triple &triple);
 /// returns a nullptr.
 llvm::Triple *getTargetTriple(mlir::ModuleOp mod);
 
-/// Set the name uniquer for the module. `uniquer` must not be deallocated while
-/// module `mod` is still live.
-void setNameUniquer(mlir::ModuleOp mod, NameUniquer &uniquer);
-
-/// Get a pointer to the NameUniquer instance from the Module. If none was set,
-/// returns a nullptr.
-NameUniquer *getNameUniquer(mlir::ModuleOp mod);
-
 /// Set the kind mapping for the module. `kindMap` must not be deallocated while
 /// module `mod` is still live.
 void setKindMapping(mlir::ModuleOp mod, KindMapping &kindMap);
