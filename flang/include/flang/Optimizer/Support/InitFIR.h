@@ -24,21 +24,23 @@
 
 namespace fir::support {
 
-/// Register and load all the dialects used by flang.
-inline void registerDialects(mlir::MLIRContext &ctx) {
-  auto registry = ctx.getDialectRegistry();
-  // clang-format off
-  registry.insert<mlir::AffineDialect,
-                  FIROpsDialect,
-                  FIRCodeGenDialect,
-                  mlir::LLVM::LLVMDialect,
-                  mlir::acc::OpenACCDialect,
-                  mlir::omp::OpenMPDialect,
-                  mlir::scf::SCFDialect,
-                  mlir::StandardOpsDialect,
-                  mlir::vector::VectorDialect>();
-  // clang-format on
-  registry.loadAll(&ctx);
+// The definitive list of dialects used by flang.
+#define FLANG_DIALECT_LIST                                                     \
+  mlir::AffineDialect, FIROpsDialect, FIRCodeGenDialect,                       \
+      mlir::LLVM::LLVMDialect, mlir::acc::OpenACCDialect,                      \
+      mlir::omp::OpenMPDialect, mlir::scf::SCFDialect,                         \
+      mlir::StandardOpsDialect, mlir::vector::VectorDialect
+
+/// Register all the dialects used by flang.
+inline void registerDialects(mlir::DialectRegistry &registry) {
+  registry.insert<FLANG_DIALECT_LIST>();
+}
+
+/// Forced load of all the dialects used by flang.  Lowering is not an MLIR
+/// pass, but a producer of FIR and MLIR. It is therefore a requirement that the
+/// dialects be preloaded to be able to build the IR.
+inline void loadDialects(mlir::MLIRContext &context) {
+  context.loadDialect<FLANG_DIALECT_LIST>();
 }
 
 /// Register the standard passes we use. This comes from registerAllPasses(),

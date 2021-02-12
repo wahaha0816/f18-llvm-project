@@ -72,8 +72,10 @@ compileFIR(const mlir::PassPipelineCLParser &passPipeline) {
   // load the file into a module
   SourceMgr sourceMgr;
   sourceMgr.AddNewSourceBuffer(std::move(*fileOrErr), SMLoc());
-  mlir::MLIRContext context;
-  fir::support::registerDialects(context);
+  mlir::DialectRegistry registry;
+  fir::support::registerDialects(registry);
+  mlir::MLIRContext context(registry);
+  fir::support::loadDialects(context);
   auto owningRef = mlir::parseSourceFile(sourceMgr, &context);
 
   if (!owningRef) {
@@ -102,7 +104,8 @@ compileFIR(const mlir::PassPipelineCLParser &passPipeline) {
     // parse the input and pretty-print it back out
     // -emit-fir intentionally disables all the passes
   } else if (passPipeline.hasAnyOccurrences()) {
-    passPipeline.addToPipeline(pm, [&](const Twine &msg) {
+    // FIXME: handle result
+    (void)passPipeline.addToPipeline(pm, [&](const Twine &msg) {
       mlir::emitError(mlir::UnknownLoc::get(&context)) << msg;
       return mlir::failure();
     });
