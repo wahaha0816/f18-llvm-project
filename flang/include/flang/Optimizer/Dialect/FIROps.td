@@ -111,10 +111,11 @@ class fir_SimpleOp<string mnemonic, list<OpTrait> traits>
 }
 
 // Base builder for allocate operations
-def fir_AllocateOpBuilder : OpBuilderDAG<(ins "mlir::Type":$inType,
-  CArg<"mlir::ValueRange", "{}">:$lenParams,
-  CArg<"mlir::ValueRange", "{}">:$sizes,
-  CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attributes),
+def fir_AllocateOpBuilder : OpBuilderDAG<(ins
+    "mlir::Type":$inType,
+    CArg<"mlir::ValueRange", "{}">:$lenParams,
+    CArg<"mlir::ValueRange", "{}">:$sizes,
+    CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attributes),
   [{
     $_state.addTypes(getRefTy(inType));
     $_state.addAttribute("in_type", TypeAttr::get(inType));
@@ -122,10 +123,12 @@ def fir_AllocateOpBuilder : OpBuilderDAG<(ins "mlir::Type":$inType,
     $_state.addAttributes(attributes);
   }]>;
 
-def fir_NamedAllocateOpBuilder : OpBuilderDAG<(ins "mlir::Type":$inType,
-  "llvm::StringRef":$name, CArg<"mlir::ValueRange", "{}">:$lenParams,
-  CArg<"mlir::ValueRange","{}">:$sizes,
-  CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attributes),
+def fir_NamedAllocateOpBuilder : OpBuilderDAG<(ins
+    "mlir::Type":$inType,
+    "llvm::StringRef":$name,
+    CArg<"mlir::ValueRange", "{}">:$lenParams,
+    CArg<"mlir::ValueRange","{}">:$sizes,
+    CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attributes),
   [{
     $_state.addTypes(getRefTy(inType));
     $_state.addAttribute("in_type", TypeAttr::get(inType));
@@ -135,7 +138,8 @@ def fir_NamedAllocateOpBuilder : OpBuilderDAG<(ins "mlir::Type":$inType,
     $_state.addAttributes(attributes);
   }]>;
 
-def fir_OneResultOpBuilder : OpBuilderDAG<(ins "mlir::Type":$resultType,
+def fir_OneResultOpBuilder : OpBuilderDAG<(ins
+    "mlir::Type":$resultType,
     "mlir::ValueRange":$operands,
     CArg<"llvm::ArrayRef<mlir::NamedAttribute>", "{}">:$attributes),
   [{
