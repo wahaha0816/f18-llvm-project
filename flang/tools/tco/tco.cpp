@@ -91,9 +91,8 @@ compileFIR(const mlir::PassPipelineCLParser &passPipeline) {
   ToolOutputFile out(outputFilename, ec, sys::fs::OF_None);
 
   // run passes
-  llvm::Triple triple(fir::determineTargetTriple(targetTriple));
   fir::KindMapping kindMap{&context};
-  fir::setTargetTriple(*owningRef, triple);
+  fir::setTargetTriple(*owningRef, targetTriple);
   fir::setKindMapping(*owningRef, kindMap);
   mlir::PassManager pm(&context, mlir::OpPassManager::Nesting::Implicit);
   pm.enableVerifier(/*verifyPasses=*/true);
