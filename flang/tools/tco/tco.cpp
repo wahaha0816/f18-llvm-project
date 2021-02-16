@@ -92,10 +92,8 @@ compileFIR(const mlir::PassPipelineCLParser &passPipeline) {
 
   // run passes
   llvm::Triple triple(fir::determineTargetTriple(targetTriple));
-  fir::NameUniquer uniquer;
   fir::KindMapping kindMap{&context};
   fir::setTargetTriple(*owningRef, triple);
-  fir::setNameUniquer(*owningRef, uniquer);
   fir::setKindMapping(*owningRef, kindMap);
   mlir::PassManager pm(&context, mlir::OpPassManager::Nesting::Implicit);
   pm.enableVerifier(/*verifyPasses=*/true);
@@ -128,7 +126,7 @@ compileFIR(const mlir::PassPipelineCLParser &passPipeline) {
     // pm.addPass(fir::createMemToRegPass());
     pm.addPass(fir::createFirCodeGenRewritePass());
     pm.addPass(fir::createFirTargetRewritePass());
-    pm.addPass(fir::createFIRToLLVMPass(uniquer));
+    pm.addPass(fir::createFIRToLLVMPass());
     pm.addPass(fir::createLLVMDialectToLLVMPass(out.os()));
   }
 
