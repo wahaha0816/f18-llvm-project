@@ -11,9 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "flang/Optimizer/Support/FIRContext.h"
-#include "flang/Optimizer/Dialect/FIRAttr.h"
-#include "flang/Optimizer/Support/InternalNames.h"
 #include "flang/Optimizer/Support/KindMapping.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "llvm/Support/Host.h"
 
@@ -31,15 +30,24 @@ llvm::Triple fir::getTargetTriple(mlir::ModuleOp mod) {
 }
 
 static constexpr const char *kindMapName = "fir.kindmap";
+static constexpr const char *defKindName = "fir.defaultkind";
 
 void fir::setKindMapping(mlir::ModuleOp mod, fir::KindMapping &kindMap) {
-  mod->setAttr(kindMapName, fir::OpaqueAttr::get(mod.getContext(), &kindMap));
+  auto ctx = mod.getContext();
+  mod->setAttr(kindMapName, mlir::StringAttr::get(ctx, kindMap.mapToString()));
+  auto defs = kindMap.defaultsToString();
+  mod->setAttr(defKindName, mlir::StringAttr::get(ctx, defs));
 }
 
-fir::KindMapping *fir::getKindMapping(mlir::ModuleOp mod) {
-  if (auto triple = mod->getAttrOfType<fir::OpaqueAttr>(kindMapName))
-    return static_cast<fir::KindMapping *>(triple.getPointer());
-  return nullptr;
+fir::KindMapping fir::getKindMapping(mlir::ModuleOp mod) {
+  auto ctx = mod.getContext();
+  if (auto defs = mod->getAttrOfType<mlir::StringAttr>(defKindName)) {
+    auto defVals = fir::KindMapping::toDefaultKinds(defs.getValue());
+    if (auto maps = mod->getAttrOfType<mlir::StringAttr>(kindMapName))
+      return fir::KindMapping(ctx, maps.getValue(), defVals);
+    return fir::KindMapping(ctx, defVals);
+  }
+  return fir::KindMapping(ctx);
 }
 
 std::string fir::determineTargetTriple(llvm::StringRef triple) {
