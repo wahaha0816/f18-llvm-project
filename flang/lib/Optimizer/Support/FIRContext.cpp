@@ -11,9 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "flang/Optimizer/Support/FIRContext.h"
-#include "flang/Optimizer/Dialect/FIRAttr.h"
-#include "flang/Optimizer/Support/InternalNames.h"
 #include "flang/Optimizer/Support/KindMapping.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "llvm/Support/Host.h"
 
