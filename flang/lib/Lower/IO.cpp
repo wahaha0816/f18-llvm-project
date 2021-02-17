@@ -982,8 +982,7 @@ static llvm::Optional<fir::ExtendedValue> getVariableBufferRequiredDescriptor(
     const Fortran::parser::Variable &var,
     Fortran::lower::StatementContext &stmtCtx) {
   auto varBox = converter.genExprAddr(var.typedExpr->v.value(), stmtCtx);
-  auto defCharKind =
-      fir::getKindMapping(converter.getModuleOp())->defaultCharacterKind();
+  auto defCharKind = converter.getKindMap().defaultCharacterKind();
   auto varAddr = fir::getBase(varBox);
   if (Fortran::lower::CharacterExprHelper::getCharacterOrSequenceKind(
           varAddr.getType()) != defCharKind)

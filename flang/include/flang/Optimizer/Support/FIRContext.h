@@ -39,9 +39,9 @@ llvm::Triple getTargetTriple(mlir::ModuleOp mod);
 /// module `mod` is still live.
 void setKindMapping(mlir::ModuleOp mod, KindMapping &kindMap);
 
-/// Get a pointer to the KindMapping instance from the Module. If none was set,
-/// returns a nullptr.
-KindMapping *getKindMapping(mlir::ModuleOp mod);
+/// Get the KindMapping instance from the Module. If none was set, returns a
+/// default.
+KindMapping getKindMapping(mlir::ModuleOp mod);
 
 /// Helper for determining the target from the host, etc. Tools may use this
 /// function to provide a consistent interpretation of the `--target=<string>`
