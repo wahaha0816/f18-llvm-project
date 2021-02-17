@@ -17,6 +17,7 @@
 #ifndef FORTRAN_OPTIMIZER_SUPPORT_FIRCONTEXT_H
 #define FORTRAN_OPTIMIZER_SUPPORT_FIRCONTEXT_H
 
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Triple.h"
 
 namespace mlir {
@@ -29,11 +30,10 @@ struct NameUniquer;
 
 /// Set the target triple for the module. `triple` must not be deallocated while
 /// module `mod` is still live.
-void setTargetTriple(mlir::ModuleOp mod, llvm::Triple &triple);
+void setTargetTriple(mlir::ModuleOp mod, llvm::StringRef triple);
 
-/// Get a pointer to the Triple instance from the Module. If none was set,
-/// returns a nullptr.
-llvm::Triple *getTargetTriple(mlir::ModuleOp mod);
+/// Get the Triple instance from the Module or return the default Triple.
+llvm::Triple getTargetTriple(mlir::ModuleOp mod);
 
 /// Set the kind mapping for the module. `kindMap` must not be deallocated while
 /// module `mod` is still live.

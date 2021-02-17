@@ -19,14 +19,15 @@
 
 static constexpr const char *tripleName = "fir.triple";
 
-void fir::setTargetTriple(mlir::ModuleOp mod, llvm::Triple &triple) {
-  mod->setAttr(tripleName, fir::OpaqueAttr::get(mod.getContext(), &triple));
+void fir::setTargetTriple(mlir::ModuleOp mod, llvm::StringRef triple) {
+  auto target = fir::determineTargetTriple(triple);
+  mod->setAttr(tripleName, mlir::StringAttr::get(mod.getContext(), target));
 }
 
-llvm::Triple *fir::getTargetTriple(mlir::ModuleOp mod) {
-  if (auto triple = mod->getAttrOfType<fir::OpaqueAttr>(tripleName))
-    return static_cast<llvm::Triple *>(triple.getPointer());
-  return nullptr;
+llvm::Triple fir::getTargetTriple(mlir::ModuleOp mod) {
+  if (auto target = mod->getAttrOfType<mlir::StringAttr>(tripleName))
+    return llvm::Triple(target.getValue());
+  return llvm::Triple(llvm::sys::getDefaultTargetTriple());
 }
 
 static constexpr const char *kindMapName = "fir.kindmap";

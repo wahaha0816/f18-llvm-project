@@ -18,10 +18,6 @@
 #include "flang/Optimizer/Support/KindMapping.h"
 #include "mlir/IR/BuiltinOps.h"
 
-namespace llvm {
-class Triple;
-}
-
 namespace Fortran {
 namespace common {
 class IntrinsicTypeDefaultKinds;
@@ -53,7 +49,7 @@ public:
          const Fortran::common::IntrinsicTypeDefaultKinds &defaultKinds,
          const Fortran::evaluate::IntrinsicProcTable &intrinsics,
          const Fortran::parser::AllCookedSources &allCooked,
-         llvm::Triple &triple, fir::KindMapping &kindMap) {
+         llvm::StringRef triple, fir::KindMapping &kindMap) {
     return LoweringBridge(ctx, defaultKinds, intrinsics, allCooked, triple,
                           kindMap);
   }
@@ -99,7 +95,7 @@ private:
       mlir::MLIRContext &ctx,
       const Fortran::common::IntrinsicTypeDefaultKinds &defaultKinds,
       const Fortran::evaluate::IntrinsicProcTable &intrinsics,
-      const Fortran::parser::AllCookedSources &cooked, llvm::Triple &triple,
+      const Fortran::parser::AllCookedSources &cooked, llvm::StringRef triple,
       fir::KindMapping &kindMap);
   LoweringBridge() = delete;
   LoweringBridge(const LoweringBridge &) = delete;
