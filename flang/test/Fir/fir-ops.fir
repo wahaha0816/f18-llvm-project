@@ -688,3 +688,13 @@ func @test_misc_ops(%arr1 : !fir.ref<!fir.array<?x?xf32>>, %m : index, %n : inde
 
   return
 }
+
+// CHECK-LABEL: @test_shift
+func @test_shift(%arg0: !fir.box<!fir.array<?xf32>>) -> !fir.ref<f32> {
+  %c4 = constant 4 : index
+  %c100 = constant 100 : index
+  // CHECK: fir.shift %{{.*}} : (index) -> !fir.shift<1>
+  %0 = fir.shift %c4 : (index) -> !fir.shift<1>
+  %1 = fir.array_coor %arg0(%0) %c100 : (!fir.box<!fir.array<?xf32>>, !fir.shift<1>, index) -> !fir.ref<f32>
+  return %1 : !fir.ref<f32>
+} 
