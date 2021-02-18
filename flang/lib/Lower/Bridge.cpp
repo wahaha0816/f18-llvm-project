@@ -308,6 +308,10 @@ public:
     return Fortran::lower::getFIRType(&getMLIRContext(), tc, kind,
                                       lenParameters);
   }
+  mlir::Type
+  genType(const Fortran::semantics::DerivedTypeSpec &tySpec) override final {
+    return Fortran::lower::translateDerivedTypeToFIRType(*this, tySpec);
+  }
   mlir::Type genType(Fortran::common::TypeCategory tc) override final {
     return Fortran::lower::getFIRType(
         &getMLIRContext(), tc, bridge.getDefaultKinds().GetDefaultKind(tc),
@@ -540,12 +544,17 @@ private:
         },
         [&](const auto &) -> mlir::Value {
           auto resultRef = resultSymBox.getAddr();
-          mlir::Type resultRefType = builder->getRefType(genType(resultSym));
+          auto resultType = genType(resultSym);
+          mlir::Type resultRefType = builder->getRefType(resultType);
           // A function with multiple entry points returning different types
           // tags all result variables with one of the largest types to allow
           // them to share the same storage.  Convert this to the actual type.
           if (resultRef.getType() != resultRefType)
             resultRef = builder->createConvert(loc, resultRefType, resultRef);
+          // Derived types are return by reference (they are passed by the
+          // caller)
+          if (resultType.isa<fir::RecordType>())
+            return resultRef;
           return builder->create<fir::LoadOp>(loc, resultRef);
         });
     builder->create<mlir::ReturnOp>(loc, resultVal);
@@ -2502,6 +2511,11 @@ private:
               mlir::emitError(loc, "symbol \"")
                   << toStringRef(sym.name()) << "\" must already be in map";
             return;
+          } else if (isResult) {
+            // Some Fortran results may be passed by argument (e.g. derived
+            // types)
+            if (lookupSymbol(sym))
+              return;
           }
           // Otherwise, it's a local variable or function result.
           auto local = createNewLocal(loc, var, preAlloc);

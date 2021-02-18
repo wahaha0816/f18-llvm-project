@@ -129,6 +129,44 @@ convertOptExtentExpr(Fortran::lower::AbstractConverter &converter,
   return fir::getBase(converter.genExprValue(&e, stmtCtx, loc));
 }
 
+/// Return the extended value for a component of a derived type instance given
+/// the extended value \p obj of the derived type instance and the address of
+/// the component.
+static fir::ExtendedValue
+componentToExtendedValue(Fortran::lower::FirOpBuilder &builder,
+                         mlir::Location loc, const fir::ExtendedValue &obj,
+                         mlir::Value component) {
+  auto fieldTy = fir::dyn_cast_ptrEleTy(component.getType());
+  if (fieldTy.dyn_cast<fir::BoxType>())
+    TODO("lower pointer/allocatable component ref");
+  llvm::SmallVector<mlir::Value, 4> extents;
+  if (auto seqTy = fieldTy.dyn_cast<fir::SequenceType>()) {
+    fieldTy = seqTy.getEleTy();
+    auto idxTy = builder.getIndexType();
+    for (auto extent : seqTy.getShape()) {
+      if (extent == fir::SequenceType::getUnknownExtent())
+        TODO("array component shape depending on length parameters");
+      extents.emplace_back(builder.createIntegerConstant(loc, idxTy, extent));
+    }
+  }
+  if (auto charTy = fieldTy.dyn_cast<fir::CharacterType>()) {
+    auto cstLen = charTy.getLen();
+    if (cstLen == fir::CharacterType::unknownLen())
+      TODO("get character component length from length type parameters");
+    auto len = builder.createIntegerConstant(
+        loc, builder.getCharacterLengthType(), cstLen);
+    if (!extents.empty())
+      return fir::CharArrayBoxValue{component, len, extents};
+    return fir::CharBoxValue{component, len};
+  }
+  if (auto recordTy = fieldTy.dyn_cast<fir::RecordType>())
+    if (recordTy.getNumLenParams() != 0)
+      TODO("lower component ref that is a derived type with length parameter");
+  if (extents.empty())
+    return fir::ArrayBoxValue{component, extents};
+  return component;
+}
+
 namespace {
 
 /// Lowering of Fortran::evaluate::Expr<T> expressions
@@ -959,25 +997,24 @@ public:
     auto *base = reverseComponents(cmpt, list);
     llvm::SmallVector<mlir::Value, 4> coorArgs;
     auto obj = gen(*base);
-    const auto *sym = &cmpt.GetFirstSymbol();
-    auto ty = converter.genType(*sym);
+    auto ty = fir::dyn_cast_ptrEleTy(fir::getBase(obj).getType());
     auto loc = getLoc();
     auto fldTy = fir::FieldType::get(&converter.getMLIRContext());
     // FIXME: need to thread the LEN type parameters here.
     for (auto *field : list) {
       auto recTy = ty.cast<fir::RecordType>();
-      sym = &field->GetLastSymbol();
+      const auto *sym = &field->GetLastSymbol();
       auto name = toStringRef(sym->name());
       coorArgs.push_back(builder.create<fir::FieldIndexOp>(
           loc, fldTy, name, mlir::TypeAttr::get(recTy),
           /*lenparams=*/mlir::ValueRange{}));
       ty = recTy.getType(name);
     }
-    assert(sym && "no component(s)?");
     ty = builder.getRefType(ty);
-    return fir::substBase(obj, builder.create<fir::CoordinateOp>(
-                                   loc, ty, fir::getBase(obj), coorArgs,
-                                   /*lenParams=*/mlir::ValueRange{}));
+    return componentToExtendedValue(
+        builder, loc, obj,
+        builder.create<fir::CoordinateOp>(loc, ty, fir::getBase(obj), coorArgs,
+                                          /*lenParams=*/mlir::ValueRange{}));
   }
 
   fir::ExtendedValue genval(const Fortran::evaluate::Component &cmpt) {
@@ -1015,13 +1052,23 @@ public:
 
   fir::ExtendedValue
   genArrayRefComponent(const Fortran::evaluate::ArrayRef &aref) {
-    auto base = fir::getBase(gen(aref.base().GetComponent()));
+    auto component = gen(aref.base().GetComponent());
+    auto base = fir::getBase(component);
     llvm::SmallVector<mlir::Value, 8> args;
+    // FIXME: the lower bounds should be apply, and in general,
+    // this coordinate op will only work if the extents are compile
+    // time constants. Otherwise, the coordinateOp need to be collapsed.
     for (auto &subsc : aref.subscript())
       args.push_back(genunbox(subsc));
     auto ty = genSubType(base.getType(), args.size());
     ty = builder.getRefType(ty);
-    return builder.create<fir::CoordinateOp>(getLoc(), ty, base, args);
+    auto addr = builder.create<fir::CoordinateOp>(getLoc(), ty, base, args);
+    // TODO: use arrayElementToExtendedValue from PR 602 once merged.
+    return component.match(
+        [&](const fir::CharArrayBoxValue &x) -> fir::ExtendedValue {
+          return fir::CharBoxValue{addr, x.getLen()};
+        },
+        [&](const auto &) -> fir::ExtendedValue { return addr; });
   }
 
   static bool isSlice(const Fortran::evaluate::ArrayRef &aref) {
@@ -1242,7 +1289,7 @@ public:
   mlir::Type genType(const Fortran::evaluate::DynamicType &dt) {
     if (dt.category() != Fortran::common::TypeCategory::Derived)
       return converter.genType(dt.category(), dt.kind());
-    llvm::report_fatal_error("derived types not implemented");
+    return converter.genType(dt.GetDerivedTypeSpec());
   }
 
   /// Apply the function `func` and return a reference to the resultant value.
@@ -1424,6 +1471,12 @@ public:
           auto temp = helper.createCharacterTemp(resultType[0], len);
           caller.placeAddressAndLengthInput(*resultArg, temp.getBuffer(),
                                             temp.getLen());
+          return fir::ExtendedValue(temp);
+        }
+        if (resultArg->passBy == PassBy::BaseAddress) {
+          // allocate and pass derived type result (no length parameters).
+          auto temp = builder.createTemporary(loc, resultType[0]);
+          caller.placeInput(*resultArg, temp);
           return fir::ExtendedValue(temp);
         }
         TODO("passing hidden descriptor for result"); // Pass descriptor
