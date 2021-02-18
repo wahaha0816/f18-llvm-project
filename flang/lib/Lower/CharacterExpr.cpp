@@ -200,7 +200,7 @@ Fortran::lower::CharacterExprHelper::createEmbox(const fir::CharBoxValue &box) {
 fir::CharBoxValue Fortran::lower::CharacterExprHelper::toScalarCharacter(
     const fir::CharArrayBoxValue &box) {
   if (box.getBuffer().getType().isa<fir::PointerType>())
-    TODO("concatenating non contiguous character array into a scalar");
+    TODO(loc, "concatenating non contiguous character array into a scalar");
 
   // TODO: add a fast path multiplying new length at compile time if the info is
   // in the array type.
@@ -529,7 +529,7 @@ void Fortran::lower::CharacterExprHelper::createAssign(
       return;
     }
   }
-  TODO("character array assignment");
+  TODO(loc, "character array assignment");
   // Note that it is not sure the array aspect should be handled
   // by this utility.
 }
