@@ -62,6 +62,9 @@ def AnyAddressableLike : TypeConstraint<Or<[fir_ReferenceType.predicate,
 def AnyBoxLike : TypeConstraint<Or<[fir_BoxType.predicate,
     fir_BoxCharType.predicate, fir_BoxProcType.predicate]>, "any box">;
 
+// Reference and Box like types
+def AnyRefOrBoxLike : TypeConstraint<Or<[AnyReferenceLike.predicate, AnyBoxLike.predicate]>,
+    "any reference or box like">;
 def AnyShapeLike : TypeConstraint<Or<[fir_ShapeType.predicate,
     fir_ShapeShiftType.predicate]>, "any legal shape type">;
 def AnyShapeType : Type<AnyShapeLike.predicate, "any legal shape type">;
@@ -3436,7 +3439,7 @@ def fir_AbsentOp : fir_OneResultOp<"absent", [NoSideEffect]> {
     ```
   }];
 
-  let results = (outs AnyRefOrBox:$intype);
+  let results = (outs AnyRefOrBoxLike:$intype);
 
   let assemblyFormat = "type($intype) attr-dict";
 }
@@ -3454,7 +3457,7 @@ def fir_IsPresentOp : fir_SimpleOp<"is_present", [NoSideEffect]> {
     ```
   }];
 
-  let arguments = (ins AnyRefOrBox:$val);
+  let arguments = (ins AnyRefOrBoxLike:$val);
 
   let results = (outs BoolLike);
 }
