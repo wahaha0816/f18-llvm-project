@@ -170,6 +170,7 @@ class fir_AllocatableOp<string mnemonic, Resource resource,
     mlir::Type getAllocatedType();
 
     bool hasLenParams() { return bool{(*this)->getAttr(lenpName())}; }
+    bool hasShapeOperands() { return numShapeOperands() > 0; }
 
     unsigned numLenParams() {
       if (auto val = (*this)->getAttrOfType<mlir::IntegerAttr>(lenpName()))
@@ -1767,8 +1768,7 @@ def fir_ArrayCoorOp : fir_Op<"array_coor",
   let verifier = [{ return ::verify(*this); }];
 }
 
-def fir_CoordinateOp : fir_Op<"coordinate_of",
-    [NoSideEffect, AttrSizedOperandSegments]> {
+def fir_CoordinateOp : fir_Op<"coordinate_of", [NoSideEffect]> {
 
   let summary = "Finds the coordinate (location) of a value in memory";
 
@@ -1796,7 +1796,6 @@ def fir_CoordinateOp : fir_Op<"coordinate_of",
   let arguments = (ins
     AnyRefOrBox:$ref,
     Variadic<AnyCoordinateType>:$coor,
-    Variadic<AnyIntegerType>:$lenParams,
     TypeAttr:$baseType
   );
 
@@ -1810,12 +1809,7 @@ def fir_CoordinateOp : fir_Op<"coordinate_of",
     OpBuilderDAG<(ins "mlir::Type":$resultType,
       "mlir::Value":$ref, "mlir::ValueRange":$coor),
     [{ return build($_builder, $_state, resultType, ref, coor,
-           /*lenParams=*/mlir::ValueRange{}); }]>,
-    OpBuilderDAG<(ins "mlir::Type":$resultType,
-      "mlir::Value":$ref, "mlir::ValueRange":$coor,
-      "mlir::ValueRange":$lenParams),
-    [{ return build($_builder, $_state, resultType, ref, coor,
-           lenParams, mlir::TypeAttr::get(ref.getType())); }]>,
+           mlir::TypeAttr::get(ref.getType())); }]>,
   ];
 
   let extraClassDeclaration = [{
@@ -1894,8 +1888,8 @@ def fir_FieldIndexOp : fir_OneResultOp<"field_index", [NoSideEffect]> {
       auto loc = parser.getNameLoc();
       if (parser.parseOperandList(operands,
                                   mlir::OpAsmParser::Delimiter::None) ||
-          parser.parseRParen() ||
           parser.parseColonTypeList(types) ||
+          parser.parseRParen() ||
           parser.resolveOperands(operands, types, loc, result.operands))
         return mlir::failure();
     }
