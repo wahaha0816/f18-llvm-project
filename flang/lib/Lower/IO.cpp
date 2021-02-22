@@ -526,7 +526,7 @@ genBuffer(Fortran::lower::AbstractConverter &converter, mlir::Location loc,
       [&](const fir::BoxValue &) -> ValuePair {
         // May need to copy before after IO to handle contiguous
         // aspect. Not sure descriptor can get here though.
-        TODO("character descriptor to contiguous buffer");
+        TODO(loc, "character descriptor to contiguous buffer");
       },
       [&](const auto &) -> ValuePair {
         llvm::report_fatal_error(
@@ -686,9 +686,9 @@ mlir::Value genIOOption<Fortran::parser::ConnectSpec::CharExpr>(
     ioFunc = getIORuntimeFunc<mkIOKey(SetCarriagecontrol)>(loc, builder);
     break;
   case Fortran::parser::ConnectSpec::CharExpr::Kind::Convert:
-    TODO("CONVERT not part of the runtime::io interface");
+    TODO(loc, "CONVERT not part of the runtime::io interface");
   case Fortran::parser::ConnectSpec::CharExpr::Kind::Dispose:
-    TODO("DISPOSE not part of the runtime::io interface");
+    TODO(loc, "DISPOSE not part of the runtime::io interface");
   }
   mlir::FunctionType ioFuncTy = ioFunc.getType();
   auto tup = lowerStringLit(
@@ -722,7 +722,7 @@ genIOOption<Fortran::parser::Name>(Fortran::lower::AbstractConverter &converter,
                                    mlir::Location loc, mlir::Value cookie,
                                    Fortran::lower::StatementContext &stmtCtx,
                                    const Fortran::parser::Name &spec) {
-  TODO("namelist");
+  TODO(loc, "namelist");
 }
 
 template <>
@@ -778,7 +778,7 @@ mlir::Value genIOOption<Fortran::parser::IdVariable>(
     Fortran::lower::AbstractConverter &converter, mlir::Location loc,
     mlir::Value cookie, Fortran::lower::StatementContext &stmtCtx,
     const Fortran::parser::IdVariable &spec) {
-  TODO("asynchronous ID not implemented");
+  TODO(loc, "asynchronous ID not implemented");
 }
 
 template <>
@@ -1018,7 +1018,7 @@ static bool isDataTransferAsynchronous(const A &stmt) {
   if (auto *asynch =
           getIOControl<Fortran::parser::IoControlSpec::Asynchronous>(stmt)) {
     // FIXME: should contain a string of YES or NO
-    TODO("asynchronous transfers not implemented in runtime");
+    TODO_NOLOC("asynchronous transfers not implemented in runtime");
   }
   return false;
 }
@@ -1454,7 +1454,7 @@ void genBeginCallArguments(llvm::SmallVectorImpl<mlir::Value> &ioArgs,
                                  ioFuncTy.getInput(ioArgs.size()), stmtCtx));
       if (isAsynch) {
         // unknown-thingy, [buff, LEN]
-        TODO("asynchrous");
+        TODO(loc, "asynchrous");
       }
       return;
     }
@@ -1462,7 +1462,7 @@ void genBeginCallArguments(llvm::SmallVectorImpl<mlir::Value> &ioArgs,
     if (!isIntern) {
       if (isNml) {
         // namelist group, ...
-        TODO("namelist");
+        TODO(loc, "namelist");
       } else if (!isList) {
         // | [format, LEN], ...
         auto pair =
@@ -1486,7 +1486,7 @@ void genBeginCallArguments(llvm::SmallVectorImpl<mlir::Value> &ioArgs,
           builder.createConvert(loc, ioFuncTy.getInput(ioArgs.size()), desc));
       if (isNml) {
         // namelist group, ...
-        TODO("namelist");
+        TODO(loc, "namelist");
       } else if (isOtherIntern && !isList) {
         // | [format, LEN], ...
         auto pair =
