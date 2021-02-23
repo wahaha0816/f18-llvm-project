@@ -479,8 +479,10 @@ mlir::Value Fortran::lower::CharacterExprHelper::createLenTrim(
   auto index = iterWhile.getInductionVar();
   // Look for first non-blank from the right of the character.
   auto fromBuff = getCharBoxBuffer(str);
-  auto c = createLoadCharAt(fromBuff, index);
-  c = builder.createConvert(loc, blank.getType(), c);
+  auto elemAddr = createElementAddr(fromBuff, index);
+  auto codeAddr =
+      builder.createConvert(loc, builder.getRefType(blank.getType()), elemAddr);
+  auto c = builder.create<fir::LoadOp>(loc, codeAddr);
   auto isBlank =
       builder.create<mlir::CmpIOp>(loc, mlir::CmpIPredicate::eq, blank, c);
   llvm::SmallVector<mlir::Value, 2> results = {isBlank, index};
