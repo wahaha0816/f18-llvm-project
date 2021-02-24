@@ -442,8 +442,7 @@ mlir::OpFoldResult fir::ConvertOp::fold(llvm::ArrayRef<mlir::Attribute> opnds) {
 
 bool fir::ConvertOp::isIntegerCompatible(mlir::Type ty) {
   return ty.isa<mlir::IntegerType>() || ty.isa<mlir::IndexType>() ||
-         ty.isa<fir::IntegerType>() || ty.isa<fir::LogicalType>() ||
-         ty.isa<fir::CharacterType>();
+         ty.isa<fir::IntegerType>() || ty.isa<fir::LogicalType>();
 }
 
 bool fir::ConvertOp::isFloatCompatible(mlir::Type ty) {
