@@ -461,10 +461,7 @@ bool fir::ConvertOp::isPointerCompatible(mlir::Type ty) {
 
 static void print(mlir::OpAsmPrinter &p, fir::CoordinateOp op) {
   p << op.getOperationName() << ' ' << op.ref() << ", " << op.coor();
-  if (!op.lenParams().empty())
-    p << "typeparams " << op.lenParams();
-  p.printOptionalAttrDict(op.getAttrs(),
-                          /*elideAttrs=*/{"baseType", "operand_segment_sizes"});
+  p.printOptionalAttrDict(op.getAttrs(), /*elideAttrs=*/{"baseType"});
   p << " : ";
   p.printFunctionalType(op.getOperandTypes(), op->getResultTypes());
 }
@@ -477,14 +474,9 @@ static mlir::ParseResult parseCoordinateCustom(mlir::OpAsmParser &parser,
   llvm::SmallVector<mlir::OpAsmParser::OperandType, 8> coorOperands;
   if (parser.parseOperandList(coorOperands))
     return mlir::failure();
-  llvm::SmallVector<mlir::OpAsmParser::OperandType, 2> lenParamOperands;
-  if (mlir::succeeded(parser.parseOptionalKeyword("typeparams")))
-    if (parser.parseOperandList(lenParamOperands))
-      return mlir::failure();
   llvm::SmallVector<mlir::OpAsmParser::OperandType, 16> allOperands;
   allOperands.push_back(memref);
   allOperands.append(coorOperands.begin(), coorOperands.end());
-  allOperands.append(lenParamOperands.begin(), lenParamOperands.end());
   mlir::FunctionType funcTy;
   auto loc = parser.getCurrentLocation();
   if (parser.parseOptionalAttrDict(result.attributes) ||
@@ -494,10 +486,6 @@ static mlir::ParseResult parseCoordinateCustom(mlir::OpAsmParser &parser,
     return failure();
   parser.addTypesToList(funcTy.getResults(), result.types);
   result.addAttribute("baseType", mlir::TypeAttr::get(funcTy.getInput(0)));
-  result.addAttribute("operand_segment_sizes",
-                      parser.getBuilder().getI32VectorAttr(
-                          {1, static_cast<int32_t>(coorOperands.size()),
-                           static_cast<int32_t>(lenParamOperands.size())}));
   return mlir::success();
 }
 
