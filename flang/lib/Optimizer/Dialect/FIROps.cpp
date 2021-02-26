@@ -129,8 +129,6 @@ mlir::Type fir::AllocMemOp::wrapResultType(mlir::Type intype) {
 
 static mlir::LogicalResult verify(fir::ArrayCoorOp op) {
   auto eleTy = fir::dyn_cast_ptrOrBoxEleTy(op.memref().getType());
-  if (!eleTy)
-    return op.emitOpError("must be a reference or box type");
   auto arrTy = eleTy.dyn_cast<fir::SequenceType>();
   if (!arrTy)
     return op.emitOpError("must be a reference to an array");
@@ -179,8 +177,6 @@ std::vector<mlir::Value> fir::ArrayLoadOp::getExtents() {
 
 static mlir::LogicalResult verify(fir::ArrayLoadOp op) {
   auto eleTy = fir::dyn_cast_ptrOrBoxEleTy(op.memref().getType());
-  if (!eleTy)
-    return op.emitOpError("must be a reference or box type");
   auto arrTy = eleTy.dyn_cast<fir::SequenceType>();
   if (!arrTy)
     return op.emitOpError("must be a reference to an array");
