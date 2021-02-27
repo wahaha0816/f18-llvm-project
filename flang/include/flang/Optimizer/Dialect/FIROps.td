@@ -161,7 +161,7 @@ class fir_AllocatableOp<string mnemonic, Resource resource,
       p << ", ";
       p.printOperand(sh);
     }
-    p.printOptionalAttrDict(getAttrs(), {inType(), lenpName()});
+    p.printOptionalAttrDict((*this)->getAttrs(), {inType(), lenpName()});
   }];
 
   string extraAllocClassDeclaration = [{
@@ -343,7 +343,7 @@ def fir_LoadOp : fir_OneResultOp<"load"> {
   let printer = [{
     p << getOperationName() << ' ';
     p.printOperand(memref());
-    p.printOptionalAttrDict(getAttrs(), {});
+    p.printOptionalAttrDict((*this)->getAttrs(), {});
     p << " : " << memref().getType();
   }];
 
@@ -395,7 +395,7 @@ def fir_StoreOp : fir_Op<"store", []> {
     p.printOperand(value());
     p << " to ";
     p.printOperand(memref());
-    p.printOptionalAttrDict(getAttrs(), {});
+    p.printOptionalAttrDict((*this)->getAttrs(), {});
     p << " : " << memref().getType();
   }];
 
@@ -669,7 +669,7 @@ class fir_IntegralSwitchTerminatorOp<string mnemonic,
       printSuccessorAtIndex(p, i);
     }
     p << ']';
-    p.printOptionalAttrDict(getAttrs(), {getCasesAttr(), getCompareOffsetAttr(),
+    p.printOptionalAttrDict((*this)->getAttrs(), {getCasesAttr(), getCompareOffsetAttr(),
         getTargetOffsetAttr(), getOperandSegmentSizeAttr()});
   }];
 
@@ -797,7 +797,7 @@ def fir_SelectCaseOp : fir_SwitchTerminatorOp<"select_case"> {
       printSuccessorAtIndex(p, i);
     }
     p << ']';
-    p.printOptionalAttrDict(getAttrs(), {getCasesAttr(), getCompareOffsetAttr(),
+    p.printOptionalAttrDict((*this)->getAttrs(), {getCasesAttr(), getCompareOffsetAttr(),
         getTargetOffsetAttr(), getOperandSegmentSizeAttr()});
   }];
 
@@ -904,7 +904,7 @@ def fir_SelectTypeOp : fir_SwitchTerminatorOp<"select_type"> {
       printSuccessorAtIndex(p, i);
     }
     p << ']';
-    p.printOptionalAttrDict(getAttrs(), {getCasesAttr(), getCompareOffsetAttr(),
+    p.printOptionalAttrDict((*this)->getAttrs(), {getCasesAttr(), getCompareOffsetAttr(),
         getTargetOffsetAttr(), getOperandSegmentSizeAttr()});
   }];
 
@@ -3053,7 +3053,7 @@ def fir_GenTypeDescOp : fir_OneResultOp<"gentypedesc", [NoSideEffect]> {
 
   let printer = [{
     p << getOperationName() << ' ' << (*this)->getAttr("in_type");
-    p.printOptionalAttrDict(getAttrs(), {"in_type"});
+    p.printOptionalAttrDict((*this)->getAttrs(), {"in_type"});
   }];
 
   let builders = [OpBuilderDAG<(ins "mlir::TypeAttr":$inty)>];
