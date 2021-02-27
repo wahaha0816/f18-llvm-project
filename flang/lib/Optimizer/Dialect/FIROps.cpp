@@ -1995,7 +1995,7 @@ bool fir::valueHasFirAttribute(mlir::Value value,
     if (mlir::isa<fir::AllocMemOp>(definingOp) ||
         mlir::isa<AllocaOp>(definingOp))
       return definingOp->hasAttr(attributeName);
-    // If this is an imported global, look at AddOfOp and GlobalOp attributes.
+    // If this is an imported global, look at AddrOfOp and GlobalOp attributes.
     // Both operations are looked at because use/host associated variable (the
     // AddrOfOp) can have ASYNCHRONOUS/VOLATILE attributes even if the ultimate
     // entity (the globalOp) does not have them.
@@ -2003,9 +2003,9 @@ bool fir::valueHasFirAttribute(mlir::Value value,
       if (addressOfOp->hasAttr(attributeName))
         return true;
       if (auto module = definingOp->getParentOfType<mlir::ModuleOp>())
-        if (auto globlaOp =
+        if (auto globalOp =
                 module.lookupSymbol<fir::GlobalOp>(addressOfOp.symbol()))
-          return globlaOp->hasAttr(attributeName);
+          return globalOp->hasAttr(attributeName);
     }
   }
   // TODO: Construct associated entities attributes. Decide where the fir
