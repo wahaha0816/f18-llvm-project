@@ -1008,6 +1008,12 @@ def fir_EmboxOp : fir_Op<"embox", [NoSideEffect, AttrSizedOperandSegments]> {
 
     The descriptor tuple may contain additional implementation-specific
     information through the use of additional attributes.
+    Specifically,
+        - shape: emboxing an array may require shape information (an array's
+          lower bounds and extents may not be known until runtime),
+        - slice: an array section can be described with a slice triple,
+        - lenParams: for emboxing a derived type with LEN type parameters,
+        - accessMap: unused/experimental.
   }];
 
   let arguments = (ins
@@ -2283,7 +2289,7 @@ def fir_DoLoopOp : region_Op<"do_loop",
   let summary = "generalized loop operation";
   let description = [{
     Generalized high-level looping construct. This operation is similar to
-    MLIR's `loop.for`.
+    MLIR's `scf.for`.
 
     ```mlir
       %l = constant 0 : index
