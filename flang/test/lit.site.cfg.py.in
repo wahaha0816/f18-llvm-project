@@ -3,12 +3,13 @@
 import sys
 
 config.llvm_tools_dir = "@LLVM_TOOLS_BINARY_DIR@"
+config.llvm_libs_dir = "@LLVM_LIBS_DIR@"
 config.flang_obj_root = "@FLANG_BINARY_DIR@"
 config.flang_src_dir = "@FLANG_SOURCE_DIR@"
 config.flang_tools_dir = "@FLANG_TOOLS_DIR@"
 config.flang_intrinsic_modules_dir = "@FLANG_INTRINSIC_MODULES_DIR@"
 config.flang_llvm_tools_dir = "@CMAKE_BINARY_DIR@/bin"
-config.flang_lib_dir = "@LLVM_LIBRARY_OUTPUT_INTDIR@"
+config.flang_libs_dir = "@LLVM_LIBRARY_OUTPUT_INTDIR@"
 config.python_executable = "@PYTHON_EXECUTABLE@"
 config.c_executable = "@CMAKE_C_COMPILER@"
 config.cplusplus_executable = "@CMAKE_CXX_COMPILER@"
@@ -24,6 +25,7 @@ config.include_flang_new_driver_test = \
 # used when we can't determine the tool dir at configuration time.
 try:
     config.llvm_tools_dir = config.llvm_tools_dir % lit_config.params
+    config.llvm_libs_dir = config.llvm_libs_dir % lit_config.params
     config.flang_tools_dir = config.flang_tools_dir % lit_config.params
 except KeyError:
     e = sys.exc_info()[1]
