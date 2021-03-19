@@ -1273,6 +1273,9 @@ private:
         pred = mlir::CmpIPredicate::sge;
       else if (attr.isa<fir::UpperBoundAttr>())
         pred = mlir::CmpIPredicate::sle;
+      else {
+        llvm_unreachable("unhandled predicate");
+      }
       auto cond = genCond(*caseValue++, pred);
       genFIRConditionalBranch(cond, *caseBlock++, newBlock);
       builder->setInsertionPointToEnd(newBlock);
