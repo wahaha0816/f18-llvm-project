@@ -2181,9 +2181,6 @@ public:
       case PassBy::MutableBox:
         // See C15100 and C15101
         fir::emitFatalError(loc, "cannot be POINTER, ALLOCATABLE");
-      default:
-        llvm_unreachable("pass by ? not handled here");
-        break;
       }
     }
 
