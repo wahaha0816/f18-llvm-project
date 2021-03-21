@@ -1284,7 +1284,7 @@ private:
   fir::ExtendedValue
   genAssociateSelector(const Fortran::semantics::SomeExpr &selector,
                        Fortran::lower::StatementContext &stmtCtx) {
-    return selector.Rank() > 0 && isArraySectionWithoutVectorSubscript(selector)
+    return isArraySectionWithoutVectorSubscript(selector)
                ? Fortran::lower::createSomeArrayBox(*this, selector,
                                                     localSymbols, stmtCtx)
                : genExprAddr(selector, stmtCtx);
@@ -1567,7 +1567,7 @@ private:
 
   static bool isArraySectionWithoutVectorSubscript(
       const Fortran::semantics::SomeExpr &expr) {
-    return Fortran::evaluate::IsVariable(expr) &&
+    return expr.Rank() > 0 && Fortran::evaluate::IsVariable(expr) &&
            !Fortran::evaluate::UnwrapWholeSymbolDataRef(expr) &&
            !Fortran::evaluate::HasVectorSubscript(expr);
   }
