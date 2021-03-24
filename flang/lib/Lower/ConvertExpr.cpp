@@ -476,15 +476,21 @@ public:
                                       : gen(desc.base().GetComponent());
     auto idxTy = builder.getIndexType();
     auto loc = getLoc();
+    auto castResult = [&](mlir::Value v) {
+      using ResTy = Fortran::evaluate::DescriptorInquiry::Result;
+      return builder.createConvert(
+          loc, converter.genType(ResTy::category, ResTy::kind), v);
+    };
     switch (desc.field()) {
     case Fortran::evaluate::DescriptorInquiry::Field::Len:
-      return Fortran::lower::readCharLen(builder, loc, exv);
+      return castResult(Fortran::lower::readCharLen(builder, loc, exv));
     case Fortran::evaluate::DescriptorInquiry::Field::LowerBound:
-      return Fortran::lower::readLowerBound(
+      return castResult(Fortran::lower::readLowerBound(
           builder, loc, exv, desc.dimension(),
-          builder.createIntegerConstant(loc, idxTy, 1));
+          builder.createIntegerConstant(loc, idxTy, 1)));
     case Fortran::evaluate::DescriptorInquiry::Field::Extent:
-      return Fortran::lower::readExtent(builder, loc, exv, desc.dimension());
+      return castResult(
+          Fortran::lower::readExtent(builder, loc, exv, desc.dimension()));
     case Fortran::evaluate::DescriptorInquiry::Field::Rank:
       TODO(loc, "rank inquiry on assumed rank");
     case Fortran::evaluate::DescriptorInquiry::Field::Stride:
@@ -536,7 +542,7 @@ public:
                              const fir::ExtendedValue &right) {
     auto *lhs = left.getUnboxed();
     auto *rhs = right.getUnboxed();
-    assert(lhs && rhs);
+    assert(lhs && rhs && lhs->getType() == rhs->getType());
     return builder.create<OpTy>(getLoc(), *lhs, *rhs);
   }
 
@@ -1525,11 +1531,9 @@ public:
       if (arg.passBy == PassBy::Value) {
         auto *argVal = genval(*expr).getUnboxed();
         if (!argVal)
-          mlir::emitError(
-              loc,
-              "Lowering internal error: passing non trivial value by value");
-        else
-          caller.placeInput(arg, *argVal);
+          fir::emitFatalError(
+              loc, "internal error: passing non trivial value by value");
+        caller.placeInput(arg, *argVal);
         continue;
       }
 
@@ -1561,10 +1565,9 @@ public:
               // and after the call to a contiguous character argument.
               TODO(loc, "lowering actual arguments descriptor to boxchar");
             },
-            [&](const auto &x) {
-              mlir::emitError(loc, "Lowering internal error: actual "
-                                   "argument is not a character");
-              return mlir::Value{};
+            [&](const auto &) -> mlir::Value {
+              fir::emitFatalError(
+                  loc, "internal error: actual argument is not a character");
             });
         caller.placeInput(arg, boxChar);
       } else if (arg.passBy == PassBy::Box) {
