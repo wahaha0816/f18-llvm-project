@@ -1402,7 +1402,7 @@ public:
   lowerIntrinsicArgumentAsInquired(const Fortran::lower::SomeExpr &expr) {
     const auto *sym = Fortran::evaluate::UnwrapWholeSymbolDataRef(expr);
     if (sym && Fortran::semantics::IsAllocatableOrPointer(*sym))
-      return genMutableBoxValue(expr).getAddr();
+      return genMutableBoxValue(expr);
     return gen(expr);
   }
 
@@ -1423,7 +1423,7 @@ public:
           Fortran::evaluate::Expr<Fortran::evaluate::SomeType>>(arg);
       if (!expr) {
         // Absent optional.
-        operands.emplace_back(fir::UnboxedValue{});
+        operands.emplace_back(Fortran::lower::getAbsentIntrinsicArgument());
         continue;
       }
       if (!argLowering) {
