@@ -22,7 +22,7 @@ def FIRToLLVMLowering : Pass<"fir-to-llvm-ir", "mlir::ModuleOp"> {
     Convert the FIR dialect to the LLVM-IR dialect of MLIR. This conversion
     will also convert ops in the standard and FIRCG dialects.
   }];
-  let constructor = "fir::createFIRToLLVMPass()";
+  let constructor = "::fir::createFIRToLLVMPass()";
   let dependentDialects = [
     "fir::FIROpsDialect", "fir::FIRCodeGenDialect", "mlir::BuiltinDialect",
     "mlir::LLVM::LLVMDialect", "mlir::omp::OpenMPDialect"
@@ -34,10 +34,9 @@ def CodeGenRewrite : Pass<"cg-rewrite", "mlir::ModuleOp"> {
   let description = [{
     Fuse specific subgraphs into single Ops for code generation.
   }];
-  let constructor = "fir::createFirCodeGenRewritePass()";
+  let constructor = "::fir::createFirCodeGenRewritePass()";
   let dependentDialects = [
-    "fir::FIROpsDialect", "fir::FIRCodeGenDialect", "mlir::BuiltinDialect",
-    "mlir::LLVM::LLVMDialect", "mlir::omp::OpenMPDialect"
+    "fir::FIROpsDialect", "fir::FIRCodeGenDialect"
   ];
   let statistics = [
     Statistic<"numDCE", "num-dce'd", "Number of operations eliminated">
@@ -50,11 +49,8 @@ def TargetRewrite : Pass<"target-rewrite", "mlir::ModuleOp"> {
       Certain abstractions in the FIR dialect need to be rewritten to reflect
       representations that may differ based on the target machine.
   }];
-  let constructor = "fir::createFirTargetRewritePass()";
-  let dependentDialects = [
-    "fir::FIROpsDialect", "fir::FIRCodeGenDialect", "mlir::BuiltinDialect",
-    "mlir::omp::OpenMPDialect"
-  ];
+  let constructor = "::fir::createFirTargetRewritePass()";
+  let dependentDialects = [ "fir::FIROpsDialect" ];
   let options = [
     Option<"noCharacterConversion", "no-character-conversion",
            "bool", /*default=*/"false",
