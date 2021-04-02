@@ -46,6 +46,7 @@ add_flang_library(FortranRuntime PARTIAL_SOURCES_INTENDED
   io-stmt.cpp
   main.cpp
   memory.cpp
+  misc-intrinsic.cpp
   numeric.cpp
   reduction.cpp
   stat.cpp
