@@ -29,6 +29,7 @@ add_flang_library(FortranRuntime PARTIAL_SOURCES_INTENDED
   allocatable.cpp
   buffer.cpp
   clock.cpp
+  complex-reduction.c
   character.cpp
   connection.cpp
   derived.cpp
@@ -45,6 +46,9 @@ add_flang_library(FortranRuntime PARTIAL_SOURCES_INTENDED
   io-stmt.cpp
   main.cpp
   memory.cpp
+  misc-intrinsic.cpp
+  numeric.cpp
+  reduction.cpp
   stat.cpp
   stop.cpp
   terminator.cpp
