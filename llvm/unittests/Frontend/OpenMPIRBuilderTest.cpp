@@ -1828,7 +1828,7 @@ TEST_P(OpenMPIRBuilderTestWithParams, DynamicWorkShareLoop) {
   EXPECT_FALSE(verifyModule(*M, &errs()));
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     OpenMPWSLoopSchedulingTypes, OpenMPIRBuilderTestWithParams,
     ::testing::Values(omp::OMPScheduleType::DynamicChunked,
                       omp::OMPScheduleType::GuidedChunked,

@@ -413,6 +413,7 @@ parseLinearClause(OpAsmParser &parser,
 /// sched-wo-chunk ::=  `auto` | `runtime`
 static ParseResult
 parseScheduleClause(OpAsmParser &parser, SmallString<8> &schedule,
+                    SmallVector<SmallString<12>> &modifiers,
                     Optional<OpAsmParser::OperandType> &chunkSize) {
   if (parser.parseLParen())
     return failure();
@@ -434,6 +435,14 @@ parseScheduleClause(OpAsmParser &parser, SmallString<8> &schedule,
     chunkSize = llvm::NoneType::None;
   } else {
     return parser.emitError(parser.getNameLoc()) << " expected schedule kind";
+  }
+
+  // If there is a comma, we have one or more modifiers..
+  if (succeeded(parser.parseOptionalComma())) {
+    StringRef mod;
+    if (parser.parseKeyword(&mod))
+      return failure();
+    modifiers.push_back(mod);
   }
 
   if (parser.parseRParen())
@@ -507,6 +516,7 @@ static ParseResult parseWsLoopOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<Type> linearTypes;
   SmallVector<OpAsmParser::OperandType> linearSteps;
   SmallString<8> schedule;
+  SmallVector<SmallString<12>> modifiers;
   Optional<OpAsmParser::OperandType> scheduleChunkSize;
   std::array<int, 9> segments{numIVs, numIVs, numIVs, 0, 0, 0, 0, 0, 0};
 
@@ -557,7 +567,7 @@ static ParseResult parseWsLoopOp(OpAsmParser &parser, OperationState &result) {
     } else if (keyword == "schedule") {
       if (!schedule.empty())
         return allowedOnce(parser, "schedule", opName);
-      if (parseScheduleClause(parser, schedule, scheduleChunkSize))
+      if (parseScheduleClause(parser, schedule, modifiers, scheduleChunkSize))
         return failure();
       if (scheduleChunkSize) {
         segments[scheduleClausePos] = 1;
@@ -626,6 +636,11 @@ static ParseResult parseWsLoopOp(OpAsmParser &parser, OperationState &result) {
     schedule[0] = llvm::toUpper(schedule[0]);
     auto attr = parser.getBuilder().getStringAttr(schedule);
     result.addAttribute("schedule_val", attr);
+    if (modifiers.size() > 0)
+    {
+	    auto mod = parser.getBuilder().getStringAttr(modifiers[0]);
+	    result.addAttribute("schedule_modifiers", mod);
+    }
     if (scheduleChunkSize) {
       auto chunkSizeType = parser.getBuilder().getI32Type();
       parser.resolveOperand(*scheduleChunkSize, chunkSizeType, result.operands);
@@ -683,6 +698,9 @@ static void printWsLoopOp(OpAsmPrinter &p, WsLoopOp op) {
     p << " schedule(" << schedLower;
     if (auto chunk = op.schedule_chunk_var()) {
       p << " = " << chunk;
+    }
+    if (auto modifier = op.schedule_modifiers()) {
+      p << ", " << modifier;
     }
     p << ")";
   }
