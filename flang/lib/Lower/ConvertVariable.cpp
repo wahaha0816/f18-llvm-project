@@ -925,8 +925,6 @@ void Fortran::lower::mapSymbolAttributes(
   const auto isDummy = Fortran::semantics::IsDummy(sym);
   const auto isResult = Fortran::semantics::IsFunctionResult(sym);
   const auto replace = isDummy || isResult;
-  const auto isHostAssoc =
-      Fortran::semantics::IsHostAssociated(sym, sym.owner());
   Fortran::lower::CharacterExprHelper charHelp{builder, loc};
   Fortran::lower::BoxAnalyzer sba;
   sba.analyze(sym);
@@ -984,6 +982,9 @@ void Fortran::lower::mapSymbolAttributes(
       return;
     }
   }
+
+  if (Fortran::semantics::IsHostAssociated(sym, sym.owner()))
+    TODO(loc, "host associated variables and internal procedures");
 
   // Helper to generate scalars for the symbol properties.
   auto genValue = [&](const Fortran::lower::SomeExpr &expr) {
@@ -1062,9 +1063,6 @@ void Fortran::lower::mapSymbolAttributes(
       }
     }
   };
-
-  if (isHostAssoc)
-    TODO(loc, "host associated");
 
   sba.match(
       //===--------------------------------------------------------------===//
