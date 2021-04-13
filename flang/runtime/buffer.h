@@ -73,7 +73,7 @@ public:
         start_ = 0;
       }
     }
-    while (FrameLength() < bytes) {
+    if (FrameLength() < bytes) {
       auto next{start_ + length_};
       RUNTIME_CHECK(handler, next < size_);
       auto minBytes{bytes - FrameLength()};
@@ -81,10 +81,7 @@ public:
       auto got{Store().Read(
           fileOffset_ + length_, buffer_ + next, minBytes, maxBytes, handler)};
       length_ += got;
-      RUNTIME_CHECK(handler, length_ < size_);
-      if (got < minBytes) {
-        break; // error or EOF & program can handle it
-      }
+      RUNTIME_CHECK(handler, length_ <= size_);
     }
     return FrameLength();
   }
