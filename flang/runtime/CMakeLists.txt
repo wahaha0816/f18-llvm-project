@@ -48,6 +48,7 @@ add_flang_library(FortranRuntime PARTIAL_SOURCES_INTENDED
   memory.cpp
   misc-intrinsic.cpp
   numeric.cpp
+  random.cpp
   reduction.cpp
   stat.cpp
   stop.cpp
