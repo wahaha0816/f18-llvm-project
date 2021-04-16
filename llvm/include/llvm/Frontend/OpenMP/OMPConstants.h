@@ -119,7 +119,6 @@ enum class OMPScheduleType {
 
   ModifierNonmonotonic =
       (1 << 30), /**< Set if the nonmonotonic schedule modifier was present */
-
   LLVM_MARK_AS_BITMASK_ENUM(/* LargestValue */ ModifierNonmonotonic)
 };
 
