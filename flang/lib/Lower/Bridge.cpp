@@ -237,11 +237,12 @@ public:
     return lookupSymbol(sym).getAddr();
   }
 
-  // TODO: Consider returning a vlue when the FIXME below is fixed.
-  void bindSymbol(Fortran::lower::SymbolRef sym,
+  bool bindSymbol(Fortran::lower::SymbolRef sym,
                   mlir::Value val) override final {
-    // FIXME: removed forced when symbol lookup stop following host association.
-    addSymbol(sym, val, /*forced=*/true);
+    if (lookupSymbol(sym))
+      return false;
+    addSymbol(sym, val);
+    return true;
   }
 
   bool lookupLabelSet(Fortran::lower::SymbolRef sym,
