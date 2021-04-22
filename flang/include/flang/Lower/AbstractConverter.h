@@ -72,8 +72,10 @@ public:
   /// Copy the binding of src to target symbol.
   virtual void copySymbolBinding(SymbolRef src, SymbolRef target) = 0;
 
-  /// Bind the symbol to an mlir value.
-  virtual void bindSymbol(const SymbolRef sym, mlir::Value val) = 0;
+  /// Binds the symbol to an mlir value and returns true if the symbol has no
+  /// existing binding. If there is an existing binding this function does
+  /// nothing and returns false.
+  virtual bool bindSymbol(const SymbolRef sym, mlir::Value val) = 0;
 
   /// Get the label set associated with a symbol.
   virtual bool lookupLabelSet(SymbolRef sym, pft::LabelSet &labelSet) = 0;

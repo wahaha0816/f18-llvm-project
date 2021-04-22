@@ -80,3 +80,7 @@ target_link_libraries(character-test
 )
 
 add_test(NAME CharacterTest COMMAND character-test)
+add_flang_nongtest_unittest(buffer
+  RuntimeTesting
+  FortranRuntime
+)
