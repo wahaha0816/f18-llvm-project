@@ -79,6 +79,7 @@ struct IncrementLoopInfo {
   const Fortran::semantics::SomeExpr *maskExpr = nullptr;
   bool isUnordered; // do concurrent, forall
   llvm::SmallVector<const Fortran::semantics::Symbol *> localInitSymList;
+  llvm::SmallVector<const Fortran::semantics::Symbol *> sharedSymList;
   mlir::Value loopVariable = nullptr;
   mlir::Value stepValue = nullptr; // possible uses in multiple blocks
 
@@ -235,6 +236,11 @@ public:
 
   mlir::Value getSymbolAddress(Fortran::lower::SymbolRef sym) override final {
     return lookupSymbol(sym).getAddr();
+  }
+
+  void copySymbolBinding(Fortran::lower::SymbolRef src,
+                         Fortran::lower::SymbolRef target) override final {
+    localSymbols.addSymbol(target, lookupSymbol(src).toExtendedValue());
   }
 
   bool bindSymbol(Fortran::lower::SymbolRef sym,
@@ -759,6 +765,10 @@ private:
               std::get_if<Fortran::parser::LocalitySpec::LocalInit>(&x.u))
         for (const auto &x : localInitList->v)
           info.localInitSymList.push_back(x.symbol);
+      if (const auto *sharedList =
+              std::get_if<Fortran::parser::LocalitySpec::Shared>(&x.u))
+        for (const auto &x : sharedList->v)
+          info.sharedSymList.push_back(x.symbol);
       if (std::get_if<Fortran::parser::LocalitySpec::Local>(&x.u))
         TODO(toLocation(), "do concurrent locality specs not implemented");
     }
@@ -879,7 +889,8 @@ private:
         return builder->createRealConstant(loc, controlType, 1u);
       return builder->createIntegerConstant(loc, controlType, 1); // step
     };
-    auto genLocalInitAssignments = [&](IncrementLoopInfo &info) {
+    auto handleLocalitySpec = [&](IncrementLoopInfo &info) {
+      // Generate Local Init Assignments
       for (const auto *sym : info.localInitSymList) {
         const auto *hostDetails =
             sym->detailsIf<Fortran::semantics::HostAssocDetails>();
@@ -888,6 +899,14 @@ private:
             hostDetails->symbol();
         TODO(loc, "do concurrent locality specs not implemented");
         // assign sym = hostSym
+      }
+      // Handle shared locality spec
+      for (const auto *sym : info.sharedSymList) {
+        const auto *hostDetails =
+            sym->detailsIf<Fortran::semantics::HostAssocDetails>();
+        assert(hostDetails && "missing shared variable host variable");
+        const Fortran::semantics::Symbol &hostSym = hostDetails->symbol();
+        copySymbolBinding(hostSym, *sym);
       }
     };
     for (auto &info : incrementLoopNestInfo) {
@@ -914,7 +933,7 @@ private:
                                                  /*withElseRegion=*/false);
           builder->setInsertionPointToStart(&ifOp.thenRegion().front());
         }
-        genLocalInitAssignments(info);
+        handleLocalitySpec(info);
         continue;
       }
 
@@ -966,7 +985,7 @@ private:
       if (!info.localInitSymList.empty()) {
         auto insertPt = builder->saveInsertionPoint();
         builder->setInsertionPointToStart(info.bodyBlock);
-        genLocalInitAssignments(info);
+        handleLocalitySpec(info);
         builder->restoreInsertionPoint(insertPt);
       }
     }
