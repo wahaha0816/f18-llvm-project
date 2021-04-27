@@ -98,7 +98,7 @@ public:
     }
     auto xbox = rewriter.create<cg::XEmboxOp>(
         loc, embox.getType(), embox.memref(), shapeOpers, llvm::None,
-        llvm::None, llvm::None, embox.lenParams());
+        llvm::None, llvm::None, embox.typeparams());
     LLVM_DEBUG(llvm::dbgs() << "rewriting " << embox << " to " << xbox << '\n');
     rewriter.replaceOp(embox, xbox.getOperation()->getResults());
     return mlir::success();
@@ -127,7 +127,7 @@ public:
       }
     auto xbox = rewriter.create<cg::XEmboxOp>(
         loc, embox.getType(), embox.memref(), shapeOpers, shiftOpers,
-        sliceOpers, subcompOpers, embox.lenParams());
+        sliceOpers, subcompOpers, embox.typeparams());
     LLVM_DEBUG(llvm::dbgs() << "rewriting " << embox << " to " << xbox << '\n');
     rewriter.replaceOp(embox, xbox.getOperation()->getResults());
     return mlir::success();
@@ -221,7 +221,7 @@ public:
       }
     auto xArrCoor = rewriter.create<cg::XArrayCoorOp>(
         loc, arrCoor.getType(), arrCoor.memref(), shapeOpers, shiftOpers,
-        sliceOpers, subcompOpers, arrCoor.indices(), arrCoor.lenParams());
+        sliceOpers, subcompOpers, arrCoor.indices(), arrCoor.typeparams());
     LLVM_DEBUG(llvm::dbgs()
                << "rewriting " << arrCoor << " to " << xArrCoor << '\n');
     rewriter.replaceOp(arrCoor, xArrCoor.getOperation()->getResults());
