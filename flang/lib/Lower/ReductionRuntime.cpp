@@ -66,6 +66,25 @@ static void genReduction4Args(FN func, Fortran::lower::FirOpBuilder &builder,
   builder.create<fir::CallOp>(loc, func, args);
 }
 
+/// Generate calls to reduction intrinsics such as Maxval and Minval.
+/// These take arguments such as (array, dim, mask).
+template <typename FN>
+static void genReduction3Args(FN func, Fortran::lower::FirOpBuilder &builder,
+                              mlir::Location loc, mlir::Value resultBox,
+                              mlir::Value arrayBox, mlir::Value dim,
+                              mlir::Value maskBox) {
+
+  auto fTy = func.getType();
+  auto sourceFile = Fortran::lower::locationToFilename(builder, loc);
+  auto sourceLine =
+      Fortran::lower::locationToLineNo(builder, loc, fTy.getInput(4));
+
+  auto args = Fortran::lower::createArguments(builder, loc, fTy, resultBox,
+                                              arrayBox, dim, sourceFile,
+                                              sourceLine, maskBox);
+  builder.create<fir::CallOp>(loc, func, args);
+}
+
 /// Generate calls to reduction intrinsics such as Maxloc and Minloc.
 /// These take arguments such as (array, dim, mask, kind, back).
 template <typename FN>
@@ -178,15 +197,41 @@ void Fortran::lower::genMaxlocDim(Fortran::lower::FirOpBuilder &builder,
                     back);
 }
 
+/// Generate call to Maxval intrinsic runtime routine. This is the version
+/// that does not take a dim argument. Note: the kind and back arguments are
+/// not part of the standard intrinsic. They are included here so we can
+/// share a template in IntrinsicCall.cpp with Maxloc. These arguments
+/// are currently ignored.
+void Fortran::lower::genMaxval(Fortran::lower::FirOpBuilder &builder,
+                               mlir::Location loc, mlir::Value resultBox,
+                               mlir::Value arrayBox, mlir::Value maskBox,
+                               mlir::Value kind, mlir::Value back) {
+  auto func = Fortran::lower::getRuntimeFunc<mkRTKey(Maxloc)>(loc, builder);
+  genReduction4Args(func, builder, loc, resultBox, arrayBox, maskBox, kind,
+                    back);
+}
+
+/// Generate call to Maxval intrinsic runtime routine. This is the version
+/// that does not take a dim argument. Note: the kind and back arguments are
+/// not part of the standard intrinsic. They are included here so we can
+/// share a template in IntrinsicCall.cpp with Maxloc. These arguments
+/// are currently ignored.
+void Fortran::lower::genMaxvalDim(Fortran::lower::FirOpBuilder &builder,
+                                  mlir::Location loc, mlir::Value resultBox,
+                                  mlir::Value arrayBox, mlir::Value dim,
+                                  mlir::Value maskBox, mlir::Value kind,
+                                  mlir::Value back) {
+  auto func = Fortran::lower::getRuntimeFunc<mkRTKey(MaxvalDim)>(loc, builder);
+  genReduction3Args(func, builder, loc, resultBox, arrayBox, dim, maskBox);
+}
+
 /// Generate call to Minloc intrinsic runtime routine. This is the version
 /// that does not take a dim argument.
 void Fortran::lower::genMinloc(Fortran::lower::FirOpBuilder &builder,
                                mlir::Location loc, mlir::Value resultBox,
                                mlir::Value arrayBox, mlir::Value maskBox,
                                mlir::Value kind, mlir::Value back) {
-  auto func = Fortran::lower::getRuntimeFunc<mkRTKey(Minloc)>(loc, builder);
-  genReduction4Args(func, builder, loc, resultBox, arrayBox, maskBox, kind,
-                    back);
+  //auto func = Fortran::lower::getRuntimeFunc<mkRTKey(Minloc)>(loc, builder);
 }
 
 /// Generate call to Minloc intrinsic runtime routine. This is the version

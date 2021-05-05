@@ -57,6 +57,24 @@ namespace Fortran::lower {
                     mlir::Value dim, mlir::Value maskBox, mlir::Value kind,
                     mlir::Value back);
 
+  /// Generate call to Maxval intrinsic runtime routine. This is the version
+  /// that does not take a dim argument. Note: kind and back arguments are
+  /// not part of the standard intrinsic. They are included here so we can
+  /// share a template with the Maxloc implementation. These arguments are
+  /// currently ignored.
+  void genMaxval(Fortran::lower::FirOpBuilder & builder, mlir::Location loc,
+                 mlir::Value resultBox, mlir::Value arrayBox,
+                 mlir::Value maskBox, mlir::Value kind, mlir::Value back);
+
+  /// Generate call to Maxval intrinsic runtime routine. This is the version
+  /// that takes a dim argument. Note: kind and back arguments are not part
+  /// of the standard intrinsic. They are included here so we can we can share
+  /// a template with the Maxloc implementation. These arguments are currently
+  /// ignored.
+  void genMaxvalDim(Fortran::lower::FirOpBuilder & builder, mlir::Location loc,
+                    mlir::Value resultBox, mlir::Value arrayBox,
+                    mlir::Value dim, mlir::Value maskBox, mlir::Value kind,
+                    mlir::Value back);
   /// Generate call to Minloc intrinsic runtime routine. This is the version
   /// that does not take a dim argument.
   void genMinloc(Fortran::lower::FirOpBuilder & builder, mlir::Location loc,
