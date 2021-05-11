@@ -97,15 +97,9 @@ static void genReduction2Args(FN func, Fortran::lower::FirOpBuilder &builder,
   auto sourceFile = Fortran::lower::locationToFilename(builder, loc);
   auto sourceLine =
       Fortran::lower::locationToLineNo(builder, loc, fTy.getInput(4));
-
-  llvm::SmallVector<mlir::Value> args = {
-    builder.createConvert(loc, fTy.getInput(0), resultBox),
-    builder.createConvert(loc, fTy.getInput(1), maskBox),
-    builder.createConvert(loc, fTy.getInput(2), dim),
-    builder.createConvert(loc, fTy.getInput(3), sourceFile),
-    builder.createConvert(loc, fTy.getInput(4), sourceLine)
-  };
-
+  auto args = Fortran::lower::createArguments(builder, loc, fTy,
+                                              resultBox, maskBox, dim, 
+                                              sourceFile, sourceLine);
   builder.create<fir::CallOp>(loc, func, args);
 }
 
@@ -121,16 +115,9 @@ static void genReduction3Args(FN func, Fortran::lower::FirOpBuilder &builder,
   auto sourceFile = Fortran::lower::locationToFilename(builder, loc);
   auto sourceLine =
       Fortran::lower::locationToLineNo(builder, loc, fTy.getInput(4));
-
-  llvm::SmallVector<mlir::Value> args = {
-    builder.createConvert(loc, fTy.getInput(0), resultBox),
-    builder.createConvert(loc, fTy.getInput(1), arrayBox),
-    builder.createConvert(loc, fTy.getInput(2), dim),
-    builder.createConvert(loc, fTy.getInput(3), sourceFile),
-    builder.createConvert(loc, fTy.getInput(4), sourceLine),
-    builder.createConvert(loc, fTy.getInput(5), maskBox)
-  };
-
+  auto args = Fortran::lower::createArguments(builder, loc, fTy,
+                                              resultBox, arrayBox, dim,
+                                              sourceFile, sourceLine, maskBox);
   builder.create<fir::CallOp>(loc, func, args);
 }
 
@@ -145,17 +132,9 @@ static void genReduction4Args(FN func, Fortran::lower::FirOpBuilder &builder,
   auto sourceFile = Fortran::lower::locationToFilename(builder, loc);
   auto sourceLine =
       Fortran::lower::locationToLineNo(builder, loc, fTy.getInput(4));
-
-  llvm::SmallVector<mlir::Value> args = {
-    builder.createConvert(loc, fTy.getInput(0), resultBox),
-    builder.createConvert(loc, fTy.getInput(1), arrayBox),
-    builder.createConvert(loc, fTy.getInput(2), kind),
-    builder.createConvert(loc, fTy.getInput(3), sourceFile),
-    builder.createConvert(loc, fTy.getInput(4), sourceLine),
-    builder.createConvert(loc, fTy.getInput(5), maskBox),
-    builder.createConvert(loc, fTy.getInput(6), back)
-  };
-
+  auto args = Fortran::lower::createArguments(builder, loc, fTy, resultBox,
+                                              arrayBox, kind, sourceFile,
+                                              sourceLine, maskBox, back);
   builder.create<fir::CallOp>(loc, func, args);
 }
 
@@ -171,18 +150,9 @@ static void genReduction5Args(FN func, Fortran::lower::FirOpBuilder &builder,
   auto sourceFile = Fortran::lower::locationToFilename(builder, loc);
   auto sourceLine =
       Fortran::lower::locationToLineNo(builder, loc, fTy.getInput(5));
-
-  llvm::SmallVector<mlir::Value> args = {
-    builder.createConvert(loc, fTy.getInput(0), resultBox),
-    builder.createConvert(loc, fTy.getInput(1), arrayBox),
-    builder.createConvert(loc, fTy.getInput(2), kind),
-    builder.createConvert(loc, fTy.getInput(3), dim),
-    builder.createConvert(loc, fTy.getInput(4), sourceFile),
-    builder.createConvert(loc, fTy.getInput(5), sourceLine),
-    builder.createConvert(loc, fTy.getInput(6), maskBox),
-    builder.createConvert(loc, fTy.getInput(7), back)
-  };
-
+  auto args = Fortran::lower::createArguments(builder, loc, fTy, resultBox,
+                                              arrayBox, kind, dim, sourceFile,
+                                              sourceLine, maskBox, back);
   builder.create<fir::CallOp>(loc, func, args);
 }
 
@@ -216,14 +186,8 @@ mlir::Value Fortran::lower::genAll(Fortran::lower::FirOpBuilder &builder,
   auto sourceFile = Fortran::lower::locationToFilename(builder, loc);
   auto sourceLine =
       Fortran::lower::locationToLineNo(builder, loc, fTy.getInput(2));
-
-  llvm::SmallVector<mlir::Value> args = {
-    builder.createConvert(loc, fTy.getInput(0), maskBox),
-    builder.createConvert(loc, fTy.getInput(1), sourceFile),
-    builder.createConvert(loc, fTy.getInput(2), sourceLine),
-    builder.createConvert(loc, fTy.getInput(3), dim)
-  };
-
+  auto args = Fortran::lower::createArguments(builder, loc, fTy, maskBox,
+                                              sourceFile, sourceLine, dim);
   return builder.create<fir::CallOp>(loc, allFunc, args).getResult(0);
 }
 
@@ -237,14 +201,8 @@ mlir::Value Fortran::lower::genAny(Fortran::lower::FirOpBuilder &builder,
   auto sourceFile = Fortran::lower::locationToFilename(builder, loc);
   auto sourceLine =
       Fortran::lower::locationToLineNo(builder, loc, fTy.getInput(2));
-
-  llvm::SmallVector<mlir::Value> args = {
-    builder.createConvert(loc, fTy.getInput(0), maskBox),
-    builder.createConvert(loc, fTy.getInput(1), sourceFile),
-    builder.createConvert(loc, fTy.getInput(2), sourceLine),
-    builder.createConvert(loc, fTy.getInput(3), dim)
-  };
-
+  auto args = Fortran::lower::createArguments(builder, loc, fTy, maskBox,
+                                              sourceFile, sourceLine, dim);
   return builder.create<fir::CallOp>(loc, anyFunc, args).getResult(0);
 }
 
@@ -317,13 +275,9 @@ mlir::Value Fortran::lower::genMaxval(Fortran::lower::FirOpBuilder &builder,
   auto sourceFile = Fortran::lower::locationToFilename(builder, loc);
   auto sourceLine =
       Fortran::lower::locationToLineNo(builder, loc, fTy.getInput(2));
-  llvm::SmallVector<mlir::Value> args = {
-    builder.createConvert(loc, fTy.getInput(0), arrayBox),
-    builder.createConvert(loc, fTy.getInput(1), sourceFile),
-    builder.createConvert(loc, fTy.getInput(2), sourceLine),
-    builder.createConvert(loc, fTy.getInput(3), dim),
-    builder.createConvert(loc, fTy.getInput(4), maskBox)
-  };
+  auto args = Fortran::lower::createArguments(builder, loc, fTy,
+                                              arrayBox, sourceFile,
+                                              sourceLine, dim, maskBox);
   builder.create<fir::CallOp>(loc, func, args);
 
   return builder.create<fir::CallOp>(loc, func, args).getResult(0);
@@ -351,14 +305,9 @@ void Fortran::lower::genMaxvalChar(Fortran::lower::FirOpBuilder &builder,
   auto sourceFile = Fortran::lower::locationToFilename(builder, loc);
   auto sourceLine =
        Fortran::lower::locationToLineNo(builder, loc, fTy.getInput(3));
-
-  llvm::SmallVector<mlir::Value> args = {
-    builder.createConvert(loc, fTy.getInput(0), resultBox),
-    builder.createConvert(loc, fTy.getInput(1), arrayBox),
-    builder.createConvert(loc, fTy.getInput(2), sourceFile),
-    builder.createConvert(loc, fTy.getInput(3), sourceLine),
-    builder.createConvert(loc, fTy.getInput(4), maskBox)
-  };
+  auto args = Fortran::lower::createArguments(builder, loc, fTy,
+                                              resultBox, arrayBox, sourceFile,
+                                              sourceLine, maskBox);
   builder.create<fir::CallOp>(loc, func, args);
 }
 
@@ -407,14 +356,9 @@ void Fortran::lower::genMinvalChar(Fortran::lower::FirOpBuilder &builder,
   auto sourceFile = Fortran::lower::locationToFilename(builder, loc);
   auto sourceLine =
        Fortran::lower::locationToLineNo(builder, loc, fTy.getInput(3));
-
-  llvm::SmallVector<mlir::Value> args = {
-    builder.createConvert(loc, fTy.getInput(0), resultBox),
-    builder.createConvert(loc, fTy.getInput(1), arrayBox),
-    builder.createConvert(loc, fTy.getInput(2), sourceFile),
-    builder.createConvert(loc, fTy.getInput(3), sourceLine),
-    builder.createConvert(loc, fTy.getInput(4), maskBox)
-  };
+  auto args = Fortran::lower::createArguments(builder, loc, fTy, 
+                                              resultBox, arrayBox, sourceFile,
+                                              sourceLine, maskBox);
   builder.create<fir::CallOp>(loc, func, args);
 }
 
@@ -458,19 +402,15 @@ mlir::Value Fortran::lower::genMinval(Fortran::lower::FirOpBuilder &builder,
            getIntegerBitsize(16)))
     func = Fortran::lower::getRuntimeFunc<ForcedMinvalInteger16>(loc, builder);
   else
-    TODO(loc, "unsupported type in MaxVal lowering");
+    TODO(loc, "unsupported type in MinVal lowering");
 
   auto fTy = func.getType();
   auto sourceFile = Fortran::lower::locationToFilename(builder, loc);
   auto sourceLine =
       Fortran::lower::locationToLineNo(builder, loc, fTy.getInput(2));
-  llvm::SmallVector<mlir::Value> args = {
-    builder.createConvert(loc, fTy.getInput(0), arrayBox),
-    builder.createConvert(loc, fTy.getInput(1), sourceFile),
-    builder.createConvert(loc, fTy.getInput(2), sourceLine),
-    builder.createConvert(loc, fTy.getInput(3), dim),
-    builder.createConvert(loc, fTy.getInput(4), maskBox)
-  };
+  auto args = Fortran::lower::createArguments(builder, loc, fTy, 
+                                              arrayBox, sourceFile,
+                                              sourceLine, dim, maskBox);
   builder.create<fir::CallOp>(loc, func, args);
 
   return builder.create<fir::CallOp>(loc, func, args).getResult(0);

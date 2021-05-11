@@ -71,7 +71,7 @@ namespace Fortran::lower {
                     mlir::Value dim, mlir::Value maskBox);
 
   /// Generate call to Maxval intrinsic runtime routine. This is the version
-  /// that that handles 1 dimensional character arrays. 
+  /// that that handles 1 dimensional character arrays  with no DIM argument.
   void genMaxvalChar(Fortran::lower::FirOpBuilder & builder, mlir::Location loc,
                     mlir::Value resultBox, mlir::Value arrayBox,
                     mlir::Value maskBox);
@@ -103,7 +103,7 @@ namespace Fortran::lower {
                     mlir::Value dim, mlir::Value maskBox);
 
   /// Generate call to Minval intrinsic runtime routine. This is the version
-  /// that that handles 1 dimensional character arrays. 
+  /// that that handles 1 dimensional character arrays with no DIM argument.
   void genMinvalChar(Fortran::lower::FirOpBuilder & builder, mlir::Location loc,
                     mlir::Value resultBox, mlir::Value arrayBox,
                     mlir::Value maskBox);
