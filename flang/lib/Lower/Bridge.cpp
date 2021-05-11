@@ -238,6 +238,13 @@ public:
     return lookupSymbol(sym).getAddr();
   }
 
+  mlir::Value impliedDoBinding(llvm::StringRef name) override final {
+    auto val = localSymbols.lookupImpliedDo(name);
+    if (!val)
+      fir::emitFatalError(toLocation(), "ac-do-variable has no binding");
+    return val;
+  }
+
   void copySymbolBinding(Fortran::lower::SymbolRef src,
                          Fortran::lower::SymbolRef target) override final {
     localSymbols.addSymbol(target, lookupSymbol(src).toExtendedValue());
