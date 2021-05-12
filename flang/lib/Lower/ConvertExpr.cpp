@@ -710,7 +710,7 @@ public:
   template <int KIND>
   ExtValue genval(const Fortran::evaluate::Relational<Fortran::evaluate::Type<
                       Fortran::common::TypeCategory::Real, KIND>> &op) {
-    return createFltCmpOp<fir::CmpfOp>(op, translateFloatRelational(op.opr));
+    return createFltCmpOp<mlir::CmpFOp>(op, translateFloatRelational(op.opr));
   }
   template <int KIND>
   ExtValue genval(const Fortran::evaluate::Relational<Fortran::evaluate::Type<
@@ -3795,7 +3795,7 @@ public:
   template <int KIND>
   CC genarr(const Fortran::evaluate::Relational<Fortran::evaluate::Type<
                 Fortran::common::TypeCategory::Real, KIND>> &x) {
-    return createCompareOp<fir::CmpfOp>(translateFloatRelational(x.opr), x);
+    return createCompareOp<mlir::CmpFOp>(translateFloatRelational(x.opr), x);
   }
   template <int KIND>
   CC genarr(const Fortran::evaluate::Relational<Fortran::evaluate::Type<
