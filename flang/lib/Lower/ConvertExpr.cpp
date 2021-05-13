@@ -3406,7 +3406,8 @@ public:
   }
 
   // Target agnostic computation of the size of an element in the array. Returns
-  // the size in bytes with type `index`.
+  // the size in bytes with type `index` or a null Value if the element size is
+  // not constant.
   mlir::Value computeElementSize(mlir::Type eleTy, mlir::Type eleRefTy,
                                  mlir::Type resRefTy) {
     if (fir::hasDynamicSize(eleTy))
@@ -3480,6 +3481,9 @@ public:
     auto limit = builder.create<fir::LoadOp>(loc, buffSize);
     auto idxTy = builder.getIndexType();
     auto one = builder.createIntegerConstant(loc, idxTy, 1);
+
+    if (fir::isRecordWithAllocatableMember(eleTy))
+       TODO(loc, "deep copy on allocatable members");
 
     if (!eleSz) {
       // Compute the element size at runtime.
