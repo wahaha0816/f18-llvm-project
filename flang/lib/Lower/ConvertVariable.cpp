@@ -149,7 +149,7 @@ mlir::Value Fortran::lower::genInitialDataTarget(
   Fortran::lower::AggregateStoreMap storeMap;
   Fortran::lower::StatementContext stmtCtx;
   auto &builder = converter.getFirOpBuilder();
-  if (Fortran::common::Unwrap<Fortran::evaluate::NullPointer>(initialTarget))
+  if (Fortran::evaluate::UnwrapExpr<Fortran::evaluate::NullPointer>(initialTarget))
     return Fortran::lower::createUnallocatedBox(
         builder, loc, boxType, /*nonDeferredParams*/ llvm::None);
   // Pointer initial data target, and NULL(mold).
