@@ -57,11 +57,18 @@ AsSecureLogFileName("as-secure-log-file-name",
                  "AS_SECURE_LOG_FILE env variable)"),
         cl::init(getenv("AS_SECURE_LOG_FILE")), cl::Hidden);
 
-MCContext::MCContext(const MCAsmInfo *mai, const MCRegisterInfo *mri,
-                     const MCObjectFileInfo *mofi, const SourceMgr *mgr,
+static void defaultDiagHandler(const SMDiagnostic &SMD, bool, const SourceMgr &,
+                               std::vector<const MDNode *> &) {
+  SMD.print(nullptr, errs());
+}
+
+MCContext::MCContext(const Triple &TheTriple, const MCAsmInfo *mai,
+                     const MCRegisterInfo *mri, const MCObjectFileInfo *mofi,
+                     const MCSubtargetInfo *msti, const SourceMgr *mgr,
                      MCTargetOptions const *TargetOpts, bool DoAutoReset)
-    : SrcMgr(mgr), InlineSrcMgr(nullptr), MAI(mai), MRI(mri), MOFI(mofi),
-      Symbols(Allocator), UsedNames(Allocator),
+    : TT(TheTriple), SrcMgr(mgr), InlineSrcMgr(nullptr),
+      DiagHandler(defaultDiagHandler), MAI(mai), MRI(mri), MOFI(mofi),
+      MSTI(msti), Symbols(Allocator), UsedNames(Allocator),
       InlineAsmUsedLabelNames(Allocator),
       CurrentDwarfLoc(0, 0, 0, DWARF2_FLAG_IS_STMT, 0, 0),
       AutoReset(DoAutoReset), TargetOptions(TargetOpts) {
@@ -70,6 +77,34 @@ MCContext::MCContext(const MCAsmInfo *mai, const MCRegisterInfo *mri,
   if (SrcMgr && SrcMgr->getNumBuffers())
     MainFileName = std::string(SrcMgr->getMemoryBuffer(SrcMgr->getMainFileID())
                                    ->getBufferIdentifier());
+
+  switch (TheTriple.getObjectFormat()) {
+  case Triple::MachO:
+    Env = IsMachO;
+    break;
+  case Triple::COFF:
+    if (!TheTriple.isOSWindows())
+      report_fatal_error(
+          "Cannot initialize MC for non-Windows COFF object files.");
+
+    Env = IsCOFF;
+    break;
+  case Triple::ELF:
+    Env = IsELF;
+    break;
+  case Triple::Wasm:
+    Env = IsWasm;
+    break;
+  case Triple::XCOFF:
+    Env = IsXCOFF;
+    break;
+  case Triple::GOFF:
+    report_fatal_error("Cannot initialize MC for GOFF object file format");
+    break;
+  case Triple::UnknownObjectFormat:
+    report_fatal_error("Cannot initialize MC for unknown object file format.");
+    break;
+  }
 }
 
 MCContext::~MCContext() {
@@ -80,11 +115,21 @@ MCContext::~MCContext() {
   // we don't need to free them here.
 }
 
+void MCContext::initInlineSourceManager() {
+  if (!InlineSrcMgr)
+    InlineSrcMgr.reset(new SourceMgr());
+}
+
 //===----------------------------------------------------------------------===//
 // Module Lifetime Management
 //===----------------------------------------------------------------------===//
 
 void MCContext::reset() {
+  SrcMgr = nullptr;
+  InlineSrcMgr.reset();
+  LocInfos.clear();
+  DiagHandler = defaultDiagHandler;
+
   // Call the destructors so the fragments are freed
   COFFAllocator.DestroyAll();
   ELFAllocator.DestroyAll();
@@ -180,19 +225,18 @@ MCSymbol *MCContext::createSymbolImpl(const StringMapEntry<bool> *Name,
                 "MCSymbol classes must be trivially destructible");
   static_assert(std::is_trivially_destructible<MCSymbolXCOFF>(),
                 "MCSymbol classes must be trivially destructible");
-  if (MOFI) {
-    switch (MOFI->getObjectFileType()) {
-    case MCObjectFileInfo::IsCOFF:
-      return new (Name, *this) MCSymbolCOFF(Name, IsTemporary);
-    case MCObjectFileInfo::IsELF:
-      return new (Name, *this) MCSymbolELF(Name, IsTemporary);
-    case MCObjectFileInfo::IsMachO:
-      return new (Name, *this) MCSymbolMachO(Name, IsTemporary);
-    case MCObjectFileInfo::IsWasm:
-      return new (Name, *this) MCSymbolWasm(Name, IsTemporary);
-    case MCObjectFileInfo::IsXCOFF:
-      return createXCOFFSymbolImpl(Name, IsTemporary);
-    }
+
+  switch (getObjectFileType()) {
+  case MCContext::IsCOFF:
+    return new (Name, *this) MCSymbolCOFF(Name, IsTemporary);
+  case MCContext::IsELF:
+    return new (Name, *this) MCSymbolELF(Name, IsTemporary);
+  case MCContext::IsMachO:
+    return new (Name, *this) MCSymbolMachO(Name, IsTemporary);
+  case MCContext::IsWasm:
+    return new (Name, *this) MCSymbolWasm(Name, IsTemporary);
+  case MCContext::IsXCOFF:
+    return createXCOFFSymbolImpl(Name, IsTemporary);
   }
   return new (Name, *this) MCSymbol(MCSymbol::SymbolKindUnset, Name,
                                     IsTemporary);
@@ -628,7 +672,8 @@ MCSectionCOFF *MCContext::getAssociativeCOFFSection(MCSectionCOFF *Sec,
 }
 
 MCSectionWasm *MCContext::getWasmSection(const Twine &Section, SectionKind K,
-                                         const Twine &Group, unsigned UniqueID,
+                                         unsigned Flags, const Twine &Group,
+                                         unsigned UniqueID,
                                          const char *BeginSymName) {
   MCSymbolWasm *GroupSym = nullptr;
   if (!Group.isTriviallyEmpty() && !Group.str().empty()) {
@@ -636,10 +681,11 @@ MCSectionWasm *MCContext::getWasmSection(const Twine &Section, SectionKind K,
     GroupSym->setComdat(true);
   }
 
-  return getWasmSection(Section, K, GroupSym, UniqueID, BeginSymName);
+  return getWasmSection(Section, K, Flags, GroupSym, UniqueID, BeginSymName);
 }
 
 MCSectionWasm *MCContext::getWasmSection(const Twine &Section, SectionKind Kind,
+                                         unsigned Flags,
                                          const MCSymbolWasm *GroupSym,
                                          unsigned UniqueID,
                                          const char *BeginSymName) {
@@ -660,7 +706,7 @@ MCSectionWasm *MCContext::getWasmSection(const Twine &Section, SectionKind Kind,
   cast<MCSymbolWasm>(Begin)->setType(wasm::WASM_SYMBOL_TYPE_SECTION);
 
   MCSectionWasm *Result = new (WasmAllocator.Allocate())
-      MCSectionWasm(CachedName, Kind, GroupSym, UniqueID, Begin);
+      MCSectionWasm(CachedName, Kind, Flags, GroupSym, UniqueID, Begin);
   Entry.second = Result;
 
   auto *F = new MCDataFragment();
@@ -671,15 +717,20 @@ MCSectionWasm *MCContext::getWasmSection(const Twine &Section, SectionKind Kind,
   return Result;
 }
 
-MCSectionXCOFF *
-MCContext::getXCOFFSection(StringRef Section, SectionKind Kind,
-                           Optional<XCOFF::CsectProperties> CsectProp,
-                           bool MultiSymbolsAllowed, const char *BeginSymName) {
+MCSectionXCOFF *MCContext::getXCOFFSection(
+    StringRef Section, SectionKind Kind,
+    Optional<XCOFF::CsectProperties> CsectProp, bool MultiSymbolsAllowed,
+    const char *BeginSymName,
+    Optional<XCOFF::DwarfSectionSubtypeFlags> DwarfSectionSubtypeFlags) {
+  bool IsDwarfSec = DwarfSectionSubtypeFlags.hasValue();
+  assert((IsDwarfSec != CsectProp.hasValue()) && "Invalid XCOFF section!");
+
   // Do the lookup. If we have a hit, return it.
-  // FIXME: handle the case for non-csect sections. Non-csect section has None
-  // CsectProp.
   auto IterBool = XCOFFUniquingMap.insert(std::make_pair(
-      XCOFFSectionKey{Section.str(), CsectProp->MappingClass}, nullptr));
+      IsDwarfSec
+          ? XCOFFSectionKey(Section.str(), DwarfSectionSubtypeFlags.getValue())
+          : XCOFFSectionKey(Section.str(), CsectProp->MappingClass),
+      nullptr));
   auto &Entry = *IterBool.first;
   if (!IterBool.second) {
     MCSectionXCOFF *ExistedEntry = Entry.second;
@@ -691,9 +742,14 @@ MCContext::getXCOFFSection(StringRef Section, SectionKind Kind,
 
   // Otherwise, return a new section.
   StringRef CachedName = Entry.first.SectionName;
-  MCSymbolXCOFF *QualName = cast<MCSymbolXCOFF>(getOrCreateSymbol(
-      CachedName + "[" + XCOFF::getMappingClassString(CsectProp->MappingClass) +
-      "]"));
+  MCSymbolXCOFF *QualName = nullptr;
+  // Debug section don't have storage class attribute.
+  if (IsDwarfSec)
+    QualName = cast<MCSymbolXCOFF>(getOrCreateSymbol(CachedName));
+  else
+    QualName = cast<MCSymbolXCOFF>(getOrCreateSymbol(
+        CachedName + "[" +
+        XCOFF::getMappingClassString(CsectProp->MappingClass) + "]"));
 
   MCSymbol *Begin = nullptr;
   if (BeginSymName)
@@ -701,9 +757,18 @@ MCContext::getXCOFFSection(StringRef Section, SectionKind Kind,
 
   // QualName->getUnqualifiedName() and CachedName are the same except when
   // CachedName contains invalid character(s) such as '$' for an XCOFF symbol.
-  MCSectionXCOFF *Result = new (XCOFFAllocator.Allocate()) MCSectionXCOFF(
-      QualName->getUnqualifiedName(), CsectProp->MappingClass, CsectProp->Type,
-      Kind, QualName, Begin, CachedName, MultiSymbolsAllowed);
+  MCSectionXCOFF *Result = nullptr;
+  if (IsDwarfSec)
+    Result = new (XCOFFAllocator.Allocate())
+        MCSectionXCOFF(QualName->getUnqualifiedName(), Kind, QualName,
+                       DwarfSectionSubtypeFlags.getValue(), Begin, CachedName,
+                       MultiSymbolsAllowed);
+  else
+    Result = new (XCOFFAllocator.Allocate())
+        MCSectionXCOFF(QualName->getUnqualifiedName(), CsectProp->MappingClass,
+                       CsectProp->Type, Kind, QualName, Begin, CachedName,
+                       MultiSymbolsAllowed);
+
   Entry.second = Result;
 
   auto *F = new MCDataFragment();
@@ -835,32 +900,67 @@ CodeViewContext &MCContext::getCVContext() {
 // Error Reporting
 //===----------------------------------------------------------------------===//
 
+void MCContext::diagnose(const SMDiagnostic &SMD) {
+  assert(DiagHandler && "MCContext::DiagHandler is not set");
+  bool UseInlineSrcMgr = false;
+  const SourceMgr *SMP = nullptr;
+  if (SrcMgr) {
+    SMP = SrcMgr;
+  } else if (InlineSrcMgr) {
+    SMP = InlineSrcMgr.get();
+    UseInlineSrcMgr = true;
+  } else
+    llvm_unreachable("Either SourceMgr should be available");
+  DiagHandler(SMD, UseInlineSrcMgr, *SMP, LocInfos);
+}
+
+void MCContext::reportCommon(
+    SMLoc Loc,
+    std::function<void(SMDiagnostic &, const SourceMgr *)> GetMessage) {
+  // * MCContext::SrcMgr is null when the MC layer emits machine code for input
+  //   other than assembly file, say, for .c/.cpp/.ll/.bc.
+  // * MCContext::InlineSrcMgr is null when the inline asm is not used.
+  // * A default SourceMgr is needed for diagnosing when both MCContext::SrcMgr
+  //   and MCContext::InlineSrcMgr are null.
+  SourceMgr SM;
+  const SourceMgr *SMP = &SM;
+  bool UseInlineSrcMgr = false;
+
+  // FIXME: Simplify these by combining InlineSrcMgr & SrcMgr.
+  //        For MC-only execution, only SrcMgr is used;
+  //        For non MC-only execution, InlineSrcMgr is only ctor'd if there is
+  //        inline asm in the IR.
+  if (Loc.isValid()) {
+    if (SrcMgr) {
+      SMP = SrcMgr;
+    } else if (InlineSrcMgr) {
+      SMP = InlineSrcMgr.get();
+      UseInlineSrcMgr = true;
+    } else
+      llvm_unreachable("Either SourceMgr should be available");
+  }
+
+  SMDiagnostic D;
+  GetMessage(D, SMP);
+  DiagHandler(D, UseInlineSrcMgr, *SMP, LocInfos);
+}
+
 void MCContext::reportError(SMLoc Loc, const Twine &Msg) {
   HadError = true;
-
-  // If we have a source manager use it. Otherwise, try using the inline source
-  // manager.
-  // If that fails, construct a temporary SourceMgr.
-  if (SrcMgr)
-    SrcMgr->PrintMessage(Loc, SourceMgr::DK_Error, Msg);
-  else if (InlineSrcMgr)
-    InlineSrcMgr->PrintMessage(Loc, SourceMgr::DK_Error, Msg);
-  else
-    SourceMgr().PrintMessage(Loc, SourceMgr::DK_Error, Msg);
+  reportCommon(Loc, [&](SMDiagnostic &D, const SourceMgr *SMP) {
+    D = SMP->GetMessage(Loc, SourceMgr::DK_Error, Msg);
+  });
 }
 
 void MCContext::reportWarning(SMLoc Loc, const Twine &Msg) {
   if (TargetOptions && TargetOptions->MCNoWarn)
     return;
-  if (TargetOptions && TargetOptions->MCFatalWarnings)
+  if (TargetOptions && TargetOptions->MCFatalWarnings) {
     reportError(Loc, Msg);
-  else {
-    // If we have a source manager use it. Otherwise, try using the inline
-    // source manager.
-    if (SrcMgr)
-      SrcMgr->PrintMessage(Loc, SourceMgr::DK_Warning, Msg);
-    else if (InlineSrcMgr)
-      InlineSrcMgr->PrintMessage(Loc, SourceMgr::DK_Warning, Msg);
+  } else {
+    reportCommon(Loc, [&](SMDiagnostic &D, const SourceMgr *SMP) {
+      D = SMP->GetMessage(Loc, SourceMgr::DK_Warning, Msg);
+    });
   }
 }
 

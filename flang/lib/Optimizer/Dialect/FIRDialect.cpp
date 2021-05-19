@@ -60,13 +60,8 @@ struct FIRInlinerInterface : public mlir::DialectInlinerInterface {
 
 fir::FIROpsDialect::FIROpsDialect(mlir::MLIRContext *ctx)
     : mlir::Dialect("fir", ctx, mlir::TypeID::get<FIROpsDialect>()) {
-  addTypes<BoxType, BoxCharType, BoxProcType, CharacterType, fir::ComplexType,
-           FieldType, HeapType, fir::IntegerType, LenType, LogicalType,
-           PointerType, RealType, RecordType, ReferenceType, SequenceType,
-           ShapeType, ShapeShiftType, ShiftType, SliceType, TypeDescType,
-           fir::VectorType>();
-  addAttributes<ClosedIntervalAttr, ExactTypeAttr, LowerBoundAttr,
-                PointIntervalAttr, RealAttr, SubclassAttr, UpperBoundAttr>();
+  registerTypes();
+  registerAttributes();
   addOperations<
 #define GET_OP_LIST
 #include "flang/Optimizer/Dialect/FIROps.cpp.inc"

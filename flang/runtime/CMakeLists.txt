@@ -34,6 +34,7 @@ add_flang_library(FortranRuntime PARTIAL_SOURCES_INTENDED
   connection.cpp
   derived.cpp
   descriptor.cpp
+  dot-product.cpp
   edit-input.cpp
   edit-output.cpp
   environment.cpp
@@ -47,6 +48,7 @@ add_flang_library(FortranRuntime PARTIAL_SOURCES_INTENDED
   io-error.cpp
   io-stmt.cpp
   main.cpp
+  matmul.cpp
   memory.cpp
   misc-intrinsic.cpp
   namelist.cpp

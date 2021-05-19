@@ -12,8 +12,6 @@
 
 using namespace llvm;
 
-enum AsmDialect { AD_ATT = 0, AD_HLASM = 1 };
-
 SystemZMCAsmInfo::SystemZMCAsmInfo(const Triple &TT) {
   CodePointerSize = 8;
   CalleeSaveStackSlotSize = 8;
@@ -23,7 +21,15 @@ SystemZMCAsmInfo::SystemZMCAsmInfo(const Triple &TT) {
 
   MaxInstLength = 6;
 
-  CommentString = "#";
+  CommentString = AssemblerDialect == AD_HLASM ? "*" : "#";
+  RestrictCommentStringToStartOfStatement = (AssemblerDialect == AD_HLASM);
+  AllowAdditionalComments = (AssemblerDialect == AD_ATT);
+  AllowAtAtStartOfIdentifier = (AssemblerDialect == AD_HLASM);
+  AllowDollarAtStartOfIdentifier = (AssemblerDialect == AD_HLASM);
+  AllowHashAtStartOfIdentifier = (AssemblerDialect == AD_HLASM);
+  DotIsPC = (AssemblerDialect == AD_ATT);
+  StarIsPC = (AssemblerDialect == AD_HLASM);
+
   ZeroDirective = "\t.space\t";
   Data64bitsDirective = "\t.quad\t";
   UsesELFSectionDirectiveForBSS = true;

@@ -24,17 +24,20 @@ struct Canonicalizer : public CanonicalizerBase<Canonicalizer> {
   /// Initialize the canonicalizer by building the set of patterns used during
   /// execution.
   LogicalResult initialize(MLIRContext *context) override {
-    OwningRewritePatternList owningPatterns;
+    RewritePatternSet owningPatterns(context);
     for (auto *op : context->getRegisteredOperations())
       op->getCanonicalizationPatterns(owningPatterns, context);
     patterns = std::move(owningPatterns);
     return success();
   }
   void runOnOperation() override {
-    (void)applyPatternsAndFoldGreedily(getOperation()->getRegions(), patterns);
+    (void)applyPatternsAndFoldGreedily(
+        getOperation()->getRegions(), patterns,
+        /*maxIterations=*/10, /*useTopDownTraversal=*/
+        topDownProcessingEnabled);
   }
 
-  FrozenRewritePatternList patterns;
+  FrozenRewritePatternSet patterns;
 };
 } // end anonymous namespace
 

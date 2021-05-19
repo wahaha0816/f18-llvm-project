@@ -34,7 +34,10 @@ set(sources
   X86DiscriminateMemOps.cpp
   X86LowerTileCopy.cpp
   X86LowerAMXType.cpp
+  X86PreAMXConfig.cpp
+  X86LowerAMXIntrinsics.cpp
   X86TileConfig.cpp
+  X86FastTileConfig.cpp
   X86PreTileConfig.cpp
   X86ExpandPseudo.cpp
   X86FastISel.cpp
@@ -92,6 +95,7 @@ add_llvm_target(X86CodeGen ${sources}
   SelectionDAG
   Support
   Target
+  TransformUtils
   X86Desc
   X86Info
   GlobalISel

@@ -44,6 +44,8 @@ static cl::opt<bool> AbortOnMaxDevirtIterationsReached(
     cl::desc("Abort when the max iterations for devirtualization CGSCC repeat "
              "pass is reached"));
 
+AnalysisKey FunctionStatusAnalysis::Key;
+
 // Explicit instantiations for the core proxy templates.
 template class AllAnalysesOn<LazyCallGraph::SCC>;
 template class AnalysisManager<LazyCallGraph::SCC, LazyCallGraph &>;
@@ -68,9 +70,6 @@ PassManager<LazyCallGraph::SCC, CGSCCAnalysisManager, LazyCallGraph &,
       AM.getResult<PassInstrumentationAnalysis>(InitialC, G);
 
   PreservedAnalyses PA = PreservedAnalyses::all();
-
-  if (DebugLogging)
-    dbgs() << "Starting CGSCC pass manager run.\n";
 
   // The SCC may be refined while we are running passes over it, so set up
   // a pointer that we can update.
@@ -141,9 +140,6 @@ PassManager<LazyCallGraph::SCC, CGSCCAnalysisManager, LazyCallGraph &,
   // preserved. We mark this with a set so that we don't need to inspect each
   // one individually.
   PA.preserveSet<AllAnalysesOn<LazyCallGraph::SCC>>();
-
-  if (DebugLogging)
-    dbgs() << "Finished CGSCC pass manager run.\n";
 
   return PA;
 }
@@ -547,6 +543,13 @@ PreservedAnalyses CGSCCToFunctionPassAdaptor::run(LazyCallGraph::SCC &C,
       continue;
 
     Function &F = N->getFunction();
+    // The expectation here is that FunctionStatusAnalysis was required at the
+    // end of the function passes pipeline managed by this adaptor. Then, if any
+    // CGSCC passes were re-run because CGSCCs changed (or devirtualization),
+    // and none changed F, then FunctionStatusAnalysis would still be cached
+    // here and we don't need to rerun the passes managed by this adaptor.
+    if (FAM.getCachedResult<FunctionStatusAnalysis>(F))
+      continue;
 
     PassInstrumentation PI = FAM.getResult<PassInstrumentationAnalysis>(F);
     if (!PI.runBeforePass<Function>(*Pass, F))
@@ -720,7 +723,7 @@ bool FunctionAnalysisManagerCGSCCProxy::Result::invalidate(
   auto PAC = PA.getChecker<FunctionAnalysisManagerCGSCCProxy>();
   if (!PAC.preserved() && !PAC.preservedSet<AllAnalysesOn<LazyCallGraph::SCC>>()) {
     for (LazyCallGraph::Node &N : C)
-      FAM->clear(N.getFunction(), N.getFunction().getName());
+      FAM->invalidate(N.getFunction(), PA);
 
     return false;
   }
@@ -864,7 +867,7 @@ incorporateNewSCCRange(const SCCRangeT &NewSCCRange, LazyCallGraph &G,
   // split-off SCCs.
   // We know however that this will preserve any FAM proxy so go ahead and mark
   // that.
-  PreservedAnalyses PA;
+  auto PA = PreservedAnalyses::allInSet<AllAnalysesOn<Function>>();
   PA.preserve<FunctionAnalysisManagerCGSCCProxy>();
   AM.invalidate(*OldC, PA);
 
@@ -1043,9 +1046,9 @@ static LazyCallGraph::SCC &updateCGAndAnalysisManagerForPass(
     if (&TargetRC == RC)
       return false;
 
-    RC->removeOutgoingEdge(N, *TargetN);
     LLVM_DEBUG(dbgs() << "Deleting outgoing edge from '" << N << "' to '"
-                      << TargetN << "'\n");
+                      << *TargetN << "'\n");
+    RC->removeOutgoingEdge(N, *TargetN);
     return true;
   });
 

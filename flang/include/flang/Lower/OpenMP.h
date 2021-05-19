@@ -16,7 +16,6 @@
 namespace Fortran {
 namespace parser {
 struct OpenMPConstruct;
-struct OmpEndLoopDirective;
 } // namespace parser
 
 namespace lower {

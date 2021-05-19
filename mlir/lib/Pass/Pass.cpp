@@ -247,8 +247,11 @@ OpPassManager::OpPassManager(const OpPassManager &rhs) { *this = rhs; }
 OpPassManager &OpPassManager::operator=(const OpPassManager &rhs) {
   impl.reset(new OpPassManagerImpl(rhs.impl->name, rhs.impl->nesting));
   impl->initializationGeneration = rhs.impl->initializationGeneration;
-  for (auto &pass : rhs.impl->passes)
-    impl->passes.emplace_back(pass->clone());
+  for (auto &pass : rhs.impl->passes) {
+    auto newPass = pass->clone();
+    newPass->threadingSibling = pass.get();
+    impl->passes.push_back(std::move(newPass));
+  }
   return *this;
 }
 
@@ -380,6 +383,10 @@ LogicalResult OpToOpPassAdaptor::run(Pass *pass, Operation *op,
                 "operation that isn't "
                 "nested under the current operation the pass is processing";
     assert(pipeline.getOpName() == root->getName().getStringRef());
+
+    // Before running, make sure to coalesce any adjacent pass adaptors in the
+    // pipeline.
+    pipeline.getImpl().coalesceAdjacentAdaptorPasses();
 
     // Initialize the user provided pipeline and execute the pipeline.
     if (failed(pipeline.initialize(root->getContext(), parentInitGeneration)))
@@ -860,7 +867,8 @@ void PassManager::enableVerifier(bool enabled) { verifyPasses = enabled; }
 LogicalResult PassManager::run(Operation *op) {
   MLIRContext *context = getContext();
   assert(op->getName().getIdentifier() == getOpName(*context) &&
-         "operation has a different name than the PassManager");
+         "operation has a different name than the PassManager or is from a "
+         "different context");
 
   // Before running, make sure to coalesce any adjacent pass adaptors in the
   // pipeline.

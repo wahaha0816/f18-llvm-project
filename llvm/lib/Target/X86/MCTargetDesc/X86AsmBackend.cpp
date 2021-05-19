@@ -680,12 +680,21 @@ Optional<MCFixupKind> X86AsmBackend::getFixupKind(StringRef Name) const {
 #define ELF_RELOC(X, Y) .Case(#X, Y)
 #include "llvm/BinaryFormat/ELFRelocs/x86_64.def"
 #undef ELF_RELOC
+                 .Case("BFD_RELOC_NONE", ELF::R_X86_64_NONE)
+                 .Case("BFD_RELOC_8", ELF::R_X86_64_8)
+                 .Case("BFD_RELOC_16", ELF::R_X86_64_16)
+                 .Case("BFD_RELOC_32", ELF::R_X86_64_32)
+                 .Case("BFD_RELOC_64", ELF::R_X86_64_64)
                  .Default(-1u);
     } else {
       Type = llvm::StringSwitch<unsigned>(Name)
 #define ELF_RELOC(X, Y) .Case(#X, Y)
 #include "llvm/BinaryFormat/ELFRelocs/i386.def"
 #undef ELF_RELOC
+                 .Case("BFD_RELOC_NONE", ELF::R_386_NONE)
+                 .Case("BFD_RELOC_8", ELF::R_386_8)
+                 .Case("BFD_RELOC_16", ELF::R_386_16)
+                 .Case("BFD_RELOC_32", ELF::R_386_32)
                  .Default(-1u);
     }
     if (Type == -1u)
@@ -1445,6 +1454,7 @@ public:
     unsigned StackAdjust = 0;
     unsigned StackSize = 0;
     unsigned NumDefCFAOffsets = 0;
+    int MinAbsOffset = std::numeric_limits<int>::max();
 
     for (unsigned i = 0, e = Instrs.size(); i != e; ++i) {
       const MCCFIInstruction &Inst = Instrs[i];
@@ -1473,6 +1483,7 @@ public:
         memset(SavedRegs, 0, sizeof(SavedRegs));
         StackAdjust = 0;
         SavedRegIdx = 0;
+        MinAbsOffset = std::numeric_limits<int>::max();
         InstrOffset += MoveInstrSize;
         break;
       }
@@ -1516,6 +1527,7 @@ public:
         unsigned Reg = *MRI.getLLVMRegNum(Inst.getRegister(), true);
         SavedRegs[SavedRegIdx++] = Reg;
         StackAdjust += OffsetSize;
+        MinAbsOffset = std::min(MinAbsOffset, abs(Inst.getOffset()));
         InstrOffset += PushInstrSize(Reg);
         break;
       }
@@ -1527,6 +1539,11 @@ public:
     if (HasFP) {
       if ((StackAdjust & 0xFF) != StackAdjust)
         // Offset was too big for a compact unwind encoding.
+        return CU::UNWIND_MODE_DWARF;
+
+      // We don't attempt to track a real StackAdjust, so if the saved registers
+      // aren't adjacent to rbp we can't cope.
+      if (SavedRegIdx != 0 && MinAbsOffset != 3 * (int)OffsetSize)
         return CU::UNWIND_MODE_DWARF;
 
       // Get the encoding of the saved registers when we have a frame pointer.

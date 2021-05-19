@@ -29,15 +29,20 @@ class GPUModuleOp;
 } // end namespace gpu
 
 namespace LLVM {
-class LLVMArmNeonDialect;
-class LLVMArmSVEDialect;
-class LLVMAVX512Dialect;
 class LLVMDialect;
 } // end namespace LLVM
 
 namespace NVVM {
 class NVVMDialect;
 } // end namespace NVVM
+
+namespace math {
+class MathDialect;
+} // end namespace math
+
+namespace memref {
+class MemRefDialect;
+} // end namespace memref
 
 namespace omp {
 class OpenMPDialect;

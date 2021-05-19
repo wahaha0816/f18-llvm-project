@@ -13,10 +13,13 @@
 module __Fortran_builtins
 
   use __Fortran_type_info, only: __builtin_c_ptr, __builtin_c_funptr
-  integer, parameter, private :: int64 = selected_int_kind(18)
 
   intrinsic :: __builtin_c_f_pointer
   intrinsic :: sizeof ! extension
+
+  intrinsic :: selected_int_kind
+  private :: selected_int_kind
+  integer, parameter, private :: int64 = selected_int_kind(18)
 
   type :: __builtin_event_type
     integer(kind=int64) :: __count
@@ -40,4 +43,5 @@ module __Fortran_builtins
     __builtin_ieee_support_nan, __builtin_ieee_support_sqrt, &
     __builtin_ieee_support_standard, __builtin_ieee_support_subnormal, &
     __builtin_ieee_support_underflow_control
+
 end module

@@ -57,10 +57,9 @@ void MCTargetStreamer::changeSection(const MCSection *CurSection,
                                      MCSection *Section,
                                      const MCExpr *Subsection,
                                      raw_ostream &OS) {
-  Section->PrintSwitchToSection(
-      *Streamer.getContext().getAsmInfo(),
-      Streamer.getContext().getObjectFileInfo()->getTargetTriple(), OS,
-      Subsection);
+  Section->PrintSwitchToSection(*Streamer.getContext().getAsmInfo(),
+                                Streamer.getContext().getTargetTriple(), OS,
+                                Subsection);
 }
 
 void MCTargetStreamer::emitDwarfFileDirective(StringRef Directive) {
@@ -415,7 +414,8 @@ void MCStreamer::emitLabel(MCSymbol *Symbol, SMLoc Loc) {
   Symbol->redefineIfPossible();
 
   if (!Symbol->isUndefined() || Symbol->isVariable())
-    return getContext().reportError(Loc, "invalid symbol redefinition");
+    return getContext().reportError(Loc, "symbol '" + Twine(Symbol->getName()) +
+                                             "' is already defined");
 
   assert(!Symbol->isVariable() && "Cannot emit a variable symbol!");
   assert(getCurrentSectionOnly() && "Cannot emit before setting section!");
@@ -1019,6 +1019,11 @@ MCSymbol *MCStreamer::emitDwarfUnitLength(const Twine &Prefix,
   return Hi;
 }
 
+void MCStreamer::emitDwarfLineStartLabel(MCSymbol *StartSym) {
+  // Set the value of the symbol, as we are at the start of the line table.
+  emitLabel(StartSym);
+}
+
 void MCStreamer::emitAssignment(MCSymbol *Symbol, const MCExpr *Value) {
   visitUsedExpr(*Value);
   Symbol->setVariableValue(Value);
@@ -1155,8 +1160,8 @@ void MCStreamer::emitXCOFFRenameDirective(const MCSymbol *Name,
 }
 
 void MCStreamer::emitELFSize(MCSymbol *Symbol, const MCExpr *Value) {}
-void MCStreamer::emitELFSymverDirective(StringRef AliasName,
-                                        const MCSymbol *Aliasee) {}
+void MCStreamer::emitELFSymverDirective(const MCSymbol *OriginalSym,
+                                        StringRef Name, bool KeepOriginalSym) {}
 void MCStreamer::emitLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size,
                                        unsigned ByteAlignment) {}
 void MCStreamer::emitTBSSSymbol(MCSection *Section, MCSymbol *Symbol,

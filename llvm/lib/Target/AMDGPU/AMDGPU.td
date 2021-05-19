@@ -226,10 +226,28 @@ def FeatureNSAtoVMEMBug : SubtargetFeature<"nsa-to-vmem-bug",
   "MIMG-NSA followed by VMEM fail if EXEC_LO or EXEC_HI equals zero"
 >;
 
+def FeatureNSAClauseBug : SubtargetFeature<"nsa-clause-bug",
+  "HasNSAClauseBug",
+  "true",
+  "MIMG-NSA in a hard clause has unpredictable results on GFX10.1"
+>;
+
 def FeatureFlatSegmentOffsetBug : SubtargetFeature<"flat-segment-offset-bug",
   "HasFlatSegmentOffsetBug",
   "true",
-  "GFX10 bug, inst_offset ignored in flat segment"
+  "GFX10 bug where inst_offset is ignored when flat instructions access global memory"
+>;
+
+def FeatureNegativeScratchOffsetBug : SubtargetFeature<"negative-scratch-offset-bug",
+  "NegativeScratchOffsetBug",
+  "true",
+  "Negative immediate offsets in scratch instructions with an SGPR offset page fault on GFX9"
+>;
+
+def FeatureNegativeUnalignedScratchOffsetBug : SubtargetFeature<"negative-unaligned-scratch-offset-bug",
+  "NegativeUnalignedScratchOffsetBug",
+  "true",
+  "Scratch instructions with a VGPR offset and a negative immediate offset that is not a multiple of 4 read wrong memory on GFX10"
 >;
 
 def FeatureOffset3fBug : SubtargetFeature<"offset-3f-bug",
@@ -480,7 +498,7 @@ def FeatureDot1Insts : SubtargetFeature<"dot1-insts",
 def FeatureDot2Insts : SubtargetFeature<"dot2-insts",
   "HasDot2Insts",
   "true",
-  "Has v_dot2_f32_f16, v_dot2_i32_i16, v_dot2_u32_u16, v_dot4_u32_u8, v_dot8_u32_u4 instructions"
+  "Has v_dot2_i32_i16, v_dot2_u32_u16 instructions"
 >;
 
 def FeatureDot3Insts : SubtargetFeature<"dot3-insts",
@@ -505,6 +523,12 @@ def FeatureDot6Insts : SubtargetFeature<"dot6-insts",
   "HasDot6Insts",
   "true",
   "Has v_dot4c_i32_i8 instruction"
+>;
+
+def FeatureDot7Insts : SubtargetFeature<"dot7-insts",
+  "HasDot7Insts",
+  "true",
+  "Has v_dot2_f32_f16, v_dot4_u32_u8, v_dot8_u32_u4 instructions"
 >;
 
 def FeatureMAIInsts : SubtargetFeature<"mai-insts",
@@ -561,6 +585,12 @@ def FeatureSMemTimeInst : SubtargetFeature<"s-memtime-inst",
   "HasSMemTimeInst",
   "true",
   "Has s_memtime instruction"
+>;
+
+def FeatureShaderCyclesRegister : SubtargetFeature<"shader-cycles-register",
+  "HasShaderCyclesRegister",
+  "true",
+  "Has SHADER_CYCLES hardware register"
 >;
 
 def FeatureMadMacF32Insts : SubtargetFeature<"mad-mac-f32-insts",
@@ -701,6 +731,12 @@ def FeaturePackedTID : SubtargetFeature<"packed-tid",
   "Workitem IDs are packed into v0 at kernel launch"
 >;
 
+def FeatureArchitectedFlatScratch : SubtargetFeature<"architected-flat-scratch",
+  "HasArchitectedFlatScratch",
+  "true",
+  "Flat Scratch register is a readonly SPI initialized architected register"
+>;
+
 // Dummy feature used to disable assembler instructions.
 def FeatureDisable : SubtargetFeature<"",
   "FeatureDisable","true",
@@ -759,7 +795,8 @@ def FeatureGFX9 : GCNSubtargetFeatureGeneration<"GFX9",
    FeatureAddNoCarryInsts, FeatureGFX8Insts, FeatureGFX7GFX8GFX9Insts,
    FeatureScalarFlatScratchInsts, FeatureScalarAtomics, FeatureR128A16,
    FeatureSMemTimeInst, FeatureFastDenormalF32, FeatureSupportsXNACK,
-   FeatureUnalignedBufferAccess, FeatureUnalignedDSAccess
+   FeatureUnalignedBufferAccess, FeatureUnalignedDSAccess,
+   FeatureNegativeScratchOffsetBug
   ]
 >;
 
@@ -777,7 +814,7 @@ def FeatureGFX10 : GCNSubtargetFeatureGeneration<"GFX10",
    FeatureNoSdstCMPX, FeatureVscnt, FeatureRegisterBanking,
    FeatureVOP3Literal, FeatureDPP8, FeatureExtendedImageInsts,
    FeatureNoDataDepHazard, FeaturePkFmacF16Inst,
-   FeatureGFX10A16, FeatureFastDenormalF32, FeatureG16,
+   FeatureGFX10A16, FeatureSMemTimeInst, FeatureFastDenormalF32, FeatureG16,
    FeatureUnalignedBufferAccess, FeatureUnalignedDSAccess
   ]
 >;
@@ -896,6 +933,7 @@ def FeatureISAVersion9_0_6 : FeatureSet<
    FeatureDLInsts,
    FeatureDot1Insts,
    FeatureDot2Insts,
+   FeatureDot7Insts,
    FeatureSupportsSRAMECC,
    FeatureImageGather4D16Bug]>;
 
@@ -914,6 +952,7 @@ def FeatureISAVersion9_0_8 : FeatureSet<
    FeatureDot4Insts,
    FeatureDot5Insts,
    FeatureDot6Insts,
+   FeatureDot7Insts,
    FeatureMAIInsts,
    FeaturePkFmacF16Inst,
    FeatureAtomicFaddInsts,
@@ -942,6 +981,7 @@ def FeatureISAVersion9_0_A : FeatureSet<
    FeatureDot4Insts,
    FeatureDot5Insts,
    FeatureDot6Insts,
+   FeatureDot7Insts,
    Feature64BitDPP,
    FeaturePackedFP32Ops,
    FeatureMAIInsts,
@@ -972,8 +1012,10 @@ def FeatureGroup {
     FeatureVcmpxExecWARHazard,
     FeatureLdsBranchVmemWARHazard,
     FeatureNSAtoVMEMBug,
+    FeatureNSAClauseBug,
     FeatureOffset3fBug,
-    FeatureFlatSegmentOffsetBug
+    FeatureFlatSegmentOffsetBug,
+    FeatureNegativeUnalignedScratchOffsetBug
    ];
 }
 
@@ -988,7 +1030,6 @@ def FeatureISAVersion10_1_0 : FeatureSet<
      FeatureScalarAtomics,
      FeatureScalarFlatScratchInsts,
      FeatureGetWaveIdInst,
-     FeatureSMemTimeInst,
      FeatureMadMacF32Insts,
      FeatureDsSrc2Insts,
      FeatureLdsMisalignedBug,
@@ -1003,13 +1044,13 @@ def FeatureISAVersion10_1_1 : FeatureSet<
      FeatureDot2Insts,
      FeatureDot5Insts,
      FeatureDot6Insts,
+     FeatureDot7Insts,
      FeatureNSAEncoding,
      FeatureWavefrontSize32,
      FeatureScalarStores,
      FeatureScalarAtomics,
      FeatureScalarFlatScratchInsts,
      FeatureGetWaveIdInst,
-     FeatureSMemTimeInst,
      FeatureMadMacF32Insts,
      FeatureDsSrc2Insts,
      FeatureLdsMisalignedBug,
@@ -1024,13 +1065,13 @@ def FeatureISAVersion10_1_2 : FeatureSet<
      FeatureDot2Insts,
      FeatureDot5Insts,
      FeatureDot6Insts,
+     FeatureDot7Insts,
      FeatureNSAEncoding,
      FeatureWavefrontSize32,
      FeatureScalarStores,
      FeatureScalarAtomics,
      FeatureScalarFlatScratchInsts,
      FeatureGetWaveIdInst,
-     FeatureSMemTimeInst,
      FeatureMadMacF32Insts,
      FeatureDsSrc2Insts,
      FeatureLdsMisalignedBug,
@@ -1046,8 +1087,10 @@ def FeatureISAVersion10_3_0 : FeatureSet<
    FeatureDot2Insts,
    FeatureDot5Insts,
    FeatureDot6Insts,
+   FeatureDot7Insts,
    FeatureNSAEncoding,
-   FeatureWavefrontSize32]>;
+   FeatureWavefrontSize32,
+   FeatureShaderCyclesRegister]>;
 
 //===----------------------------------------------------------------------===//
 
@@ -1215,6 +1258,10 @@ def isGFX90AOnly :
   Predicate<"Subtarget->hasGFX90AInsts()">,
   AssemblerPredicate<(all_of FeatureGFX90AInsts)>;
 
+def isGFX908orGFX90A :
+  Predicate<"Subtarget->hasMAIInsts()">,
+  AssemblerPredicate<(all_of FeatureMAIInsts)>;
+
 def isGFX8GFX9 :
   Predicate<"Subtarget->getGeneration() == AMDGPUSubtarget::VOLCANIC_ISLANDS ||"
             "Subtarget->getGeneration() == AMDGPUSubtarget::GFX9">,
@@ -1301,6 +1348,10 @@ def Has64BitDPP : Predicate<"Subtarget->has64BitDPP()">,
 def HasPackedFP32Ops : Predicate<"Subtarget->hasPackedFP32Ops()">,
   AssemblerPredicate<(all_of FeaturePackedFP32Ops)>;
 
+def HasFmaakFmamkF32Insts :
+  Predicate<"Subtarget->hasFmaakFmamkF32Insts()">,
+  AssemblerPredicate<(any_of FeatureGFX10Insts)>;
+
 def HasExtendedImageInsts : Predicate<"Subtarget->hasExtendedImageInsts()">,
   AssemblerPredicate<(all_of FeatureExtendedImageInsts)>;
 
@@ -1365,6 +1416,9 @@ def HasDot5Insts : Predicate<"Subtarget->hasDot5Insts()">,
 def HasDot6Insts : Predicate<"Subtarget->hasDot6Insts()">,
   AssemblerPredicate<(all_of FeatureDot6Insts)>;
 
+def HasDot7Insts : Predicate<"Subtarget->hasDot7Insts()">,
+  AssemblerPredicate<(all_of FeatureDot7Insts)>;
+
 def HasGetWaveIdInst : Predicate<"Subtarget->hasGetWaveIdInst()">,
   AssemblerPredicate<(all_of FeatureGetWaveIdInst)>;
 
@@ -1377,7 +1431,8 @@ def HasSMemRealTime : Predicate<"Subtarget->hasSMemRealTime()">,
 def HasSMemTimeInst : Predicate<"Subtarget->hasSMemTimeInst()">,
   AssemblerPredicate<(all_of FeatureSMemTimeInst)>;
 
-def HasNoSMemTimeInst : Predicate<"!Subtarget->hasSMemTimeInst()">;
+def HasShaderCyclesRegister : Predicate<"Subtarget->hasShaderCyclesRegister()">,
+  AssemblerPredicate<(all_of FeatureShaderCyclesRegister)>;
 
 def HasPkFmacF16Inst : Predicate<"Subtarget->hasPkFmacF16Inst()">,
   AssemblerPredicate<(all_of FeaturePkFmacF16Inst)>;

@@ -16,6 +16,7 @@
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/Analysis/Utils.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
@@ -32,8 +33,6 @@
 #include <iomanip>
 #include <sstream>
 #define DEBUG_TYPE "affine-loop-fusion"
-
-using llvm::SetVector;
 
 using namespace mlir;
 
@@ -947,7 +946,7 @@ static Value createPrivateMemRef(AffineForOp forOp, Operation *srcStoreOpInst,
   if (bufSize <= localBufSizeThreshold && fastMemorySpace.hasValue()) {
     newMemSpace = fastMemorySpace.getValue();
   } else {
-    newMemSpace = oldMemRefType.getMemorySpace();
+    newMemSpace = oldMemRefType.getMemorySpaceAsInt();
   }
   auto newMemRefType = MemRefType::get(newShape, oldMemRefType.getElementType(),
                                        {}, newMemSpace);
@@ -958,7 +957,7 @@ static Value createPrivateMemRef(AffineForOp forOp, Operation *srcStoreOpInst,
   // consumer loop nests to reduce their live range. Currently they are added
   // at the beginning of the function, because loop nests can be reordered
   // during the fusion pass.
-  Value newMemRef = top.create<AllocOp>(forOp.getLoc(), newMemRefType);
+  Value newMemRef = top.create<memref::AllocOp>(forOp.getLoc(), newMemRefType);
 
   // Build an AffineMap to remap access functions based on lower bound offsets.
   SmallVector<AffineExpr, 4> remapExprs;
@@ -1576,9 +1575,15 @@ public:
 
           DenseSet<Value> privateMemrefs;
           for (Value memref : producerConsumerMemrefs) {
-            // Don't create a private memref if 'srcNode' writes to escaping
-            // memrefs.
-            if (srcEscapingMemRefs.count(memref) > 0)
+            // If `memref` is an escaping one, do not create a private memref
+            // for the below scenarios, since doing so will leave the escaping
+            // memref unmodified as all the writes originally meant for the
+            // escaping memref would be performed on the private memref:
+            // 1. The source is to be removed after fusion,
+            // OR
+            // 2. The destination writes to `memref`.
+            if (srcEscapingMemRefs.count(memref) > 0 &&
+                (removeSrcNode || dstNode->getStoreOpCount(memref) > 0))
               continue;
 
             // Don't create a private memref if 'srcNode' has in edges on
@@ -1646,6 +1651,10 @@ public:
               // Add edge from 'newMemRef' node to dstNode.
               mdg->addEdge(newMemRefNodeId, dstId, newMemRef);
             }
+            // One or more entries for 'newMemRef' alloc op are inserted into
+            // the DenseMap mdg->nodes. Since an insertion may cause DenseMap to
+            // reallocate, update dstNode.
+            dstNode = mdg->getNode(dstId);
           }
 
           // Collect dst loop stats after memref privatization transformation.
@@ -1937,7 +1946,7 @@ public:
         continue;
       // Use list expected to match the dep graph info.
       auto *op = memref.getDefiningOp();
-      if (isa_and_nonnull<AllocOp>(op))
+      if (isa_and_nonnull<memref::AllocOp>(op))
         op->erase();
     }
   }

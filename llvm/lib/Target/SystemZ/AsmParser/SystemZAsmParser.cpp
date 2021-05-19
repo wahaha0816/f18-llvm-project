@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "MCTargetDesc/SystemZInstPrinter.h"
+#include "MCTargetDesc/SystemZMCAsmInfo.h"
 #include "MCTargetDesc/SystemZMCTargetDesc.h"
 #include "TargetInfo/SystemZTargetInfo.h"
 #include "llvm/ADT/STLExtras.h"
@@ -450,6 +451,21 @@ private:
     return Parser.getContext().getAsmInfo()->getAssemblerDialect();
   }
 
+  // An alphabetic character in HLASM is a letter from 'A' through 'Z',
+  // or from 'a' through 'z', or '$', '_','#', or '@'.
+  inline bool isHLASMAlpha(char C) {
+    return isAlpha(C) || llvm::is_contained("_@#$", C);
+  }
+
+  // A digit in HLASM is a number from 0 to 9.
+  inline bool isHLASMAlnum(char C) { return isHLASMAlpha(C) || isDigit(C); }
+
+  // Are we parsing using the AD_HLASM dialect?
+  inline bool isParsingHLASM() { return getMAIAssemblerDialect() == AD_HLASM; }
+
+  // Are we parsing using the AD_ATT dialect?
+  inline bool isParsingATT() { return getMAIAssemblerDialect() == AD_ATT; }
+
 public:
   SystemZAsmParser(const MCSubtargetInfo &sti, MCAsmParser &parser,
                    const MCInstrInfo &MII,
@@ -477,6 +493,7 @@ public:
                                OperandVector &Operands, MCStreamer &Out,
                                uint64_t &ErrorInfo,
                                bool MatchingInlineAsm) override;
+  bool isLabel(AsmToken &Token) override;
 
   // Used by the TableGen code to parse particular operand types.
   OperandMatchResultTy parseGR32(OperandVector &Operands) {
@@ -813,7 +830,7 @@ SystemZAsmParser::parseRegister(OperandVector &Operands, RegisterKind Kind) {
   }
 
   // Handle register names of the form %<prefix><number>
-  if (Parser.getTok().is(AsmToken::Percent)) {
+  if (isParsingATT() && Parser.getTok().is(AsmToken::Percent)) {
     if (parseRegister(Reg))
       return MatchOperand_ParseFail;
 
@@ -895,6 +912,9 @@ SystemZAsmParser::parseAnyRegister(OperandVector &Operands) {
     Operands.push_back(SystemZOperand::createImm(Register, StartLoc, EndLoc));
   }
   else {
+    if (isParsingHLASM())
+      return MatchOperand_NoMatch;
+
     Register Reg;
     if (parseRegister(Reg))
       return MatchOperand_ParseFail;
@@ -1002,7 +1022,7 @@ bool SystemZAsmParser::parseAddress(bool &HaveReg1, Register &Reg1,
   if (getLexer().is(AsmToken::LParen)) {
     Parser.Lex();
 
-    if (getLexer().is(AsmToken::Percent)) {
+    if (isParsingATT() && getLexer().is(AsmToken::Percent)) {
       // Parse the first register.
       HaveReg1 = true;
       if (parseRegister(Reg1))
@@ -1045,7 +1065,7 @@ bool SystemZAsmParser::parseAddress(bool &HaveReg1, Register &Reg1,
         if (parseIntegerRegister(Reg2, RegGR))
           return true;
       } else {
-        if (parseRegister(Reg2))
+        if (isParsingATT() && parseRegister(Reg2))
           return true;
       }
     }
@@ -1402,7 +1422,7 @@ bool SystemZAsmParser::parseOperand(OperandVector &Operands,
   // a context-dependent parse routine, which gives the required register
   // class.  The code is here to mop up other cases, like those where
   // the instruction isn't recognized.
-  if (Parser.getTok().is(AsmToken::Percent)) {
+  if (isParsingATT() && Parser.getTok().is(AsmToken::Percent)) {
     Register Reg;
     if (parseRegister(Reg))
       return true;
@@ -1522,6 +1542,10 @@ SystemZAsmParser::parsePCRel(OperandVector &Operands, int64_t MinVal,
   // For consistency with the GNU assembler, treat immediates as offsets
   // from ".".
   if (auto *CE = dyn_cast<MCConstantExpr>(Expr)) {
+    if (isParsingHLASM()) {
+      Error(StartLoc, "Expected PC-relative expression");
+      return MatchOperand_ParseFail;
+    }
     if (isOutOfRangeConstant(CE)) {
       Error(StartLoc, "offset out of range");
       return MatchOperand_ParseFail;
@@ -1592,6 +1616,47 @@ SystemZAsmParser::parsePCRel(OperandVector &Operands, int64_t MinVal,
     Operands.push_back(SystemZOperand::createImm(Expr, StartLoc, EndLoc));
 
   return MatchOperand_Success;
+}
+
+bool SystemZAsmParser::isLabel(AsmToken &Token) {
+  if (isParsingATT())
+    return true;
+
+  // HLASM labels are ordinary symbols.
+  // An HLASM label always starts at column 1.
+  // An ordinary symbol syntax is laid out as follows:
+  // Rules:
+  // 1. Has to start with an "alphabetic character". Can be followed by up to
+  //    62 alphanumeric characters. An "alphabetic character", in this scenario,
+  //    is a letter from 'A' through 'Z', or from 'a' through 'z',
+  //    or '$', '_', '#', or '@'
+  // 2. Labels are case-insensitive. E.g. "lab123", "LAB123", "lAb123", etc.
+  //    are all treated as the same symbol. However, the processing for the case
+  //    folding will not be done in this function.
+  StringRef RawLabel = Token.getString();
+  SMLoc Loc = Token.getLoc();
+
+  // An HLASM label cannot be empty.
+  if (!RawLabel.size())
+    return !Error(Loc, "HLASM Label cannot be empty");
+
+  // An HLASM label cannot exceed greater than 63 characters.
+  if (RawLabel.size() > 63)
+    return !Error(Loc, "Maximum length for HLASM Label is 63 characters");
+
+  // A label must start with an "alphabetic character".
+  if (!isHLASMAlpha(RawLabel[0]))
+    return !Error(Loc, "HLASM Label has to start with an alphabetic "
+                       "character or the underscore character");
+
+  // Now, we've established that the length is valid
+  // and the first character is alphabetic.
+  // Check whether remaining string is alphanumeric.
+  for (unsigned I = 1; I < RawLabel.size(); ++I)
+    if (!isHLASMAlnum(RawLabel[I]))
+      return !Error(Loc, "HLASM Label has to be alphanumeric");
+
+  return true;
 }
 
 // Force static initialization.

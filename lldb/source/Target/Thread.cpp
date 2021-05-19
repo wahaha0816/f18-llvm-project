@@ -1229,7 +1229,7 @@ Status Thread::UnwindInnermostExpression() {
   return error;
 }
 
-ThreadPlanSP Thread::QueueFundamentalPlan(bool abort_other_plans) {
+ThreadPlanSP Thread::QueueBasePlan(bool abort_other_plans) {
   ThreadPlanSP thread_plan_sp(new ThreadPlanBase(*this));
   QueueThreadPlan(thread_plan_sp, abort_other_plans);
   return thread_plan_sp;
@@ -1679,12 +1679,20 @@ std::string Thread::StopReasonAsString(lldb::StopReason reason) {
     return "exception";
   case eStopReasonExec:
     return "exec";
+  case eStopReasonFork:
+    return "fork";
+  case eStopReasonVFork:
+    return "vfork";
+  case eStopReasonVForkDone:
+    return "vfork done";
   case eStopReasonPlanComplete:
     return "plan complete";
   case eStopReasonThreadExiting:
     return "thread exiting";
   case eStopReasonInstrumentation:
     return "instrumentation break";
+  case eStopReasonProcessorTrace:
+    return "processor trace";
   }
 
   return "StopReason = " + std::to_string(reason);

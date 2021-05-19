@@ -77,6 +77,7 @@
 #include "llvm/Analysis/ScalarEvolutionNormalization.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/Analysis/ValueTracking.h"
 #include "llvm/Config/llvm-config.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constant.h"
@@ -1008,9 +1009,9 @@ static bool isAMCompletelyFolded(const TargetTransformInfo &TTI,
                                  const LSRUse &LU, const Formula &F);
 
 // Get the cost of the scaling factor used in F for LU.
-static unsigned getScalingFactorCost(const TargetTransformInfo &TTI,
-                                     const LSRUse &LU, const Formula &F,
-                                     const Loop &L);
+static InstructionCost getScalingFactorCost(const TargetTransformInfo &TTI,
+                                            const LSRUse &LU, const Formula &F,
+                                            const Loop &L);
 
 namespace {
 
@@ -1359,7 +1360,7 @@ void Cost::RateFormula(const Formula &F,
   C.NumBaseAdds += (F.UnfoldedOffset != 0);
 
   // Accumulate non-free scaling amounts.
-  C.ScaleCost += getScalingFactorCost(*TTI, LU, F, *L);
+  C.ScaleCost += *getScalingFactorCost(*TTI, LU, F, *L).getValue();
 
   // Tally up the non-zero immediates.
   for (const LSRFixup &Fixup : LU.Fixups) {
@@ -1756,9 +1757,9 @@ static bool isAMCompletelyFolded(const TargetTransformInfo &TTI,
                               F.Scale);
 }
 
-static unsigned getScalingFactorCost(const TargetTransformInfo &TTI,
-                                     const LSRUse &LU, const Formula &F,
-                                     const Loop &L) {
+static InstructionCost getScalingFactorCost(const TargetTransformInfo &TTI,
+                                            const LSRUse &LU, const Formula &F,
+                                            const Loop &L) {
   if (!F.Scale)
     return 0;
 
@@ -1771,14 +1772,14 @@ static unsigned getScalingFactorCost(const TargetTransformInfo &TTI,
   switch (LU.Kind) {
   case LSRUse::Address: {
     // Check the scaling factor cost with both the min and max offsets.
-    int ScaleCostMinOffset = TTI.getScalingFactorCost(
+    InstructionCost ScaleCostMinOffset = TTI.getScalingFactorCost(
         LU.AccessTy.MemTy, F.BaseGV, F.BaseOffset + LU.MinOffset, F.HasBaseReg,
         F.Scale, LU.AccessTy.AddrSpace);
-    int ScaleCostMaxOffset = TTI.getScalingFactorCost(
+    InstructionCost ScaleCostMaxOffset = TTI.getScalingFactorCost(
         LU.AccessTy.MemTy, F.BaseGV, F.BaseOffset + LU.MaxOffset, F.HasBaseReg,
         F.Scale, LU.AccessTy.AddrSpace);
 
-    assert(ScaleCostMinOffset >= 0 && ScaleCostMaxOffset >= 0 &&
+    assert(ScaleCostMinOffset.isValid() && ScaleCostMaxOffset.isValid() &&
            "Legal addressing mode has an illegal cost!");
     return std::max(ScaleCostMinOffset, ScaleCostMaxOffset);
   }
@@ -2346,6 +2347,7 @@ ICmpInst *LSRInstance::OptimizeMax(ICmpInst *Cond, IVStrideUse* &CondUse) {
     new ICmpInst(Cond, Pred, Cond->getOperand(0), NewRHS, "scmp");
 
   // Delete the max calculation instructions.
+  NewCond->setDebugLoc(Cond->getDebugLoc());
   Cond->replaceAllUsesWith(NewCond);
   CondUse->setUser(NewCond);
   Instruction *Cmp = cast<Instruction>(Sel->getOperand(0));
@@ -3429,6 +3431,9 @@ LSRInstance::CollectLoopInvariantFixupsAndFormulae() {
         // Ignore non-instructions.
         if (!UserInst)
           continue;
+        // Don't bother if the instruction is an EHPad.
+        if (UserInst->isEHPad())
+          continue;
         // Ignore instructions in other functions (as can happen with
         // Constants).
         if (UserInst->getParent()->getParent() != L->getHeader()->getParent())
@@ -3788,8 +3793,7 @@ void LSRInstance::GenerateConstantOffsetsImpl(
     Formula F = Base;
     F.BaseOffset = (uint64_t)Base.BaseOffset - Offset;
 
-    if (isLegalUse(TTI, LU.MinOffset - Offset, LU.MaxOffset - Offset, LU.Kind,
-                   LU.AccessTy, F)) {
+    if (isLegalUse(TTI, LU.MinOffset, LU.MaxOffset, LU.Kind, LU.AccessTy, F)) {
       // Add the offset to the base register.
       const SCEV *NewG = SE.getAddExpr(SE.getConstant(G->getType(), Offset), G);
       // If it cancelled out, drop the base register, otherwise update it.
@@ -5561,6 +5565,50 @@ void LSRInstance::ImplementSolution(
 
   Changed |= RecursivelyDeleteTriviallyDeadInstructionsPermissive(DeadInsts,
                                                                   &TLI, MSSAU);
+
+  // In our cost analysis above, we assume that each addrec consumes exactly
+  // one register, and arrange to have increments inserted just before the
+  // latch to maximimize the chance this is true.  However, if we reused
+  // existing IVs, we now need to move the increments to match our
+  // expectations.  Otherwise, our cost modeling results in us having a
+  // chosen a non-optimal result for the actual schedule.  (And yes, this
+  // scheduling decision does impact later codegen.)
+  for (PHINode &PN : L->getHeader()->phis()) {
+    BinaryOperator *BO = nullptr;
+    Value *Start = nullptr, *Step = nullptr;
+    if (!matchSimpleRecurrence(&PN, BO, Start, Step))
+      continue;
+
+    switch (BO->getOpcode()) {
+    case Instruction::Sub:
+      if (BO->getOperand(0) != &PN)
+        // sub is non-commutative - match handling elsewhere in LSR
+        continue;
+      break;
+    case Instruction::Add:
+      break;
+    default:
+      continue;
+    };
+
+    if (!isa<Constant>(Step))
+      // If not a constant step, might increase register pressure
+      // (We assume constants have been canonicalized to RHS)
+      continue;
+
+    if (BO->getParent() == IVIncInsertPos->getParent())
+      // Only bother moving across blocks.  Isel can handle block local case.
+      continue;
+
+    // Can we legally schedule inc at the desired point?
+    if (!llvm::all_of(BO->uses(),
+                      [&](Use &U) {return DT.dominates(IVIncInsertPos, U);}))
+      continue;
+    BO->moveBefore(IVIncInsertPos);
+    Changed = true;
+  }
+
+
 }
 
 LSRInstance::LSRInstance(Loop *L, IVUsers &IU, ScalarEvolution &SE,
@@ -5781,59 +5829,85 @@ void LoopStrengthReduce::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addPreserved<MemorySSAWrapperPass>();
 }
 
-using EqualValues = SmallVector<std::tuple<WeakVH, int64_t, DIExpression *>, 4>;
-using EqualValuesMap = DenseMap<DbgValueInst *, EqualValues>;
+using EqualValues = SmallVector<std::tuple<WeakVH, int64_t>, 4>;
+using EqualValuesMap =
+    DenseMap<DbgValueInst *, SmallVector<std::pair<unsigned, EqualValues>>>;
+using LocationMap =
+    DenseMap<DbgValueInst *, std::pair<DIExpression *, Metadata *>>;
 
 static void DbgGatherEqualValues(Loop *L, ScalarEvolution &SE,
-                                 EqualValuesMap &DbgValueToEqualSet) {
+                                 EqualValuesMap &DbgValueToEqualSet,
+                                 LocationMap &DbgValueToLocation) {
   for (auto &B : L->getBlocks()) {
     for (auto &I : *B) {
       auto DVI = dyn_cast<DbgValueInst>(&I);
       if (!DVI)
         continue;
-      auto V = DVI->getVariableLocation();
-      if (!V || !SE.isSCEVable(V->getType()))
-        continue;
-      auto DbgValueSCEV = SE.getSCEV(V);
-      EqualValues EqSet;
-      for (PHINode &Phi : L->getHeader()->phis()) {
-        if (V->getType() != Phi.getType())
+      for (unsigned Idx = 0; Idx < DVI->getNumVariableLocationOps(); ++Idx) {
+        // TODO: We can duplicate results if the same arg appears more than
+        // once.
+        Value *V = DVI->getVariableLocationOp(Idx);
+        if (!V || !SE.isSCEVable(V->getType()))
           continue;
-        if (!SE.isSCEVable(Phi.getType()))
-          continue;
-        auto PhiSCEV = SE.getSCEV(&Phi);
-        Optional<APInt> Offset =
-                SE.computeConstantDifference(DbgValueSCEV, PhiSCEV);
-        if (Offset && Offset->getMinSignedBits() <= 64)
-          EqSet.emplace_back(std::make_tuple(
-              &Phi, Offset.getValue().getSExtValue(), DVI->getExpression()));
+        auto DbgValueSCEV = SE.getSCEV(V);
+        EqualValues EqSet;
+        for (PHINode &Phi : L->getHeader()->phis()) {
+          if (V->getType() != Phi.getType())
+            continue;
+          if (!SE.isSCEVable(Phi.getType()))
+            continue;
+          auto PhiSCEV = SE.getSCEV(&Phi);
+          Optional<APInt> Offset =
+              SE.computeConstantDifference(DbgValueSCEV, PhiSCEV);
+          if (Offset && Offset->getMinSignedBits() <= 64)
+            EqSet.emplace_back(
+                std::make_tuple(&Phi, Offset.getValue().getSExtValue()));
+        }
+        DbgValueToEqualSet[DVI].push_back({Idx, std::move(EqSet)});
+        // If we fall back to using this raw location, at least one location op
+        // must be dead. A DIArgList will automatically undef arguments when
+        // they become unavailable, but a ValueAsMetadata will not; since we
+        // know the value should be undef, we use the undef value directly here.
+        Metadata *RawLocation =
+            DVI->hasArgList() ? DVI->getRawLocation()
+                              : ValueAsMetadata::get(UndefValue::get(
+                                    DVI->getVariableLocationOp(0)->getType()));
+        DbgValueToLocation[DVI] = {DVI->getExpression(), RawLocation};
       }
-      DbgValueToEqualSet[DVI] = std::move(EqSet);
     }
   }
 }
 
-static void DbgApplyEqualValues(EqualValuesMap &DbgValueToEqualSet) {
+static void DbgApplyEqualValues(EqualValuesMap &DbgValueToEqualSet,
+                                LocationMap &DbgValueToLocation) {
   for (auto A : DbgValueToEqualSet) {
-    auto DVI = A.first;
+    auto *DVI = A.first;
     // Only update those that are now undef.
-    if (!isa_and_nonnull<UndefValue>(DVI->getVariableLocation()))
+    if (!DVI->isUndef())
       continue;
-    for (auto EV : A.second) {
-      auto V = std::get<WeakVH>(EV);
-      if (!V)
-        continue;
-      auto DbgDIExpr = std::get<DIExpression *>(EV);
-      auto Offset = std::get<int64_t>(EV);
-      auto &Ctx = DVI->getContext();
-      DVI->setOperand(0, MetadataAsValue::get(Ctx, ValueAsMetadata::get(V)));
-      if (Offset) {
-        SmallVector<uint64_t, 8> Ops;
-        DIExpression::appendOffset(Ops, Offset);
-        DbgDIExpr = DIExpression::prependOpcodes(DbgDIExpr, Ops, true);
+    // The dbg.value may have had its value or expression changed during LSR by
+    // a failed salvage attempt; refresh them from the map.
+    auto *DbgDIExpr = DbgValueToLocation[DVI].first;
+    DVI->setRawLocation(DbgValueToLocation[DVI].second);
+    DVI->setExpression(DbgDIExpr);
+    assert(DVI->isUndef() && "dbg.value with non-undef location should not "
+                             "have been modified by LSR.");
+    for (auto IdxEV : A.second) {
+      unsigned Idx = IdxEV.first;
+      for (auto EV : IdxEV.second) {
+        auto EVHandle = std::get<WeakVH>(EV);
+        if (!EVHandle)
+          continue;
+        int64_t Offset = std::get<int64_t>(EV);
+        DVI->replaceVariableLocationOp(Idx, EVHandle);
+        if (Offset) {
+          SmallVector<uint64_t, 8> Ops;
+          DIExpression::appendOffset(Ops, Offset);
+          DbgDIExpr = DIExpression::appendOpsToArg(DbgDIExpr, Ops, Idx, true);
+        }
+        DVI->setExpression(DbgDIExpr);
+        break;
       }
-      DVI->setOperand(2, MetadataAsValue::get(Ctx, DbgDIExpr));
-      break;
     }
   }
 }
@@ -5856,7 +5930,8 @@ static bool ReduceLoopStrength(Loop *L, IVUsers &IU, ScalarEvolution &SE,
   // Debug preservation - before we start removing anything create equivalence
   // sets for the llvm.dbg.value intrinsics.
   EqualValuesMap DbgValueToEqualSet;
-  DbgGatherEqualValues(L, SE, DbgValueToEqualSet);
+  LocationMap DbgValueToLocation;
+  DbgGatherEqualValues(L, SE, DbgValueToEqualSet, DbgValueToLocation);
 
   // Remove any extra phis created by processing inner loops.
   Changed |= DeleteDeadPHIs(L->getHeader(), &TLI, MSSAU.get());
@@ -5876,7 +5951,7 @@ static bool ReduceLoopStrength(Loop *L, IVUsers &IU, ScalarEvolution &SE,
     }
   }
 
-  DbgApplyEqualValues(DbgValueToEqualSet);
+  DbgApplyEqualValues(DbgValueToEqualSet, DbgValueToLocation);
 
   return Changed;
 }

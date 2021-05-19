@@ -53,13 +53,13 @@
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/ModuleSlotTracker.h"
 #include "llvm/IR/ModuleSummaryIndex.h"
 #include "llvm/IR/Operator.h"
-#include "llvm/IR/Statepoint.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/TypeFinder.h"
 #include "llvm/IR/Use.h"
@@ -388,6 +388,7 @@ static void PrintCallingConv(unsigned cc, raw_ostream &Out) {
   case CallingConv::SPIR_FUNC:     Out << "spir_func"; break;
   case CallingConv::SPIR_KERNEL:   Out << "spir_kernel"; break;
   case CallingConv::Swift:         Out << "swiftcc"; break;
+  case CallingConv::SwiftTail:     Out << "swifttailcc"; break;
   case CallingConv::X86_INTR:      Out << "x86_intrcc"; break;
   case CallingConv::HHVM:          Out << "hhvmcc"; break;
   case CallingConv::HHVM_C:        Out << "hhvm_ccc"; break;
@@ -651,6 +652,12 @@ void TypePrinting::print(Type *Ty, raw_ostream &OS) {
   }
   case Type::PointerTyID: {
     PointerType *PTy = cast<PointerType>(Ty);
+    if (PTy->isOpaque()) {
+      OS << "ptr";
+      if (unsigned AddressSpace = PTy->getAddressSpace())
+        OS << " addrspace(" << AddressSpace << ')';
+      return;
+    }
     print(PTy->getElementType(), OS);
     if (unsigned AddressSpace = PTy->getAddressSpace())
       OS << " addrspace(" << AddressSpace << ')';
@@ -1239,8 +1246,9 @@ void SlotTracker::CreateFunctionSlot(const Value *V) {
 void SlotTracker::CreateMetadataSlot(const MDNode *N) {
   assert(N && "Can't insert a null Value into SlotTracker!");
 
-  // Don't make slots for DIExpressions. We just print them inline everywhere.
-  if (isa<DIExpression>(N))
+  // Don't make slots for DIExpressions or DIArgLists. We just print them inline
+  // everywhere.
+  if (isa<DIExpression>(N) || isa<DIArgList>(N))
     return;
 
   unsigned DestSlot = mdnNext;
@@ -1888,11 +1896,14 @@ static void writeDISubrange(raw_ostream &Out, const DISubrange *N,
                             const Module *Context) {
   Out << "!DISubrange(";
   MDFieldPrinter Printer(Out, TypePrinter, Machine, Context);
-  if (auto *CE = N->getCount().dyn_cast<ConstantInt*>())
-    Printer.printInt("count", CE->getSExtValue(), /* ShouldSkipZero */ false);
-  else
-    Printer.printMetadata("count", N->getCount().dyn_cast<DIVariable *>(),
-                          /*ShouldSkipNull */ true);
+
+  auto *Count = N->getRawCountNode();
+  if (auto *CE = dyn_cast_or_null<ConstantAsMetadata>(Count)) {
+    auto *CV = cast<ConstantInt>(CE->getValue());
+    Printer.printInt("count", CV->getSExtValue(),
+                     /* ShouldSkipZero */ false);
+  } else
+    Printer.printMetadata("count", Count, /*ShouldSkipNull */ true);
 
   // A lowerBound of constant 0 should not be skipped, since it is different
   // from an unspecified lower bound (= nullptr).
@@ -1931,7 +1942,10 @@ static void writeDIGenericSubrange(raw_ostream &Out, const DIGenericSubrange *N,
 
   auto IsConstant = [&](Metadata *Bound) -> bool {
     if (auto *BE = dyn_cast_or_null<DIExpression>(Bound)) {
-      return BE->isSignedConstant();
+      return BE->isConstant()
+                 ? DIExpression::SignedOrUnsignedConstant::SignedConstant ==
+                       *BE->isConstant()
+                 : false;
     }
     return false;
   };
@@ -2351,6 +2365,21 @@ static void writeDIExpression(raw_ostream &Out, const DIExpression *N,
   Out << ")";
 }
 
+static void writeDIArgList(raw_ostream &Out, const DIArgList *N,
+                           TypePrinting *TypePrinter, SlotTracker *Machine,
+                           const Module *Context, bool FromValue = false) {
+  assert(FromValue &&
+         "Unexpected DIArgList metadata outside of value argument");
+  Out << "!DIArgList(";
+  FieldSeparator FS;
+  MDFieldPrinter Printer(Out, TypePrinter, Machine, Context);
+  for (Metadata *Arg : N->getArgs()) {
+    Out << FS;
+    WriteAsOperandInternal(Out, Arg, TypePrinter, Machine, Context, true);
+  }
+  Out << ")";
+}
+
 static void writeDIGlobalVariableExpression(raw_ostream &Out,
                                             const DIGlobalVariableExpression *N,
                                             TypePrinting *TypePrinter,
@@ -2439,6 +2468,8 @@ static void WriteAsOperandInternal(raw_ostream &Out, const Value *V,
     // We don't emit the AD_ATT dialect as it's the assumed default.
     if (IA->getDialect() == InlineAsm::AD_Intel)
       Out << "inteldialect ";
+    if (IA->canThrow())
+      Out << "unwind ";
     Out << '"';
     printEscapedString(IA->getAsmString(), Out);
     Out << "\", \"";
@@ -2496,10 +2527,14 @@ static void WriteAsOperandInternal(raw_ostream &Out, const Metadata *MD,
                                    TypePrinting *TypePrinter,
                                    SlotTracker *Machine, const Module *Context,
                                    bool FromValue) {
-  // Write DIExpressions inline when used as a value. Improves readability of
-  // debug info intrinsics.
+  // Write DIExpressions and DIArgLists inline when used as a value. Improves
+  // readability of debug info intrinsics.
   if (const DIExpression *Expr = dyn_cast<DIExpression>(MD)) {
     writeDIExpression(Out, Expr, TypePrinter, Machine, Context);
+    return;
+  }
+  if (const DIArgList *ArgList = dyn_cast<DIArgList>(MD)) {
+    writeDIArgList(Out, ArgList, TypePrinter, Machine, Context, FromValue);
     return;
   }
 
@@ -3427,6 +3462,8 @@ void AssemblyWriter::printNamedMDNode(const NamedMDNode *NMD) {
     // Write DIExpressions inline.
     // FIXME: Ban DIExpressions in NamedMDNodes, they will serve no purpose.
     MDNode *Op = NMD->getOperand(i);
+    assert(!isa<DIArgList>(Op) &&
+           "DIArgLists should not appear in NamedMDNodes");
     if (auto *Expr = dyn_cast<DIExpression>(Op)) {
       writeDIExpression(Out, Expr, nullptr, nullptr, nullptr);
       continue;
@@ -3822,7 +3859,7 @@ void AssemblyWriter::printArgument(const Argument *Arg, AttributeSet Attrs) {
 /// printBasicBlock - This member is called for each basic block in a method.
 void AssemblyWriter::printBasicBlock(const BasicBlock *BB) {
   assert(BB && BB->getParent() && "block without parent!");
-  bool IsEntryBlock = BB == &BB->getParent()->getEntryBlock();
+  bool IsEntryBlock = BB->isEntryBlock();
   if (BB->hasName()) {              // Print out the label if it exists...
     Out << "\n";
     PrintLLVMName(Out, BB->getName(), LabelPrefix);
@@ -4373,9 +4410,8 @@ void AssemblyWriter::writeMDNode(unsigned Slot, const MDNode *Node) {
 void AssemblyWriter::writeAllMDNodes() {
   SmallVector<const MDNode *, 16> Nodes;
   Nodes.resize(Machine.mdn_size());
-  for (SlotTracker::mdn_iterator I = Machine.mdn_begin(), E = Machine.mdn_end();
-       I != E; ++I)
-    Nodes[I->second] = cast<MDNode>(I->first);
+  for (auto &I : llvm::make_range(Machine.mdn_begin(), Machine.mdn_end()))
+    Nodes[I.second] = cast<MDNode>(I.first);
 
   for (unsigned i = 0, e = Nodes.size(); i != e; ++i) {
     writeMDNode(i, Nodes[i]);
@@ -4392,20 +4428,18 @@ void AssemblyWriter::writeAttribute(const Attribute &Attr, bool InAttrGroup) {
     return;
   }
 
-  assert((Attr.hasAttribute(Attribute::ByVal) ||
-          Attr.hasAttribute(Attribute::StructRet) ||
-          Attr.hasAttribute(Attribute::ByRef) ||
-          Attr.hasAttribute(Attribute::Preallocated)) &&
-         "unexpected type attr");
-
   if (Attr.hasAttribute(Attribute::ByVal)) {
     Out << "byval";
   } else if (Attr.hasAttribute(Attribute::StructRet)) {
     Out << "sret";
   } else if (Attr.hasAttribute(Attribute::ByRef)) {
     Out << "byref";
-  } else {
+  } else if (Attr.hasAttribute(Attribute::Preallocated)) {
     Out << "preallocated";
+  } else if (Attr.hasAttribute(Attribute::InAlloca)) {
+    Out << "inalloca";
+  } else {
+    llvm_unreachable("unexpected type attr");
   }
 
   if (Type *Ty = Attr.getValueAsType()) {
@@ -4698,7 +4732,7 @@ static void printMetadataImpl(raw_ostream &ROS, const Metadata &MD,
                          /* FromValue */ true);
 
   auto *N = dyn_cast<MDNode>(&MD);
-  if (OnlyAsOperand || !N || isa<DIExpression>(MD))
+  if (OnlyAsOperand || !N || isa<DIExpression>(MD) || isa<DIArgList>(MD))
     return;
 
   OS << " = ";

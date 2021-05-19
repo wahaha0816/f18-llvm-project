@@ -1261,7 +1261,7 @@ std::optional<SpecificCall> IntrinsicInterface::Match(
         }
       } else {
         // NULL(), procedure, or procedure pointer
-        CHECK(IsProcedurePointer(expr));
+        CHECK(IsProcedurePointerTarget(expr));
         if (d.typePattern.kindCode == KindCode::addressable ||
             d.rank == Rank::reduceOperation) {
           continue;
@@ -1857,7 +1857,7 @@ SpecificCall IntrinsicProcTable::Implementation::HandleNull(
       if (IsAllocatableOrPointer(*mold)) {
         characteristics::DummyArguments args;
         std::optional<characteristics::FunctionResult> fResult;
-        if (IsProcedurePointer(*mold)) {
+        if (IsProcedurePointerTarget(*mold)) {
           // MOLD= procedure pointer
           const Symbol *last{GetLastSymbol(*mold)};
           CHECK(last);

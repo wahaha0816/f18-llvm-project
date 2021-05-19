@@ -72,19 +72,12 @@ hostrpc_assign_buffer(hsa_agent_t, hsa_queue_t *, uint32_t device_id) {
 
 int print_kernel_trace;
 
-// Size of the target call stack struture
-uint32_t TgtStackItemSize = 0;
-
 #undef check // Drop definition from internal.h
 #ifdef OMPTARGET_DEBUG
 #define check(msg, status)                                                     \
   if (status != ATMI_STATUS_SUCCESS) {                                         \
-    /* fprintf(stderr, "[%s:%d] %s failed.\n", __FILE__, __LINE__, #msg);*/    \
     DP(#msg " failed\n");                                                      \
-    /*assert(0);*/                                                             \
   } else {                                                                     \
-    /* fprintf(stderr, "[%s:%d] %s succeeded.\n", __FILE__, __LINE__, #msg);   \
-     */                                                                        \
     DP(#msg " succeeded\n");                                                   \
   }
 #else
@@ -124,7 +117,11 @@ public:
     if (kernarg_region) {
       auto r = hsa_amd_memory_pool_free(kernarg_region);
       assert(r == HSA_STATUS_SUCCESS);
-      ErrorCheck(Memory pool free, r);
+      if (r != HSA_STATUS_SUCCESS) {
+        printf("[%s:%d] %s failed: %s\n", __FILE__, __LINE__,
+               "Memory pool free", get_error_string(r));
+        exit(1);
+      }
     }
   }
 
@@ -143,7 +140,12 @@ public:
           atl_gpu_kernarg_pools[0],
           kernarg_size_including_implicit() * MAX_NUM_KERNELS, 0,
           &kernarg_region);
-      ErrorCheck(Allocating memory for the executable-kernel, err);
+      if (err != HSA_STATUS_SUCCESS) {
+        printf("[%s:%d] %s failed: %s\n", __FILE__, __LINE__,
+               "Allocating memory for the executable-kernel",
+               get_error_string(err));
+        exit(1);
+      }
       core::allow_access_to_all_gpu_agents(kernarg_region);
 
       for (int i = 0; i < MAX_NUM_KERNELS; i++) {
@@ -275,21 +277,18 @@ static void callbackQueue(hsa_status_t status, hsa_queue_t *source,
 }
 
 namespace core {
+namespace {
 void packet_store_release(uint32_t *packet, uint16_t header, uint16_t rest) {
   __atomic_store_n(packet, header | (rest << 16), __ATOMIC_RELEASE);
 }
 
-uint16_t create_header(hsa_packet_type_t type, int barrier,
-                       atmi_task_fence_scope_t acq_fence,
-                       atmi_task_fence_scope_t rel_fence) {
-  uint16_t header = type << HSA_PACKET_HEADER_TYPE;
-  header |= barrier << HSA_PACKET_HEADER_BARRIER;
-  header |= (hsa_fence_scope_t) static_cast<int>(
-      acq_fence << HSA_PACKET_HEADER_ACQUIRE_FENCE_SCOPE);
-  header |= (hsa_fence_scope_t) static_cast<int>(
-      rel_fence << HSA_PACKET_HEADER_RELEASE_FENCE_SCOPE);
+uint16_t create_header() {
+  uint16_t header = HSA_PACKET_TYPE_KERNEL_DISPATCH << HSA_PACKET_HEADER_TYPE;
+  header |= HSA_FENCE_SCOPE_SYSTEM << HSA_PACKET_HEADER_ACQUIRE_FENCE_SCOPE;
+  header |= HSA_FENCE_SCOPE_SYSTEM << HSA_PACKET_HEADER_RELEASE_FENCE_SCOPE;
   return header;
 }
+} // namespace
 } // namespace core
 
 /// Class containing all the device information
@@ -328,6 +327,8 @@ public:
 
   // Resource pools
   SignalPoolT FreeSignalPool;
+
+  std::vector<hsa_executable_t> HSAExecutables;
 
   struct atmiFreePtrDeletor {
     void operator()(void *p) {
@@ -479,7 +480,12 @@ public:
         hsa_status_t err;
         err = hsa_agent_get_info(HSAAgents[i], HSA_AGENT_INFO_QUEUE_MAX_SIZE,
                                  &queue_size);
-        ErrorCheck(Querying the agent maximum queue size, err);
+        if (err != HSA_STATUS_SUCCESS) {
+          printf("[%s:%d] %s failed: %s\n", __FILE__, __LINE__,
+                 "Querying the agent maximum queue size",
+                 get_error_string(err));
+          exit(1);
+        }
         if (queue_size > core::Runtime::getInstance().getMaxQueueSize()) {
           queue_size = core::Runtime::getInstance().getMaxQueueSize();
         }
@@ -534,6 +540,18 @@ public:
     RequiresFlags = OMP_REQ_UNDEFINED;
   }
 
+  void DestroyHSAExecutables() {
+    hsa_status_t Err;
+    for (uint32_t I = 0; I < HSAExecutables.size(); I++) {
+      Err = hsa_executable_destroy(HSAExecutables[I]);
+      if (Err != HSA_STATUS_SUCCESS) {
+        printf("[%s:%d] %s failed: %s\n", __FILE__, __LINE__,
+               "Destroying executable", get_error_string(Err));
+        return;
+      }
+    }
+  }
+
   ~RTLDeviceInfoTy() {
     DP("Finalizing the HSA-ATMI DeviceInfo.\n");
     // Run destructors on types that use HSA before
@@ -542,6 +560,8 @@ public:
     KernelArgPoolMap.clear();
     // Terminate hostrpc before finalizing ATMI
     hostrpc_terminate();
+
+    DestroyHSAExecutables();
     atmi_finalize();
   }
 };
@@ -561,8 +581,8 @@ static RTLDeviceInfoTy DeviceInfo;
 namespace {
 
 int32_t dataRetrieve(int32_t DeviceId, void *HstPtr, void *TgtPtr, int64_t Size,
-                     __tgt_async_info *AsyncInfoPtr) {
-  assert(AsyncInfoPtr && "AsyncInfoPtr is nullptr");
+                     __tgt_async_info *AsyncInfo) {
+  assert(AsyncInfo && "AsyncInfo is nullptr");
   assert(DeviceId < DeviceInfo.NumberOfDevices && "Device ID too large");
   // Return success if we are not copying back to host from target.
   if (!HstPtr)
@@ -588,8 +608,8 @@ int32_t dataRetrieve(int32_t DeviceId, void *HstPtr, void *TgtPtr, int64_t Size,
 }
 
 int32_t dataSubmit(int32_t DeviceId, void *TgtPtr, void *HstPtr, int64_t Size,
-                   __tgt_async_info *AsyncInfoPtr) {
-  assert(AsyncInfoPtr && "AsyncInfoPtr is nullptr");
+                   __tgt_async_info *AsyncInfo) {
+  assert(AsyncInfo && "AsyncInfo is nullptr");
   atmi_status_t err;
   assert(DeviceId < DeviceInfo.NumberOfDevices && "Device ID too large");
   // Return success if we are not doing host to target.
@@ -622,20 +642,20 @@ int32_t dataSubmit(int32_t DeviceId, void *TgtPtr, void *HstPtr, int64_t Size,
 // there are no outstanding kernels that need to be synchronized. Any async call
 // may be passed a Queue==0, at which point the cuda implementation will set it
 // to non-null (see getStream). The cuda streams are per-device. Upstream may
-// change this interface to explicitly initialize the async_info_pointer, but
+// change this interface to explicitly initialize the AsyncInfo_pointer, but
 // until then hsa lazily initializes it as well.
 
-void initAsyncInfoPtr(__tgt_async_info *async_info_ptr) {
+void initAsyncInfo(__tgt_async_info *AsyncInfo) {
   // set non-null while using async calls, return to null to indicate completion
-  assert(async_info_ptr);
-  if (!async_info_ptr->Queue) {
-    async_info_ptr->Queue = reinterpret_cast<void *>(UINT64_MAX);
+  assert(AsyncInfo);
+  if (!AsyncInfo->Queue) {
+    AsyncInfo->Queue = reinterpret_cast<void *>(UINT64_MAX);
   }
 }
-void finiAsyncInfoPtr(__tgt_async_info *async_info_ptr) {
-  assert(async_info_ptr);
-  assert(async_info_ptr->Queue);
-  async_info_ptr->Queue = 0;
+void finiAsyncInfo(__tgt_async_info *AsyncInfo) {
+  assert(AsyncInfo);
+  assert(AsyncInfo->Queue);
+  AsyncInfo->Queue = 0;
 }
 
 bool elf_machine_id_is_amdgcn(__tgt_device_image *image) {
@@ -967,15 +987,16 @@ atmi_status_t interop_get_symbol_info(char *base, size_t img_size,
 }
 
 template <typename C>
-atmi_status_t module_register_from_memory_to_place(void *module_bytes,
-                                                   size_t module_size,
-                                                   atmi_place_t place, C cb) {
+atmi_status_t module_register_from_memory_to_place(
+    void *module_bytes, size_t module_size, atmi_place_t place, C cb,
+    std::vector<hsa_executable_t> &HSAExecutables) {
   auto L = [](void *data, size_t size, void *cb_state) -> atmi_status_t {
     C *unwrapped = static_cast<C *>(cb_state);
     return (*unwrapped)(data, size);
   };
-  return atmi_module_register_from_memory_to_place(
-      module_bytes, module_size, place, L, static_cast<void *>(&cb));
+  return core::Runtime::RegisterModuleFromMemory(
+      module_bytes, module_size, place, L, static_cast<void *>(&cb),
+      HSAExecutables);
 }
 } // namespace
 
@@ -1176,9 +1197,8 @@ __tgt_target_table *__tgt_rtl_load_binary_locked(int32_t device_id,
 
     atmi_status_t err = module_register_from_memory_to_place(
         (void *)image->ImageStart, img_size, get_gpu_place(device_id),
-        [&](void *data, size_t size) {
-          return env.before_loading(data, size);
-        });
+        [&](void *data, size_t size) { return env.before_loading(data, size); },
+        DeviceInfo.HSAExecutables);
 
     check("Module registering", err);
     if (err != ATMI_STATUS_SUCCESS) {
@@ -1488,9 +1508,16 @@ __tgt_target_table *__tgt_rtl_load_binary_locked(int32_t device_id,
   return DeviceInfo.getOffloadEntriesTable(device_id);
 }
 
-void *__tgt_rtl_data_alloc(int device_id, int64_t size, void *) {
+void *__tgt_rtl_data_alloc(int device_id, int64_t size, void *, int32_t kind) {
   void *ptr = NULL;
   assert(device_id < DeviceInfo.NumberOfDevices && "Device ID too large");
+
+  if (kind != TARGET_ALLOC_DEFAULT) {
+    REPORT("Invalid target data allocation kind or requested allocator not "
+           "implemented yet\n");
+    return NULL;
+  }
+
   atmi_status_t err = atmi_malloc(&ptr, size, get_gpu_mem_place(device_id));
   DP("Tgt alloc data %ld bytes, (tgt:%016llx).\n", size,
      (long long unsigned)(Elf64_Addr)ptr);
@@ -1501,21 +1528,20 @@ void *__tgt_rtl_data_alloc(int device_id, int64_t size, void *) {
 int32_t __tgt_rtl_data_submit(int device_id, void *tgt_ptr, void *hst_ptr,
                               int64_t size) {
   assert(device_id < DeviceInfo.NumberOfDevices && "Device ID too large");
-  __tgt_async_info async_info;
-  int32_t rc = dataSubmit(device_id, tgt_ptr, hst_ptr, size, &async_info);
+  __tgt_async_info AsyncInfo;
+  int32_t rc = dataSubmit(device_id, tgt_ptr, hst_ptr, size, &AsyncInfo);
   if (rc != OFFLOAD_SUCCESS)
     return OFFLOAD_FAIL;
 
-  return __tgt_rtl_synchronize(device_id, &async_info);
+  return __tgt_rtl_synchronize(device_id, &AsyncInfo);
 }
 
 int32_t __tgt_rtl_data_submit_async(int device_id, void *tgt_ptr, void *hst_ptr,
-                                    int64_t size,
-                                    __tgt_async_info *async_info_ptr) {
+                                    int64_t size, __tgt_async_info *AsyncInfo) {
   assert(device_id < DeviceInfo.NumberOfDevices && "Device ID too large");
-  if (async_info_ptr) {
-    initAsyncInfoPtr(async_info_ptr);
-    return dataSubmit(device_id, tgt_ptr, hst_ptr, size, async_info_ptr);
+  if (AsyncInfo) {
+    initAsyncInfo(AsyncInfo);
+    return dataSubmit(device_id, tgt_ptr, hst_ptr, size, AsyncInfo);
   } else {
     return __tgt_rtl_data_submit(device_id, tgt_ptr, hst_ptr, size);
   }
@@ -1524,21 +1550,21 @@ int32_t __tgt_rtl_data_submit_async(int device_id, void *tgt_ptr, void *hst_ptr,
 int32_t __tgt_rtl_data_retrieve(int device_id, void *hst_ptr, void *tgt_ptr,
                                 int64_t size) {
   assert(device_id < DeviceInfo.NumberOfDevices && "Device ID too large");
-  __tgt_async_info async_info;
-  int32_t rc = dataRetrieve(device_id, hst_ptr, tgt_ptr, size, &async_info);
+  __tgt_async_info AsyncInfo;
+  int32_t rc = dataRetrieve(device_id, hst_ptr, tgt_ptr, size, &AsyncInfo);
   if (rc != OFFLOAD_SUCCESS)
     return OFFLOAD_FAIL;
 
-  return __tgt_rtl_synchronize(device_id, &async_info);
+  return __tgt_rtl_synchronize(device_id, &AsyncInfo);
 }
 
 int32_t __tgt_rtl_data_retrieve_async(int device_id, void *hst_ptr,
                                       void *tgt_ptr, int64_t size,
-                                      __tgt_async_info *async_info_ptr) {
-  assert(async_info_ptr && "async_info is nullptr");
+                                      __tgt_async_info *AsyncInfo) {
+  assert(AsyncInfo && "AsyncInfo is nullptr");
   assert(device_id < DeviceInfo.NumberOfDevices && "Device ID too large");
-  initAsyncInfoPtr(async_info_ptr);
-  return dataRetrieve(device_id, hst_ptr, tgt_ptr, size, async_info_ptr);
+  initAsyncInfo(AsyncInfo);
+  return dataRetrieve(device_id, hst_ptr, tgt_ptr, size, AsyncInfo);
 }
 
 int32_t __tgt_rtl_data_delete(int device_id, void *tgt_ptr) {
@@ -1753,6 +1779,23 @@ int32_t __tgt_rtl_run_target_team_region_locked(
 
   KernelTy *KernelInfo = (KernelTy *)tgt_entry_ptr;
 
+  std::string kernel_name = std::string(KernelInfo->Name);
+  if (KernelInfoTable[device_id].find(kernel_name) ==
+      KernelInfoTable[device_id].end()) {
+    DP("Kernel %s not found\n", kernel_name.c_str());
+    return OFFLOAD_FAIL;
+  }
+
+  uint32_t sgpr_count, vgpr_count, sgpr_spill_count, vgpr_spill_count;
+
+  {
+    auto it = KernelInfoTable[device_id][kernel_name];
+    sgpr_count = it.sgpr_count;
+    vgpr_count = it.vgpr_count;
+    sgpr_spill_count = it.sgpr_spill_count;
+    vgpr_spill_count = it.vgpr_spill_count;
+  }
+
   /*
    * Set limit based on ThreadsPerGroup and GroupsPerDevice
    */
@@ -1774,10 +1817,12 @@ int32_t __tgt_rtl_run_target_team_region_locked(
     bool traceToStdout = print_kernel_trace & (RTL_TO_STDOUT | RTL_TIMING);
     fprintf(traceToStdout ? stdout : stderr,
             "DEVID:%2d SGN:%1d ConstWGSize:%-4d args:%2d teamsXthrds:(%4dX%4d) "
-            "reqd:(%4dX%4d) n:%s\n",
+            "reqd:(%4dX%4d) sgpr_count:%u vgpr_count:%u sgpr_spill_count:%u "
+            "vgpr_spill_count:%u tripcount:%lu n:%s\n",
             device_id, KernelInfo->ExecutionMode, KernelInfo->ConstWGSize,
             arg_num, num_groups, threadsPerGroup, num_teams, thread_limit,
-            KernelInfo->Name);
+            sgpr_count, vgpr_count, sgpr_spill_count, vgpr_spill_count,
+            loop_tripcount, KernelInfo->Name);
   }
 
   // Run on the device.
@@ -1806,10 +1851,7 @@ int32_t __tgt_rtl_run_target_team_region_locked(
     packet->reserved2 = 0;           // atmi writes id_ here
     packet->completion_signal = {0}; // may want a pool of signals
 
-    std::string kernel_name = std::string(KernelInfo->Name);
     {
-      assert(KernelInfoTable[device_id].find(kernel_name) !=
-             KernelInfoTable[device_id].end());
       auto it = KernelInfoTable[device_id][kernel_name];
       packet->kernel_object = it.kernel_object;
       packet->private_segment_size = it.private_segment_size;
@@ -1884,11 +1926,8 @@ int32_t __tgt_rtl_run_target_team_region_locked(
       hsa_signal_store_relaxed(packet->completion_signal, 1);
     }
 
-    core::packet_store_release(
-        reinterpret_cast<uint32_t *>(packet),
-        core::create_header(HSA_PACKET_TYPE_KERNEL_DISPATCH, 0,
-                            ATMI_FENCE_SCOPE_SYSTEM, ATMI_FENCE_SCOPE_SYSTEM),
-        packet->setup);
+    core::packet_store_release(reinterpret_cast<uint32_t *>(packet),
+                               core::create_header(), packet->setup);
 
     hsa_signal_store_relaxed(queue->doorbell_signal, packet_id);
 
@@ -1922,9 +1961,9 @@ int32_t __tgt_rtl_run_target_region_async(int32_t device_id,
                                           void *tgt_entry_ptr, void **tgt_args,
                                           ptrdiff_t *tgt_offsets,
                                           int32_t arg_num,
-                                          __tgt_async_info *async_info_ptr) {
-  assert(async_info_ptr && "async_info is nullptr");
-  initAsyncInfoPtr(async_info_ptr);
+                                          __tgt_async_info *AsyncInfo) {
+  assert(AsyncInfo && "AsyncInfo is nullptr");
+  initAsyncInfo(AsyncInfo);
 
   // use one team and one thread
   // fix thread num
@@ -1935,15 +1974,14 @@ int32_t __tgt_rtl_run_target_region_async(int32_t device_id,
                                           thread_limit, 0);
 }
 
-int32_t __tgt_rtl_synchronize(int32_t device_id,
-                              __tgt_async_info *async_info_ptr) {
-  assert(async_info_ptr && "async_info is nullptr");
+int32_t __tgt_rtl_synchronize(int32_t device_id, __tgt_async_info *AsyncInfo) {
+  assert(AsyncInfo && "AsyncInfo is nullptr");
 
-  // Cuda asserts that async_info_ptr->Queue is non-null, but this invariant
+  // Cuda asserts that AsyncInfo->Queue is non-null, but this invariant
   // is not ensured by devices.cpp for amdgcn
-  // assert(async_info_ptr->Queue && "async_info_ptr->Queue is nullptr");
-  if (async_info_ptr->Queue) {
-    finiAsyncInfoPtr(async_info_ptr);
+  // assert(AsyncInfo->Queue && "AsyncInfo->Queue is nullptr");
+  if (AsyncInfo->Queue) {
+    finiAsyncInfo(AsyncInfo);
   }
   return OFFLOAD_SUCCESS;
 }

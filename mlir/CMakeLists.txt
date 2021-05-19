@@ -106,7 +106,8 @@ set(MLIR_PYTHON_BINDINGS_VERSION_LOCKED 1 CACHE BOOL
 
 if(MLIR_BINDINGS_PYTHON_ENABLED)
   include(MLIRDetectPythonEnv)
-  find_package(Python3 COMPONENTS Interpreter Development NumPy REQUIRED)
+  find_package(Python3 ${LLVM_MINIMUM_PYTHON_VERSION}
+    COMPONENTS Interpreter Development NumPy REQUIRED)
   message(STATUS "Found python include dirs: ${Python3_INCLUDE_DIRS}")
   message(STATUS "Found python libraries: ${Python3_LIBRARIES}")
   message(STATUS "Found numpy v${Python3_NumPy_VERSION}: ${Python3_NumPy_INCLUDE_DIRS}")
@@ -144,6 +145,11 @@ endif()
 # Tools needs to come late to ensure that MLIR_ALL_LIBS is populated.
 # Generally things after this point may depend on MLIR_ALL_LIBS or libMLIR.so.
 add_subdirectory(tools)
+
+if(MLIR_BINDINGS_PYTHON_ENABLED)
+  # Python sources: built extensions come in via lib/Bindings/Python
+  add_subdirectory(python)
+endif()
 
 if( LLVM_INCLUDE_EXAMPLES )
   add_subdirectory(examples)

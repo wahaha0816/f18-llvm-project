@@ -84,6 +84,18 @@ const Scope *FindPureProcedureContaining(const Scope &start) {
   return IsPureProcedure(scope) ? &scope : nullptr;
 }
 
+static bool MightHaveCompatibleDerivedtypes(
+    const std::optional<evaluate::DynamicType> &lhsType,
+    const std::optional<evaluate::DynamicType> &rhsType) {
+  const DerivedTypeSpec *lhsDerived{evaluate::GetDerivedTypeSpec(lhsType)};
+  const DerivedTypeSpec *rhsDerived{evaluate::GetDerivedTypeSpec(rhsType)};
+  if (!lhsDerived || !rhsDerived) {
+    return false;
+  }
+  return *lhsDerived == *rhsDerived ||
+      lhsDerived->MightBeAssignmentCompatibleWith(*rhsDerived);
+}
+
 Tristate IsDefinedAssignment(
     const std::optional<evaluate::DynamicType> &lhsType, int lhsRank,
     const std::optional<evaluate::DynamicType> &rhsType, int rhsRank) {
@@ -97,15 +109,10 @@ Tristate IsDefinedAssignment(
   } else if (lhsCat != TypeCategory::Derived) {
     return ToTristate(lhsCat != rhsCat &&
         (!IsNumericTypeCategory(lhsCat) || !IsNumericTypeCategory(rhsCat)));
+  } else if (MightHaveCompatibleDerivedtypes(lhsType, rhsType)) {
+    return Tristate::Maybe; // TYPE(t) = TYPE(t) can be defined or intrinsic
   } else {
-    const auto *lhsDerived{evaluate::GetDerivedTypeSpec(lhsType)};
-    const auto *rhsDerived{evaluate::GetDerivedTypeSpec(rhsType)};
-    if (lhsDerived && rhsDerived && *lhsDerived == *rhsDerived) {
-      return Tristate::Maybe; // TYPE(t) = TYPE(t) can be defined or
-                              // intrinsic
-    } else {
-      return Tristate::Yes;
-    }
+    return Tristate::Yes;
   }
 }
 
@@ -439,17 +446,6 @@ const Symbol *FindSubprogram(const Symbol &symbol) {
           [](const auto &) -> const Symbol * { return nullptr; },
       },
       symbol.details());
-}
-
-const Symbol *FindFunctionResult(const Symbol &symbol) {
-  if (const Symbol * subp{FindSubprogram(symbol)}) {
-    if (const auto &subpDetails{subp->detailsIf<SubprogramDetails>()}) {
-      if (subpDetails->isFunction()) {
-        return &subpDetails->result();
-      }
-    }
-  }
-  return nullptr;
 }
 
 const Symbol *FindOverriddenBinding(const Symbol &symbol) {
@@ -848,9 +844,7 @@ std::optional<parser::MessageFixedText> WhyNotModifiable(
 // Modifiability checks for a data-ref
 std::optional<parser::Message> WhyNotModifiable(parser::CharBlock at,
     const SomeExpr &expr, const Scope &scope, bool vectorSubscriptIsOk) {
-  if (!evaluate::IsVariable(expr)) {
-    return parser::Message{at, "Expression is not a variable"_en_US};
-  } else if (auto dataRef{evaluate::ExtractDataRef(expr, true)}) {
+  if (auto dataRef{evaluate::ExtractDataRef(expr, true)}) {
     if (!vectorSubscriptIsOk && evaluate::HasVectorSubscript(expr)) {
       return parser::Message{at, "Variable has a vector subscript"_en_US};
     }
@@ -872,6 +866,9 @@ std::optional<parser::Message> WhyNotModifiable(parser::CharBlock at,
                 std::move(*maybeWhyFirst), first.name()}};
       }
     }
+  } else if (!evaluate::IsVariable(expr)) {
+    return parser::Message{
+        at, "'%s' is not a variable"_en_US, expr.AsFortran()};
   } else {
     // reference to function returning POINTER
   }
@@ -1063,10 +1060,9 @@ SymbolVector OrderParameterDeclarations(const Symbol &typeSymbol) {
   return result;
 }
 
-const DeclTypeSpec &FindOrInstantiateDerivedType(Scope &scope,
-    DerivedTypeSpec &&spec, SemanticsContext &semanticsContext,
-    DeclTypeSpec::Category category) {
-  spec.EvaluateParameters(semanticsContext);
+const DeclTypeSpec &FindOrInstantiateDerivedType(
+    Scope &scope, DerivedTypeSpec &&spec, DeclTypeSpec::Category category) {
+  spec.EvaluateParameters(scope.context());
   if (const DeclTypeSpec *
       type{scope.FindInstantiatedDerivedType(spec, category)}) {
     return *type;
@@ -1074,7 +1070,7 @@ const DeclTypeSpec &FindOrInstantiateDerivedType(Scope &scope,
   // Create a new instantiation of this parameterized derived type
   // for this particular distinct set of actual parameter values.
   DeclTypeSpec &type{scope.MakeDerivedType(category, std::move(spec))};
-  type.derivedTypeSpec().Instantiate(scope, semanticsContext);
+  type.derivedTypeSpec().Instantiate(scope);
   return type;
 }
 

@@ -14,7 +14,7 @@ export(TARGETS ${FLANG_EXPORTS} FILE ${flang_cmake_builddir}/FlangTargets.cmake)
 # Generate FlangConfig.cmake for the build tree.
 set(FLANG_CONFIG_CMAKE_DIR "${flang_cmake_builddir}")
 set(FLANG_CONFIG_LLVM_CMAKE_DIR "${llvm_cmake_builddir}")
-set(FLANG_CONFIG_EXPORTS_FILE "${flang_cmake_builddir}/FlangTargets.cmake")
+set(FLANG_CONFIG_INCLUDE_EXPORTS "include(\"${flang_cmake_builddir}/FlangTargets.cmake\")")
 set(FLANG_CONFIG_INCLUDE_DIRS
   "${FLANG_SOURCE_DIR}/include"
   "${FLANG_BINARY_DIR}/include"
@@ -25,8 +25,6 @@ configure_file(
   @ONLY)
 set(FLANG_CONFIG_CMAKE_DIR)
 set(FLANG_CONFIG_LLVM_CMAKE_DIR)
-set(FLANG_CONFIG_EXPORTS_FILE)
-set(FLANG_CONFIG_INCLUDE_DIRS)
 
 # Generate FlangConfig.cmake for the install tree.
 set(FLANG_CONFIG_CODE "
@@ -42,10 +40,8 @@ endforeach(p)
 
 set(FLANG_CONFIG_CMAKE_DIR "\${FLANG_INSTALL_PREFIX}/${FLANG_INSTALL_PACKAGE_DIR}")
 set(FLANG_CONFIG_LLVM_CMAKE_DIR "\${FLANG_INSTALL_PREFIX}/${LLVM_INSTALL_PACKAGE_DIR}")
-set(FLANG_CONFIG_EXPORTS_FILE "\${FLANG_CMAKE_DIR}/FlangTargets.cmake")
-set(FLANG_CONFIG_INCLUDE_DIRS
-  "\${FLANG_INSTALL_PREFIX}/include"
-)
+get_config_exports_includes(Flang FLANG_CONFIG_INCLUDE_EXPORTS)
+set(FLANG_CONFIG_INCLUDE_DIRS "\${FLANG_INSTALL_PREFIX}/include")
 
 configure_file(
   ${CMAKE_CURRENT_SOURCE_DIR}/FlangConfig.cmake.in
@@ -54,16 +50,10 @@ configure_file(
 
 set(FLANG_CONFIG_CODE)
 set(FLANG_CONFIG_CMAKE_DIR)
-set(FLANG_CONFIG_LLVM_CMAKE_DIR)
 set(FLANG_CONFIG_EXPORTS_FILE)
-set(FLANG_CONFIG_INCLUDE_DIRS)
 
 if (NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
-  get_property(flang_has_exports GLOBAL PROPERTY FLANG_HAS_EXPORTS)
-  if(flang_has_exports)
-    install(EXPORT FlangTargets DESTINATION ${FLANG_INSTALL_PACKAGE_DIR}
-            COMPONENT flang-cmake-exports)
-  endif()
+  install_distribution_exports(Flang)
 
   install(FILES
     ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/FlangConfig.cmake

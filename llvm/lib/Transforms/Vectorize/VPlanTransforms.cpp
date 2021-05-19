@@ -19,7 +19,7 @@ using namespace llvm;
 void VPlanTransforms::VPInstructionsToVPRecipes(
     Loop *OrigLoop, VPlanPtr &Plan,
     LoopVectorizationLegality::InductionList &Inductions,
-    SmallPtrSetImpl<Instruction *> &DeadInstructions) {
+    SmallPtrSetImpl<Instruction *> &DeadInstructions, ScalarEvolution &SE) {
 
   auto *TopRegion = cast<VPRegionBlock>(Plan->getEntry());
   ReversePostOrderTraversal<VPBlockBase *> RPOT(TopRegion->getEntry());
@@ -33,7 +33,7 @@ void VPlanTransforms::VPInstructionsToVPRecipes(
     // Introduce each ingredient into VPlan.
     for (auto I = VPBB->begin(), E = VPBB->end(); I != E;) {
       VPRecipeBase *Ingredient = &*I++;
-      VPValue *VPV = Ingredient->getVPValue();
+      VPValue *VPV = Ingredient->getVPSingleValue();
       Instruction *Inst = cast<Instruction>(VPV->getUnderlyingValue());
       if (DeadInstructions.count(Inst)) {
         VPValue DummyValue;
@@ -71,6 +71,14 @@ void VPlanTransforms::VPInstructionsToVPRecipes(
         } else if (GetElementPtrInst *GEP = dyn_cast<GetElementPtrInst>(Inst)) {
           NewRecipe = new VPWidenGEPRecipe(
               GEP, Plan->mapToVPValues(GEP->operands()), OrigLoop);
+        } else if (CallInst *CI = dyn_cast<CallInst>(Inst)) {
+          NewRecipe = new VPWidenCallRecipe(
+              *CI, Plan->mapToVPValues(CI->arg_operands()));
+        } else if (SelectInst *SI = dyn_cast<SelectInst>(Inst)) {
+          bool InvariantCond =
+              SE.isLoopInvariant(SE.getSCEV(SI->getOperand(0)), OrigLoop);
+          NewRecipe = new VPWidenSelectRecipe(
+              *SI, Plan->mapToVPValues(SI->operands()), InvariantCond);
         } else {
           NewRecipe =
               new VPWidenRecipe(*Inst, Plan->mapToVPValues(Inst->operands()));
@@ -79,7 +87,7 @@ void VPlanTransforms::VPInstructionsToVPRecipes(
 
       NewRecipe->insertBefore(Ingredient);
       if (NewRecipe->getNumDefinedValues() == 1)
-        VPV->replaceAllUsesWith(NewRecipe->getVPValue());
+        VPV->replaceAllUsesWith(NewRecipe->getVPSingleValue());
       else
         assert(NewRecipe->getNumDefinedValues() == 0 &&
                "Only recpies with zero or one defined values expected");

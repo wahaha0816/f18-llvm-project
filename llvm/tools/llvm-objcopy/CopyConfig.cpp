@@ -244,9 +244,10 @@ parseSetSectionAlignment(StringRef FlagValue) {
         "bad format for --set-section-alignment: missing section name");
   uint64_t NewAlign;
   if (Split.second.getAsInteger(0, NewAlign))
-    return createStringError(errc::invalid_argument,
-                             "invalid alignment for --set-section-alignment: '%s'",
-                             Split.second.str().c_str());
+    return createStringError(
+        errc::invalid_argument,
+        "invalid alignment for --set-section-alignment: '%s'",
+        Split.second.str().c_str());
   return std::make_pair(Split.first, NewAlign);
 }
 
@@ -469,15 +470,23 @@ static void printHelp(const opt::OptTable &OptTable, raw_ostream &OS,
 // help flag is set then ParseObjcopyOptions will print the help messege and
 // exit.
 Expected<DriverConfig>
-parseObjcopyOptions(ArrayRef<const char *> ArgsArr,
+parseObjcopyOptions(ArrayRef<const char *> RawArgsArr,
                     llvm::function_ref<Error(Error)> ErrorCallback) {
   DriverConfig DC;
   ObjcopyOptTable T;
+
+  const char *const *DashDash =
+      std::find_if(RawArgsArr.begin(), RawArgsArr.end(),
+                   [](StringRef Str) { return Str == "--"; });
+  ArrayRef<const char *> ArgsArr = makeArrayRef(RawArgsArr.begin(), DashDash);
+  if (DashDash != RawArgsArr.end())
+    DashDash = std::next(DashDash);
+
   unsigned MissingArgumentIndex, MissingArgumentCount;
   llvm::opt::InputArgList InputArgs =
       T.ParseArgs(ArgsArr, MissingArgumentIndex, MissingArgumentCount);
 
-  if (InputArgs.size() == 0) {
+  if (InputArgs.size() == 0 && DashDash == RawArgsArr.end()) {
     printHelp(T, errs(), ToolType::Objcopy);
     exit(1);
   }
@@ -501,6 +510,7 @@ parseObjcopyOptions(ArrayRef<const char *> ArgsArr,
 
   for (auto Arg : InputArgs.filtered(OBJCOPY_INPUT))
     Positional.push_back(Arg->getValue());
+  std::copy(DashDash, RawArgsArr.end(), std::back_inserter(Positional));
 
   if (Positional.empty())
     return createStringError(errc::invalid_argument, "no input file specified");
@@ -699,8 +709,14 @@ parseObjcopyOptions(ArrayRef<const char *> ArgsArr,
           "bad format for --add-section: missing file name");
     Config.AddSection.push_back(ArgValue);
   }
-  for (auto Arg : InputArgs.filtered(OBJCOPY_dump_section))
-    Config.DumpSection.push_back(Arg->getValue());
+  for (auto *Arg : InputArgs.filtered(OBJCOPY_dump_section)) {
+    StringRef Value(Arg->getValue());
+    if (Value.split('=').second.empty())
+      return createStringError(
+          errc::invalid_argument,
+          "bad format for --dump-section, expected section=file");
+    Config.DumpSection.push_back(Value);
+  }
   Config.StripAll = InputArgs.hasArg(OBJCOPY_strip_all);
   Config.StripAllGNU = InputArgs.hasArg(OBJCOPY_strip_all_gnu);
   Config.StripDebug = InputArgs.hasArg(OBJCOPY_strip_debug);
@@ -720,6 +736,7 @@ parseObjcopyOptions(ArrayRef<const char *> ArgsArr,
             : DiscardType::Locals;
   Config.OnlyKeepDebug = InputArgs.hasArg(OBJCOPY_only_keep_debug);
   Config.KeepFileSymbols = InputArgs.hasArg(OBJCOPY_keep_file_symbols);
+  Config.KeepUndefined = InputArgs.hasArg(OBJCOPY_keep_undefined);
   Config.DecompressDebugSections =
       InputArgs.hasArg(OBJCOPY_decompress_debug_sections);
   if (Config.DiscardMode == DiscardType::All) {
@@ -1097,6 +1114,7 @@ parseStripOptions(ArrayRef<const char *> ArgsArr,
   Config.StripSwiftSymbols = InputArgs.hasArg(STRIP_strip_swift_symbols);
   Config.OnlyKeepDebug = InputArgs.hasArg(STRIP_only_keep_debug);
   Config.KeepFileSymbols = InputArgs.hasArg(STRIP_keep_file_symbols);
+  Config.KeepUndefined = InputArgs.hasArg(STRIP_keep_undefined);
 
   for (auto Arg : InputArgs.filtered(STRIP_keep_section))
     if (Error E = Config.KeepSection.addMatcher(NameOrPattern::create(

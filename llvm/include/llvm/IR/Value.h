@@ -123,8 +123,7 @@ protected:
 
 private:
   template <typename UseT> // UseT == 'Use' or 'const Use'
-  class use_iterator_impl
-      : public std::iterator<std::forward_iterator_tag, UseT *> {
+  class use_iterator_impl {
     friend class Value;
 
     UseT *U;
@@ -132,6 +131,12 @@ private:
     explicit use_iterator_impl(UseT *u) : U(u) {}
 
   public:
+    using iterator_category = std::forward_iterator_tag;
+    using value_type = UseT *;
+    using difference_type = std::ptrdiff_t;
+    using pointer = value_type *;
+    using reference = value_type &;
+
     use_iterator_impl() : U() {}
 
     bool operator==(const use_iterator_impl &x) const { return U == x.U; }
@@ -162,13 +167,18 @@ private:
   };
 
   template <typename UserTy> // UserTy == 'User' or 'const User'
-  class user_iterator_impl
-      : public std::iterator<std::forward_iterator_tag, UserTy *> {
+  class user_iterator_impl {
     use_iterator_impl<Use> UI;
     explicit user_iterator_impl(Use *U) : UI(U) {}
     friend class Value;
 
   public:
+    using iterator_category = std::forward_iterator_tag;
+    using value_type = UserTy *;
+    using difference_type = std::ptrdiff_t;
+    using pointer = value_type *;
+    using reference = value_type &;
+
     user_iterator_impl() = default;
 
     bool operator==(const user_iterator_impl &x) const { return UI == x.UI; }
@@ -555,6 +565,9 @@ public:
   /// Return true if there is metadata referencing this value.
   bool isUsedByMetadata() const { return IsUsedByMD; }
 
+  // Return true if this value is only transitively referenced by metadata.
+  bool isTransitiveUsedByMetadataOnly() const;
+
 protected:
   /// Get the current metadata attachments for the given kind, if any.
   ///
@@ -738,13 +751,24 @@ public:
         static_cast<const Value *>(this)->stripInBoundsOffsets(Func));
   }
 
+  /// Return true if the memory object referred to by V can by freed in the
+  /// scope for which the SSA value defining the allocation is statically
+  /// defined.  E.g.  deallocation after the static scope of a value does not
+  /// count, but a deallocation before that does.
+  bool canBeFreed() const;
+
   /// Returns the number of bytes known to be dereferenceable for the
   /// pointer value.
   ///
   /// If CanBeNull is set by this function the pointer can either be null or be
   /// dereferenceable up to the returned number of bytes.
+  ///
+  /// IF CanBeFreed is true, the pointer is known to be dereferenceable at
+  /// point of definition only.  Caller must prove that allocation is not
+  /// deallocated between point of definition and use.
   uint64_t getPointerDereferenceableBytes(const DataLayout &DL,
-                                          bool &CanBeNull) const;
+                                          bool &CanBeNull,
+                                          bool &CanBeFreed) const;
 
   /// Returns an alignment of the pointer value.
   ///

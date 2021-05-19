@@ -22,6 +22,7 @@
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Interfaces/CopyOpInterface.h"
+#include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Support/LLVM.h"
@@ -54,6 +55,12 @@ LoopRangeBuilder defaultLoopRangesBuilder(LinalgOp op);
 using ReassociationIndices = SmallVector<int64_t, 2>;
 using ReassociationIndicesRef = ArrayRef<int64_t>;
 using ReassociationExprs = SmallVector<AffineExpr, 2>;
+
+/// Return the reassociations maps to use to reshape given the source type and
+/// the target type when possible. Return llvm::None when this computation
+/// failed.
+Optional<SmallVector<ReassociationIndices>>
+getReassociationIndicesForReshape(ShapedType sourceType, ShapedType targetType);
 
 /// Returns the name mangled library call name to disambiguate between different
 /// overloads at the C level. The name mangling scheme is basic and uses MLIR
@@ -107,13 +114,6 @@ SmallVector<AffineExpr, 4> concat(ArrayRef<AffineExpr> a,
 void getDimsOfType(Operation *op, StringRef iteratorTypeName,
                    SmallVectorImpl<AffineExpr> &res);
 
-/// For reshape operation, compute the shape of the output based on the result
-/// type and shape of the input.
-SmallVector<Value, 4>
-getReshapeOutputShapeFromInputShape(OpBuilder &b, Location loc, Value src,
-                                    ArrayRef<int64_t> dstStaticShape,
-                                    ArrayRef<AffineMap> reassociation);
-
 namespace detail {
 LogicalResult verifyStructuredOpInterface(Operation *op);
 } // namespace detail
@@ -132,8 +132,5 @@ class IndexedGenericOp;
 
 #define GET_OP_CLASSES
 #include "mlir/Dialect/Linalg/IR/LinalgStructuredOps.h.inc"
-
-#define GET_OP_CLASSES
-#include "mlir/Dialect/Linalg/IR/LinalgSparseOps.h.inc"
 
 #endif // MLIR_DIALECT_LINALG_LINALGOPS_H_

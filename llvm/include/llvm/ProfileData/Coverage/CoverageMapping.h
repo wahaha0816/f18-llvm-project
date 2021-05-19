@@ -573,6 +573,11 @@ class CoverageMapping {
 
   CoverageMapping() = default;
 
+  // Load coverage records from readers.
+  static Error loadFromReaders(
+      ArrayRef<std::unique_ptr<CoverageMappingReader>> CoverageReaders,
+      IndexedInstrProfReader &ProfileReader, CoverageMapping &Coverage);
+
   /// Add a function record corresponding to \p Record.
   Error loadFunctionRecord(const CoverageMappingRecord &Record,
                            IndexedInstrProfReader &ProfileReader);
@@ -598,7 +603,7 @@ public:
   /// Ignores non-instrumented object files unless all are not instrumented.
   static Expected<std::unique_ptr<CoverageMapping>>
   load(ArrayRef<StringRef> ObjectFilenames, StringRef ProfileFilename,
-       ArrayRef<StringRef> Arches = None);
+       ArrayRef<StringRef> Arches = None, StringRef CompilationDir = "");
 
   /// The number of functions that couldn't have their profiles mapped.
   ///

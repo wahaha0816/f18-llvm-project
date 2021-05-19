@@ -19,6 +19,7 @@
 #include "flang/Optimizer/Support/FIRContext.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Debug.h"
 
 //===----------------------------------------------------------------------===//
 // Codegen rewrite: rewriting of subgraphs of ops
@@ -243,7 +244,7 @@ public:
       return !(embox.getShape() ||
                embox.getType().cast<BoxType>().getEleTy().isa<SequenceType>());
     });
-    mlir::OwningRewritePatternList patterns;
+    mlir::OwningRewritePatternList patterns(&context);
     patterns.insert<EmboxConversion, ArrayCoorConversion, ReboxConversion>(
         &context);
     if (mlir::failed(

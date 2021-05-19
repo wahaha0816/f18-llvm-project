@@ -1078,6 +1078,29 @@ bool NamedDecl::isLinkageValid() const {
   return L == getCachedLinkage();
 }
 
+ReservedIdentifierStatus
+NamedDecl::isReserved(const LangOptions &LangOpts) const {
+  const IdentifierInfo *II = getIdentifier();
+  if (!II)
+    if (const auto *FD = dyn_cast<FunctionDecl>(this))
+      II = FD->getLiteralIdentifier();
+
+  if (!II)
+    return ReservedIdentifierStatus::NotReserved;
+
+  ReservedIdentifierStatus Status = II->isReserved(LangOpts);
+  if (Status == ReservedIdentifierStatus::StartsWithUnderscoreAtGlobalScope) {
+    // Check if we're at TU level or not.
+    if (isa<ParmVarDecl>(this) || isTemplateParameter())
+      return ReservedIdentifierStatus::NotReserved;
+    const DeclContext *DC = getDeclContext()->getRedeclContext();
+    if (!DC->isTranslationUnit())
+      return ReservedIdentifierStatus::NotReserved;
+  }
+
+  return Status;
+}
+
 ObjCStringFormatFamily NamedDecl::getObjCFStringFormattingFamily() const {
   StringRef name = getName();
   if (name.empty()) return SFF_None;
@@ -1487,10 +1510,13 @@ LinkageInfo LinkageComputer::getLVForDecl(const NamedDecl *D,
 }
 
 LinkageInfo LinkageComputer::getDeclLinkageAndVisibility(const NamedDecl *D) {
-  return getLVForDecl(D,
-                      LVComputationKind(usesTypeVisibility(D)
-                                            ? NamedDecl::VisibilityForType
-                                            : NamedDecl::VisibilityForValue));
+  NamedDecl::ExplicitVisibilityKind EK = usesTypeVisibility(D)
+                                             ? NamedDecl::VisibilityForType
+                                             : NamedDecl::VisibilityForValue;
+  LVComputationKind CK(EK);
+  return getLVForDecl(D, D->getASTContext().getLangOpts().IgnoreXCOFFVisibility
+                             ? CK.forLinkageOnly()
+                             : CK);
 }
 
 Module *Decl::getOwningModuleForLinkage(bool IgnoreLinkage) const {
@@ -1609,8 +1635,7 @@ void NamedDecl::printNestedNameSpecifier(raw_ostream &OS,
 
     // Suppress inline namespace if it doesn't make the result ambiguous.
     if (P.SuppressInlineNamespace && Ctx->isInlineNamespace() && NameInScope &&
-        Ctx->lookup(NameInScope).size() ==
-            Ctx->getParent()->lookup(NameInScope).size())
+        cast<NamespaceDecl>(Ctx)->isRedundantInlineQualifierFor(NameInScope))
       continue;
 
     // Skip non-named contexts such as linkage specifications and ExportDecls.
@@ -3263,6 +3288,8 @@ unsigned FunctionDecl::getBuiltinID(bool ConsiderWrapperFunctions) const {
 
   if (const auto *ABAA = getAttr<ArmBuiltinAliasAttr>()) {
     BuiltinID = ABAA->getBuiltinName()->getBuiltinID();
+  } else if (const auto *BAA = getAttr<BuiltinAliasAttr>()) {
+    BuiltinID = BAA->getBuiltinName()->getBuiltinID();
   } else if (const auto *A = getAttr<BuiltinAttr>()) {
     BuiltinID = A->getID();
   }
@@ -3273,7 +3300,7 @@ unsigned FunctionDecl::getBuiltinID(bool ConsiderWrapperFunctions) const {
   // If the function is marked "overloadable", it has a different mangled name
   // and is not the C library function.
   if (!ConsiderWrapperFunctions && hasAttr<OverloadableAttr>() &&
-      !hasAttr<ArmBuiltinAliasAttr>())
+      (!hasAttr<ArmBuiltinAliasAttr>() && !hasAttr<BuiltinAliasAttr>()))
     return 0;
 
   ASTContext &Context = getASTContext();

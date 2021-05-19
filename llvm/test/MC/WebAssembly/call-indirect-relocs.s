@@ -6,7 +6,7 @@ test0:
     i32.const 42
     f64.const 2.5
     i32.const   0
-    call_indirect (i32, f64) -> (), empty_fref_table
+    call_indirect empty_fref_table, (i32, f64) -> ()
     end_function
 
 .tabletype empty_fref_table, funcref
@@ -19,7 +19,7 @@ empty_fref_table:
 # CHECK-NEXT:      i32.const   42
 # CHECK-NEXT:      f64.const   0x1.4p1
 # CHECK-NEXT:      i32.const   0
-# CHECK-NEXT:      call_indirect (i32, f64) -> (), empty_fref_table
+# CHECK-NEXT:      call_indirect empty_fref_table, (i32, f64) -> ()
 # CHECK-NEXT:      end_function
 
 # CHECK:           .tabletype empty_fref_table, funcref
@@ -45,7 +45,7 @@ empty_fref_table:
 # BIN-NEXT:         Field:           __linear_memory
 # BIN-NEXT:         Kind:            MEMORY
 # BIN-NEXT:         Memory:
-# BIN-NEXT:           Initial:         0x0
+# BIN-NEXT:           Minimum:         0x0
 # BIN-NEXT:   - Type:            FUNCTION
 # BIN-NEXT:     FunctionTypes:   [ 0 ]
 # BIN-NEXT:   - Type:            TABLE
@@ -53,7 +53,7 @@ empty_fref_table:
 # BIN-NEXT:       - Index:           0
 # BIN-NEXT:         ElemType:        FUNCREF
 # BIN-NEXT:         Limits:
-# BIN-NEXT:           Initial:         0x0
+# BIN-NEXT:           Minimum:         0x0
 # BIN-NEXT:   - Type:            CODE
 # BIN-NEXT:     Relocations:
 # BIN-NEXT:       - Type:            R_WASM_TYPE_INDEX_LEB

@@ -580,11 +580,17 @@ size_t UnwrappedLineParser::computePPHash() const {
 }
 
 void UnwrappedLineParser::parseBlock(bool MustBeDeclaration, unsigned AddLevels,
-                                     bool MunchSemi) {
+                                     bool MunchSemi,
+                                     bool UnindentWhitesmithsBraces) {
   assert(FormatTok->isOneOf(tok::l_brace, TT_MacroBlockBegin) &&
          "'{' or macro block token expected");
   const bool MacroBlock = FormatTok->is(TT_MacroBlockBegin);
   FormatTok->setBlockKind(BK_Block);
+
+  // For Whitesmiths mode, jump to the next level prior to skipping over the
+  // braces.
+  if (AddLevels > 0 && Style.BreakBeforeBraces == FormatStyle::BS_Whitesmiths)
+    ++Line->Level;
 
   size_t PPStartHash = computePPHash();
 
@@ -602,9 +608,16 @@ void UnwrappedLineParser::parseBlock(bool MustBeDeclaration, unsigned AddLevels,
           ? (UnwrappedLine::kInvalidIndex)
           : (CurrentLines->size() - 1 - NbPreprocessorDirectives);
 
+  // Whitesmiths is weird here. The brace needs to be indented for the namespace
+  // block, but the block itself may not be indented depending on the style
+  // settings. This allows the format to back up one level in those cases.
+  if (UnindentWhitesmithsBraces)
+    --Line->Level;
+
   ScopedDeclarationState DeclarationState(*Line, DeclarationScopeStack,
                                           MustBeDeclaration);
-  Line->Level += AddLevels;
+  if (AddLevels > 0u && Style.BreakBeforeBraces != FormatStyle::BS_Whitesmiths)
+    Line->Level += AddLevels;
   parseLevel(/*HasOpeningBrace=*/true);
 
   if (eof())
@@ -1303,15 +1316,7 @@ void UnwrappedLineParser::parseStructuralElement() {
     case tok::kw_struct:
     case tok::kw_union:
     case tok::kw_class:
-      // parseRecord falls through and does not yet add an unwrapped line as a
-      // record declaration or definition can start a structural element.
-      parseRecord();
-      // This does not apply for Java, JavaScript and C#.
-      if (Style.Language == FormatStyle::LK_Java ||
-          Style.Language == FormatStyle::LK_JavaScript || Style.isCSharp()) {
-        if (FormatTok->is(tok::semi))
-          nextToken();
-        addUnwrappedLine();
+      if (parseStructLike()) {
         return;
       }
       break;
@@ -1425,6 +1430,13 @@ void UnwrappedLineParser::parseStructuralElement() {
         return;
       }
 
+      if (FormatTok->is(Keywords.kw_interface)) {
+        if (parseStructLike()) {
+          return;
+        }
+        break;
+      }
+
       if (Style.isCpp() && FormatTok->is(TT_StatementMacro)) {
         parseStatementMacro();
         return;
@@ -1468,9 +1480,9 @@ void UnwrappedLineParser::parseStructuralElement() {
     }
     case tok::equal:
       // Fat arrows (=>) have tok::TokenKind tok::equal but TokenType
-      // TT_JsFatArrow. The always start an expression or a child block if
+      // TT_FatArrow. The always start an expression or a child block if
       // followed by a curly.
-      if (FormatTok->is(TT_JsFatArrow)) {
+      if (FormatTok->is(TT_FatArrow)) {
         nextToken();
         if (FormatTok->is(tok::l_brace)) {
           // C# may break after => if the next character is a newline.
@@ -1576,7 +1588,7 @@ bool UnwrappedLineParser::tryToParsePropertyAccessor() {
       --Line->Level;
       break;
     case tok::equal:
-      if (FormatTok->is(TT_JsFatArrow)) {
+      if (FormatTok->is(TT_FatArrow)) {
         ++Line->Level;
         do {
           nextToken();
@@ -1779,7 +1791,7 @@ bool UnwrappedLineParser::parseBracedList(bool ContinueOnSemicolons,
   // replace this by using parseAssigmentExpression() inside.
   do {
     if (Style.isCSharp()) {
-      if (FormatTok->is(TT_JsFatArrow)) {
+      if (FormatTok->is(TT_FatArrow)) {
         nextToken();
         // Fat arrows can be followed by simple expressions or by child blocks
         // in curly braces.
@@ -1795,7 +1807,7 @@ bool UnwrappedLineParser::parseBracedList(bool ContinueOnSemicolons,
         tryToParseJSFunction();
         continue;
       }
-      if (FormatTok->is(TT_JsFatArrow)) {
+      if (FormatTok->is(TT_FatArrow)) {
         nextToken();
         // Fat arrows can be followed by simple expressions or by child blocks
         // in curly braces.
@@ -2133,12 +2145,28 @@ void UnwrappedLineParser::parseNamespace() {
                  DeclarationScopeStack.size() > 1)
             ? 1u
             : 0u;
-    parseBlock(/*MustBeDeclaration=*/true, AddLevels);
+    bool ManageWhitesmithsBraces =
+        AddLevels == 0u &&
+        Style.BreakBeforeBraces == FormatStyle::BS_Whitesmiths;
+
+    // If we're in Whitesmiths mode, indent the brace if we're not indenting
+    // the whole block.
+    if (ManageWhitesmithsBraces)
+      ++Line->Level;
+
+    parseBlock(/*MustBeDeclaration=*/true, AddLevels,
+               /*MunchSemi=*/true,
+               /*UnindentWhitesmithsBraces=*/ManageWhitesmithsBraces);
+
     // Munch the semicolon after a namespace. This is more common than one would
     // think. Putting the semicolon into its own line is very ugly.
     if (FormatTok->Tok.is(tok::semi))
       nextToken();
-    addUnwrappedLine();
+
+    addUnwrappedLine(AddLevels > 0 ? LineLevel::Remove : LineLevel::Keep);
+
+    if (ManageWhitesmithsBraces)
+      --Line->Level;
   }
   // FIXME: Add error handling.
 }
@@ -2224,6 +2252,11 @@ void UnwrappedLineParser::parseDoWhile() {
     return;
   }
 
+  // If in Whitesmiths mode, the line with the while() needs to be indented
+  // to the same level as the block.
+  if (Style.BreakBeforeBraces == FormatStyle::BS_Whitesmiths)
+    ++Line->Level;
+
   nextToken();
   parseStructuralElement();
 }
@@ -2236,25 +2269,19 @@ void UnwrappedLineParser::parseLabel(bool LeftAlignLabel) {
   if (LeftAlignLabel)
     Line->Level = 0;
 
-  bool RemoveWhitesmithsCaseIndent =
-      (!Style.IndentCaseBlocks &&
-       Style.BreakBeforeBraces == FormatStyle::BS_Whitesmiths);
-
-  if (RemoveWhitesmithsCaseIndent)
-    --Line->Level;
-
   if (!Style.IndentCaseBlocks && CommentsBeforeNextToken.empty() &&
       FormatTok->Tok.is(tok::l_brace)) {
 
-    CompoundStatementIndenter Indenter(
-        this, Line->Level, Style.BraceWrapping.AfterCaseLabel,
-        Style.BraceWrapping.IndentBraces || RemoveWhitesmithsCaseIndent);
+    CompoundStatementIndenter Indenter(this, Line->Level,
+                                       Style.BraceWrapping.AfterCaseLabel,
+                                       Style.BraceWrapping.IndentBraces);
     parseBlock(/*MustBeDeclaration=*/false);
     if (FormatTok->Tok.is(tok::kw_break)) {
       if (Style.BraceWrapping.AfterControlStatement ==
           FormatStyle::BWACS_Always) {
         addUnwrappedLine();
-        if (RemoveWhitesmithsCaseIndent) {
+        if (!Style.IndentCaseBlocks &&
+            Style.BreakBeforeBraces == FormatStyle::BS_Whitesmiths) {
           Line->Level++;
         }
       }
@@ -2495,6 +2522,21 @@ bool UnwrappedLineParser::parseEnum() {
   // There is no addUnwrappedLine() here so that we fall through to parsing a
   // structural element afterwards. Thus, in "enum A {} n, m;",
   // "} n, m;" will end up in one unwrapped line.
+}
+
+bool UnwrappedLineParser::parseStructLike() {
+  // parseRecord falls through and does not yet add an unwrapped line as a
+  // record declaration or definition can start a structural element.
+  parseRecord();
+  // This does not apply to Java, JavaScript and C#.
+  if (Style.Language == FormatStyle::LK_Java ||
+      Style.Language == FormatStyle::LK_JavaScript || Style.isCSharp()) {
+    if (FormatTok->is(tok::semi))
+      nextToken();
+    addUnwrappedLine();
+    return true;
+  }
+  return false;
 }
 
 namespace {
@@ -2922,17 +2964,29 @@ LLVM_ATTRIBUTE_UNUSED static void printDebugInfo(const UnwrappedLine &Line,
   llvm::dbgs() << "\n";
 }
 
-void UnwrappedLineParser::addUnwrappedLine() {
+void UnwrappedLineParser::addUnwrappedLine(LineLevel AdjustLevel) {
   if (Line->Tokens.empty())
     return;
   LLVM_DEBUG({
     if (CurrentLines == &Lines)
       printDebugInfo(*Line);
   });
+
+  // If this line closes a block when in Whitesmiths mode, remember that
+  // information so that the level can be decreased after the line is added.
+  // This has to happen after the addition of the line since the line itself
+  // needs to be indented.
+  bool ClosesWhitesmithsBlock =
+      Line->MatchingOpeningBlockLineIndex != UnwrappedLine::kInvalidIndex &&
+      Style.BreakBeforeBraces == FormatStyle::BS_Whitesmiths;
+
   CurrentLines->push_back(std::move(*Line));
   Line->Tokens.clear();
   Line->MatchingOpeningBlockLineIndex = UnwrappedLine::kInvalidIndex;
   Line->FirstStartColumn = 0;
+
+  if (ClosesWhitesmithsBlock && AdjustLevel == LineLevel::Remove)
+    --Line->Level;
   if (CurrentLines == &Lines && !PreprocessorDirectives.empty()) {
     CurrentLines->append(
         std::make_move_iterator(PreprocessorDirectives.begin()),

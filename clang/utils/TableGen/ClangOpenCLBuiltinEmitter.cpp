@@ -60,8 +60,8 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
@@ -69,7 +69,6 @@
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/StringMatcher.h"
 #include "llvm/TableGen/TableGenBackend.h"
-#include <set>
 
 using namespace llvm;
 
@@ -340,10 +339,8 @@ struct OpenCLBuiltinStruct {
   const bool IsConv : 1;
   // OpenCL extension(s) required for this overload.
   const unsigned short Extension;
-  // First OpenCL version in which this overload was introduced (e.g. CL20).
-  const unsigned short MinVersion;
-  // First OpenCL version in which this overload was removed (e.g. CL20).
-  const unsigned short MaxVersion;
+  // OpenCL versions in which this overload is available.
+  const unsigned short Versions;
 };
 
 )";
@@ -491,6 +488,29 @@ void BuiltinNameEmitter::EmitSignatureTable() {
   OS << "};\n\n";
 }
 
+// Encode a range MinVersion..MaxVersion into a single bit mask that can be
+// checked against LangOpts using isOpenCLVersionContainedInMask().
+// This must be kept in sync with OpenCLVersionID in OpenCLOptions.h.
+// (Including OpenCLOptions.h here would be a layering violation.)
+static unsigned short EncodeVersions(unsigned int MinVersion,
+                                     unsigned int MaxVersion) {
+  unsigned short Encoded = 0;
+
+  // A maximum version of 0 means available in all later versions.
+  if (MaxVersion == 0) {
+    MaxVersion = UINT_MAX;
+  }
+
+  unsigned VersionIDs[] = {100, 110, 120, 200, 300};
+  for (unsigned I = 0; I < sizeof(VersionIDs) / sizeof(VersionIDs[0]); I++) {
+    if (VersionIDs[I] >= MinVersion && VersionIDs[I] < MaxVersion) {
+      Encoded |= 1 << I;
+    }
+  }
+
+  return Encoded;
+}
+
 void BuiltinNameEmitter::EmitBuiltinTable() {
   unsigned Index = 0;
 
@@ -505,16 +525,18 @@ void BuiltinNameEmitter::EmitBuiltinTable() {
 
     for (const auto &Overload : SLM.second.Signatures) {
       StringRef ExtName = Overload.first->getValueAsDef("Extension")->getName();
+      unsigned int MinVersion =
+          Overload.first->getValueAsDef("MinVersion")->getValueAsInt("ID");
+      unsigned int MaxVersion =
+          Overload.first->getValueAsDef("MaxVersion")->getValueAsInt("ID");
+
       OS << "  { " << Overload.second << ", "
          << Overload.first->getValueAsListOfDefs("Signature").size() << ", "
          << (Overload.first->getValueAsBit("IsPure")) << ", "
          << (Overload.first->getValueAsBit("IsConst")) << ", "
          << (Overload.first->getValueAsBit("IsConv")) << ", "
          << FunctionExtensionIndex[ExtName] << ", "
-         << Overload.first->getValueAsDef("MinVersion")->getValueAsInt("ID")
-         << ", "
-         << Overload.first->getValueAsDef("MaxVersion")->getValueAsInt("ID")
-         << " },\n";
+         << EncodeVersions(MinVersion, MaxVersion) << " },\n";
       Index++;
     }
   }
@@ -667,7 +689,7 @@ static void OCL2Qual(Sema &S, const OpenCLTypeStruct &Ty,
       Records.getAllDerivedDefinitions("ImageType");
 
   // Map an image type name to its 3 access-qualified types (RO, WO, RW).
-  std::map<StringRef, SmallVector<Record *, 3>> ImageTypesMap;
+  StringMap<SmallVector<Record *, 3>> ImageTypesMap;
   for (auto *IT : ImageTypes) {
     auto Entry = ImageTypesMap.find(IT->getValueAsString("Name"));
     if (Entry == ImageTypesMap.end()) {
@@ -685,11 +707,11 @@ static void OCL2Qual(Sema &S, const OpenCLTypeStruct &Ty,
   // tells which one is needed.  Emit a switch statement that puts the
   // corresponding QualType into "QT".
   for (const auto &ITE : ImageTypesMap) {
-    OS << "    case OCLT_" << ITE.first.str() << ":\n"
+    OS << "    case OCLT_" << ITE.getKey() << ":\n"
        << "      switch (Ty.AccessQualifier) {\n"
        << "        case OCLAQ_None:\n"
        << "          llvm_unreachable(\"Image without access qualifier\");\n";
-    for (const auto &Image : ITE.second) {
+    for (const auto &Image : ITE.getValue()) {
       OS << StringSwitch<const char *>(
                 Image->getValueAsString("AccessQualifier"))
                 .Case("RO", "        case OCLAQ_ReadOnly:\n")
@@ -706,34 +728,45 @@ static void OCL2Qual(Sema &S, const OpenCLTypeStruct &Ty,
 
   // Switch cases for generic types.
   for (const auto *GenType : Records.getAllDerivedDefinitions("GenericType")) {
-    OS << "    case OCLT_" << GenType->getValueAsString("Name") << ":\n";
-    OS << "      QT.append({";
+    OS << "    case OCLT_" << GenType->getValueAsString("Name") << ": {\n";
 
     // Build the Cartesian product of (vector sizes) x (types).  Only insert
     // the plain scalar types for now; other type information such as vector
     // size and type qualifiers will be added after the switch statement.
-    for (unsigned I = 0; I < GenType->getValueAsDef("VectorList")
-                                 ->getValueAsListOfInts("List")
-                                 .size();
-         I++) {
-      for (const auto *T :
-           GenType->getValueAsDef("TypeList")->getValueAsListOfDefs("List")) {
-        OS << T->getValueAsDef("QTExpr")->getValueAsString("TypeExpr") << ", ";
+    std::vector<Record *> BaseTypes =
+        GenType->getValueAsDef("TypeList")->getValueAsListOfDefs("List");
+
+    // Collect all QualTypes for a single vector size into TypeList.
+    OS << "      SmallVector<QualType, " << BaseTypes.size() << "> TypeList;\n";
+    for (const auto *T : BaseTypes) {
+      StringRef Ext =
+          T->getValueAsDef("Extension")->getValueAsString("ExtName");
+      if (!Ext.empty()) {
+        OS << "      if (S.getPreprocessor().isMacroDefined(\"" << Ext
+           << "\")) {\n  ";
+      }
+      OS << "      TypeList.push_back("
+         << T->getValueAsDef("QTExpr")->getValueAsString("TypeExpr") << ");\n";
+      if (!Ext.empty()) {
+        OS << "      }\n";
       }
     }
-    OS << "});\n";
-    // GenTypeNumTypes is the number of types in the GenType
-    // (e.g. float/double/half).
-    OS << "      GenTypeNumTypes = "
-       << GenType->getValueAsDef("TypeList")->getValueAsListOfDefs("List")
-              .size()
-       << ";\n";
+    OS << "      GenTypeNumTypes = TypeList.size();\n";
+
+    // Duplicate the TypeList for every vector size.
+    std::vector<int64_t> VectorList =
+        GenType->getValueAsDef("VectorList")->getValueAsListOfInts("List");
+    OS << "      QT.reserve(" << VectorList.size() * BaseTypes.size() << ");\n"
+       << "      for (unsigned I = 0; I < " << VectorList.size() << "; I++) {\n"
+       << "        QT.append(TypeList);\n"
+       << "      }\n";
+
     // GenVectorSizes is the list of vector sizes for this GenType.
-    // QT contains GenTypeNumTypes * #GenVectorSizes elements.
     OS << "      GenVectorSizes = List"
        << GenType->getValueAsDef("VectorList")->getValueAsString("Name")
-       << ";\n";
-    OS << "      break;\n";
+       << ";\n"
+       << "      break;\n"
+       << "    }\n";
   }
 
   // Switch cases for non generic, non image types (int, int4, float, ...).
@@ -756,9 +789,20 @@ static void OCL2Qual(Sema &S, const OpenCLTypeStruct &Ty,
     if (QT->getValueAsBit("IsAbstract") == 1)
       continue;
     // Emit the cases for non generic, non image types.
-    OS << "    case OCLT_" << T->getValueAsString("Name") << ":\n"
-       << "      QT.push_back(" << QT->getValueAsString("TypeExpr") << ");\n"
-       << "      break;\n";
+    OS << "    case OCLT_" << T->getValueAsString("Name") << ":\n";
+
+    StringRef Ext = T->getValueAsDef("Extension")->getValueAsString("ExtName");
+    // If this type depends on an extension, ensure the extension macro is
+    // defined.
+    if (!Ext.empty()) {
+      OS << "      if (S.getPreprocessor().isMacroDefined(\"" << Ext
+         << "\")) {\n  ";
+    }
+    OS << "      QT.push_back(" << QT->getValueAsString("TypeExpr") << ");\n";
+    if (!Ext.empty()) {
+      OS << "      }\n";
+    }
+    OS << "      break;\n";
   }
 
   // End of switch statement.

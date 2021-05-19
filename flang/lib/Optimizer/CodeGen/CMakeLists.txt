@@ -16,8 +16,8 @@ add_flang_library(FIRCodeGen
   FIRDialect
   FIRSupport
   MLIROpenMPToLLVM
-  MLIRTargetLLVMIR
   MLIRTargetLLVMIRModuleTranslation
+  MLIRTargetLLVMIRExport
 
   LINK_COMPONENTS
   AsmParser

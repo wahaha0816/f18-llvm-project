@@ -249,6 +249,10 @@ def TimeAPI : PublicAPI<"time.h"> {
   ];
 
   let Functions = [
+    "asctime",
+    "asctime_r",
+    "gmtime",
+    "gmtime_r",
     "mktime",
   ];
 }

@@ -15,6 +15,7 @@
 #include "flang/Common/reference.h"
 #include "llvm/ADT/DenseMapInfo.h"
 #include <array>
+#include <functional>
 #include <list>
 #include <optional>
 #include <set>
@@ -506,9 +507,10 @@ public:
       // OpenMP data-copying attribute
       OmpCopyIn, OmpCopyPrivate,
       // OpenMP miscellaneous flags
-      OmpCommonBlock, OmpReduction, OmpAllocate, OmpDeclareSimd,
-      OmpDeclareTarget, OmpThreadprivate, OmpDeclareReduction, OmpFlushed,
-      OmpCriticalLock, OmpIfSpecified, OmpNone, OmpPreDetermined, OmpAligned);
+      OmpCommonBlock, OmpReduction, OmpAligned, OmpAllocate,
+      OmpAllocateDirective, OmpDeclareSimd, OmpDeclareTarget, OmpThreadprivate,
+      OmpDeclareReduction, OmpFlushed, OmpCriticalLock, OmpIfSpecified, OmpNone,
+      OmpPreDetermined);
   using Flags = common::EnumSet<Flag, Flag_enumSize>;
 
   const Scope &owner() const { return *owner_; }
@@ -598,10 +600,6 @@ public:
 
   bool operator==(const Symbol &that) const { return this == &that; }
   bool operator!=(const Symbol &that) const { return !(*this == that); }
-  bool operator<(const Symbol &that) const {
-    // For sets of symbols: collate them by source location
-    return name_.begin() < that.name_.begin();
-  }
 
   int Rank() const {
     return std::visit(
@@ -653,6 +651,8 @@ public:
   // The Scope * argument defaults to this->scope_ but should be overridden
   // for a parameterized derived type instantiation with the instance's scope.
   const DerivedTypeSpec *GetParentTypeSpec(const Scope * = nullptr) const;
+
+  SemanticsContext &GetSemanticsContext() const;
 
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
   LLVM_DUMP_METHOD void dump() const;
@@ -769,11 +769,40 @@ inline const DeclTypeSpec *Symbol::GetType() const {
       details_);
 }
 
-inline bool operator<(SymbolRef x, SymbolRef y) { return *x < *y; }
-inline bool operator<(MutableSymbolRef x, MutableSymbolRef y) {
-  return *x < *y;
+// Sets and maps keyed by Symbols
+
+struct SymbolAddressCompare {
+  bool operator()(const SymbolRef &x, const SymbolRef &y) const {
+    return &*x < &*y;
+  }
+  bool operator()(const MutableSymbolRef &x, const MutableSymbolRef &y) const {
+    return &*x < &*y;
+  }
+};
+
+// Symbol comparison is based on the order of cooked source
+// stream creation and, when both are from the same cooked source,
+// their positions in that cooked source stream.
+// Don't use this comparator or OrderedSymbolSet to hold
+// Symbols that might be subject to ReplaceName().
+struct SymbolSourcePositionCompare {
+  // These functions are implemented in Evaluate/tools.cpp to
+  // satisfy complicated shared library interdependency.
+  bool operator()(const SymbolRef &, const SymbolRef &) const;
+  bool operator()(const MutableSymbolRef &, const MutableSymbolRef &) const;
+};
+
+using UnorderedSymbolSet = std::set<SymbolRef, SymbolAddressCompare>;
+using OrderedSymbolSet = std::set<SymbolRef, SymbolSourcePositionCompare>;
+
+template <typename A>
+OrderedSymbolSet OrderBySourcePosition(const A &container) {
+  OrderedSymbolSet result;
+  for (SymbolRef x : container) {
+    result.emplace(x);
+  }
+  return result;
 }
-using SymbolSet = std::set<SymbolRef>;
 } // namespace Fortran::semantics
 
 // Define required  info so that SymbolRef can be used inside llvm::DenseMap.

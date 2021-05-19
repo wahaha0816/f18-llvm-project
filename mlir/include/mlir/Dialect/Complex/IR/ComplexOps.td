@@ -20,11 +20,9 @@ class Complex_Op<string mnemonic, list<OpTrait> traits = []>
 // floating-point element type. These operations take two operands and return
 // one result, all of which must be complex numbers of the same type.
 class ComplexArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
-    Complex_Op<mnemonic,
-       !listconcat(traits, [NoSideEffect,
-                            SameOperandsAndResultType,
-                            DeclareOpInterfaceMethods<VectorUnrollOpInterface>,
-                            ElementwiseMappable])> {
+    Complex_Op<mnemonic, traits # [NoSideEffect, SameOperandsAndResultType,
+    DeclareOpInterfaceMethods<VectorUnrollOpInterface>] #
+    ElementwiseMappable.traits> {
   let arguments = (ins Complex<AnyFloat>:$lhs, Complex<AnyFloat>:$rhs);
   let results = (outs Complex<AnyFloat>:$result);
   let assemblyFormat = "$lhs `,` $rhs  attr-dict `:` type($result)";
@@ -146,6 +144,7 @@ def ImOp : Complex_Op<"im",
   let results = (outs AnyFloat:$imaginary);
 
   let assemblyFormat = "$complex attr-dict `:` type($complex)";
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -187,6 +186,7 @@ def ReOp : Complex_Op<"re",
   let results = (outs AnyFloat:$real);
 
   let assemblyFormat = "$complex attr-dict `:` type($complex)";
+  let hasFolder = 1;
 }
 
 

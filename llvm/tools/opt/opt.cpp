@@ -229,6 +229,13 @@ static cl::opt<bool> VerifyEachDebugInfoPreserve(
     cl::desc("Start each pass with collecting and end it with checking of "
              "debug info preservation."));
 
+static cl::opt<std::string>
+    VerifyDIPreserveExport("verify-di-preserve-export",
+                   cl::desc("Export debug info preservation failures into "
+                            "specified (JSON) file (should be abs path as we use"
+                            " append mode to insert new JSON objects)"),
+                   cl::value_desc("filename"), cl::init(""));
+
 static cl::opt<bool>
 PrintBreakpoints("print-breakpoints-for-testing",
                  cl::desc("Print select breakpoints location for testing"));
@@ -306,6 +313,7 @@ static cl::opt<std::string> RemarksFormat(
     cl::desc("The format used for serializing remarks (default: YAML)"),
     cl::value_desc("format"), cl::init("yaml"));
 
+namespace llvm {
 cl::opt<PGOKind>
     PGOKindFlag("pgo-kind", cl::init(NoPGO), cl::Hidden,
                 cl::desc("The kind of profile guided optimization"),
@@ -334,6 +342,7 @@ cl::opt<std::string> CSProfileGenFile(
     "cs-profilegen-file",
     cl::desc("Path to the instrumented context sensitive profile."),
     cl::Hidden);
+} // namespace llvm
 
 static inline void addPass(legacy::PassManagerBase &PM, Pass *P) {
   // Add the pass to the pass manager...
@@ -506,13 +515,14 @@ static bool shouldPinPassToLegacyPM(StringRef Pass) {
       "safe-stack",           "cost-model",
       "codegenprepare",       "interleaved-load-combine",
       "unreachableblockelim", "verify-safepoint-ir",
-      "atomic-expand",
+      "atomic-expand",        "expandvp",
       "hardware-loops",       "type-promotion",
       "mve-tail-predication", "interleaved-access",
       "global-merge",         "pre-isel-intrinsic-lowering",
       "expand-reductions",    "indirectbr-expand",
       "generic-to-nvvm",      "expandmemcmp",
       "loop-reduce",          "lower-amx-type",
+      "pre-amx-config",       "lower-amx-intrinsics",
       "polyhedral-info",      "replace-with-veclib"};
   for (const auto &P : PassNamePrefix)
     if (Pass.startswith(P))
@@ -583,6 +593,7 @@ int main(int argc, char **argv) {
   initializePostInlineEntryExitInstrumenterPass(Registry);
   initializeUnreachableBlockElimLegacyPassPass(Registry);
   initializeExpandReductionsPass(Registry);
+  initializeExpandVectorPredicationPass(Registry);
   initializeWasmEHPreparePass(Registry);
   initializeWriteBitcodePassPass(Registry);
   initializeHardwareLoopsPass(Registry);
@@ -692,8 +703,8 @@ int main(int argc, char **argv) {
       OutputFilename = "-";
 
     std::error_code EC;
-    sys::fs::OpenFlags Flags = OutputAssembly ? sys::fs::OF_Text
-                                              : sys::fs::OF_None;
+    sys::fs::OpenFlags Flags =
+        OutputAssembly ? sys::fs::OF_TextWithCRLF : sys::fs::OF_None;
     Out.reset(new ToolOutputFile(OutputFilename, EC, Flags));
     if (EC) {
       errs() << EC.message() << '\n';
@@ -775,6 +786,12 @@ int main(int argc, char **argv) {
                 "full list of passes, see the '--print-passes' flag.\n";
       return 1;
     }
+    if (legacy::debugPassSpecified()) {
+      errs()
+          << "-debug-pass does not work with the new PM, either use "
+             "-debug-pass-manager, or use the legacy PM (-enable-new-pm=0)\n";
+      return 1;
+    }
     if (PassPipeline.getNumOccurrences() > 0 && PassList.size() > 0) {
       errs()
           << "Cannot specify passes via both -foo-pass and --passes=foo-pass\n";
@@ -831,6 +848,8 @@ int main(int argc, char **argv) {
   } else if (VerifyEachDebugInfoPreserve) {
     Passes.setDebugifyMode(DebugifyMode::OriginalDebugInfo);
     Passes.setDIPreservationMap(DIPreservationMap);
+    if (!VerifyDIPreserveExport.empty())
+      Passes.setOrigDIVerifyBugsReportFilePath(VerifyDIPreserveExport);
   }
 
   bool AddOneTimeDebugifyPasses =
@@ -1000,10 +1019,13 @@ int main(int argc, char **argv) {
   if (AddOneTimeDebugifyPasses) {
     if (EnableDebugify)
       Passes.add(createCheckDebugifyModulePass(false));
-    else if (VerifyDebugInfoPreserve)
+    else if (VerifyDebugInfoPreserve) {
+      if (!VerifyDIPreserveExport.empty())
+        Passes.setOrigDIVerifyBugsReportFilePath(VerifyDIPreserveExport);
       Passes.add(createCheckDebugifyModulePass(
           false, "", nullptr, DebugifyMode::OriginalDebugInfo,
-          &(Passes.getDebugInfoPerPassMap())));
+          &(Passes.getDebugInfoPerPassMap()), VerifyDIPreserveExport));
+    }
   }
 
   // In run twice mode, we want to make sure the output is bit-by-bit

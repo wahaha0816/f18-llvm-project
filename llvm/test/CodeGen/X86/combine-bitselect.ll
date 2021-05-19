@@ -505,7 +505,7 @@ define <4 x i64> @bitselect_v4i64_broadcast_rrr(<4 x i64> %a0, <4 x i64> %a1, i6
 ; XOP-LABEL: bitselect_v4i64_broadcast_rrr:
 ; XOP:       # %bb.0:
 ; XOP-NEXT:    vmovq %rdi, %xmm2
-; XOP-NEXT:    vmovddup {{.*#+}} xmm2 = xmm2[0,0]
+; XOP-NEXT:    vpshufd {{.*#+}} xmm2 = xmm2[0,1,0,1]
 ; XOP-NEXT:    vinsertf128 $1, %xmm2, %ymm2, %ymm2
 ; XOP-NEXT:    vpcmov %ymm2, %ymm1, %ymm0, %ymm0
 ; XOP-NEXT:    retq
@@ -513,7 +513,7 @@ define <4 x i64> @bitselect_v4i64_broadcast_rrr(<4 x i64> %a0, <4 x i64> %a1, i6
 ; AVX1-LABEL: bitselect_v4i64_broadcast_rrr:
 ; AVX1:       # %bb.0:
 ; AVX1-NEXT:    vmovq %rdi, %xmm2
-; AVX1-NEXT:    vmovddup {{.*#+}} xmm2 = xmm2[0,0]
+; AVX1-NEXT:    vpshufd {{.*#+}} xmm2 = xmm2[0,1,0,1]
 ; AVX1-NEXT:    vinsertf128 $1, %xmm2, %ymm2, %ymm2
 ; AVX1-NEXT:    vandps %ymm2, %ymm0, %ymm0
 ; AVX1-NEXT:    vandnps %ymm1, %ymm2, %ymm1
@@ -873,7 +873,7 @@ define <8 x i64> @bitselect_v8i64_broadcast_rrr(<8 x i64> %a0, <8 x i64> %a1, i6
 ; XOP-LABEL: bitselect_v8i64_broadcast_rrr:
 ; XOP:       # %bb.0:
 ; XOP-NEXT:    vmovq %rdi, %xmm4
-; XOP-NEXT:    vmovddup {{.*#+}} xmm4 = xmm4[0,0]
+; XOP-NEXT:    vpshufd {{.*#+}} xmm4 = xmm4[0,1,0,1]
 ; XOP-NEXT:    vinsertf128 $1, %xmm4, %ymm4, %ymm4
 ; XOP-NEXT:    vpcmov %ymm4, %ymm2, %ymm0, %ymm0
 ; XOP-NEXT:    vpcmov %ymm4, %ymm3, %ymm1, %ymm1
@@ -882,7 +882,7 @@ define <8 x i64> @bitselect_v8i64_broadcast_rrr(<8 x i64> %a0, <8 x i64> %a1, i6
 ; AVX1-LABEL: bitselect_v8i64_broadcast_rrr:
 ; AVX1:       # %bb.0:
 ; AVX1-NEXT:    vmovq %rdi, %xmm4
-; AVX1-NEXT:    vmovddup {{.*#+}} xmm4 = xmm4[0,0]
+; AVX1-NEXT:    vpshufd {{.*#+}} xmm4 = xmm4[0,1,0,1]
 ; AVX1-NEXT:    vinsertf128 $1, %xmm4, %ymm4, %ymm4
 ; AVX1-NEXT:    vandps %ymm4, %ymm1, %ymm1
 ; AVX1-NEXT:    vandps %ymm4, %ymm0, %ymm0
