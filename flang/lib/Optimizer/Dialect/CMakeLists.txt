@@ -13,7 +13,7 @@ add_flang_library(FIRDialect
   LINK_LIBS
   FIRSupport
   MLIROpenMPToLLVM
-  MLIRTargetLLVMIRModuleTranslation
+  MLIRLLVMToLLVMIRTranslation
   MLIRTargetLLVMIRExport
 
   LINK_COMPONENTS

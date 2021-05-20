@@ -397,15 +397,17 @@ static void genOMP(Fortran::lower::AbstractConverter &converter,
   // 1. linear
   // 2. order
   auto wsLoopOp = firOpBuilder.create<mlir::omp::WsLoopOp>(
-      currentLocation, lowerBound, upperBound, step, privateClauseOperands,
-      firstPrivateClauseOperands, lastPrivateClauseOperands, linearVars,
-      linearStepVars, scheduleClauseOperand.dyn_cast_or_null<StringAttr>(),
+      currentLocation, /*resultTypes=*/mlir::TypeRange{}, lowerBound,
+      upperBound, step, privateClauseOperands, firstPrivateClauseOperands,
+      lastPrivateClauseOperands, linearVars, linearStepVars,
+      scheduleClauseOperand.dyn_cast_or_null<StringAttr>(),
       scheduleChunkClauseOperand,
       collapseClauseOperand.dyn_cast_or_null<IntegerAttr>(),
       noWaitClauseOperand.dyn_cast_or_null<UnitAttr>(),
       orderedClauseOperand.dyn_cast_or_null<IntegerAttr>(),
       orderClauseOperand.dyn_cast_or_null<StringAttr>(),
-      firOpBuilder.getUnitAttr() /* Inclusive stop */);
+      firOpBuilder.getUnitAttr() /* Inclusive stop */,
+      /*buildBody=*/false);
 
   // Handle attribute based clauses.
   for (const auto &clause : wsLoopOpClauseList.v) {

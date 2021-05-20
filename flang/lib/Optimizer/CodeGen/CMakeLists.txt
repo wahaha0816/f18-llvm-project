@@ -16,7 +16,7 @@ add_flang_library(FIRCodeGen
   FIRDialect
   FIRSupport
   MLIROpenMPToLLVM
-  MLIRTargetLLVMIRModuleTranslation
+  MLIRLLVMToLLVMIRTranslation
   MLIRTargetLLVMIRExport
 
   LINK_COMPONENTS

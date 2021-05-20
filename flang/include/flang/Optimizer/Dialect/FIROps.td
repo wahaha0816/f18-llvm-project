@@ -3043,7 +3043,7 @@ def fir_GenTypeDescOp : fir_OneResultOp<"gentypedesc", [NoSideEffect]> {
     mlir::Type restype = TypeDescType::get(intype);
     if (parser.addTypeToList(restype, result.types))
       return mlir::failure();
-    return mlir::success(;
+    return mlir::success();
   }];
 
   let printer = [{
