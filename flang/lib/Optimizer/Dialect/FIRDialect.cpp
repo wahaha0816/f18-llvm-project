@@ -16,6 +16,7 @@
 #include "flang/Optimizer/Dialect/FIRType.h"
 #include "flang/Optimizer/Transforms/Passes.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "mlir/IR/OpImplementation.h"
 
 using namespace fir;
 
@@ -56,6 +57,19 @@ struct FIRInlinerInterface : public mlir::DialectInlinerInterface {
     return builder.create<fir::ConvertOp>(loc, resultType, input);
   }
 };
+
+/// This class defines the interface for handling assembly output in FIR.
+struct FIROpAsmInterface : public OpAsmDialectInterface {
+  using mlir::OpAsmDialectInterface::OpAsmDialectInterface;
+  mlir::LogicalResult getAlias(mlir::Type type, llvm::raw_ostream &os) const final {
+    auto recordType = type.dyn_cast_or_null<fir::RecordType>();
+    if (!recordType)
+      return mlir::failure();
+    os << recordType.getName();
+    return mlir::success();
+  }   
+};
+
 } // namespace
 
 fir::FIROpsDialect::FIROpsDialect(mlir::MLIRContext *ctx)
@@ -66,7 +80,7 @@ fir::FIROpsDialect::FIROpsDialect(mlir::MLIRContext *ctx)
 #define GET_OP_LIST
 #include "flang/Optimizer/Dialect/FIROps.cpp.inc"
       >();
-  addInterfaces<FIRInlinerInterface>();
+  addInterfaces<FIRInlinerInterface, FIROpAsmInterface>();
 }
 
 // anchor the class vtable to this compilation unit
