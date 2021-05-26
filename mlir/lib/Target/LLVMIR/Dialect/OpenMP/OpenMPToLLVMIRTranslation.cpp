@@ -275,6 +275,13 @@ convertOmpWsLoop(Operation &opInst, llvm::IRBuilderBase &builder,
       findAllocaInsertPoint(builder, moduleTranslation);
   llvm::OpenMPIRBuilder::InsertPointTy afterIP;
   llvm::OpenMPIRBuilder *ompBuilder = moduleTranslation.getOpenMPBuilder();
+
+  bool isSimd = false;
+  if (auto simd = loop.simd_modifier()) {
+    omp::ScheduleModifier modifier = *omp::symbolizeScheduleModifier(*simd);
+    isSimd = (modifier == omp::ScheduleModifier::simd);
+  }
+
   if (schedule == omp::ClauseScheduleKind::Static) {
     loopInfo = ompBuilder->createStaticWorkshareLoop(ompLoc, loopInfo, allocaIP,
                                                      !loop.nowait(), chunk);
@@ -286,13 +293,19 @@ convertOmpWsLoop(Operation &opInst, llvm::IRBuilderBase &builder,
       schedType = llvm::omp::OMPScheduleType::DynamicChunked;
       break;
     case omp::ClauseScheduleKind::Guided:
-      schedType = llvm::omp::OMPScheduleType::GuidedChunked;
+      if (isSimd)
+        schedType = llvm::omp::OMPScheduleType::GuidedSimd;
+      else
+        schedType = llvm::omp::OMPScheduleType::GuidedChunked;
       break;
     case omp::ClauseScheduleKind::Auto:
       schedType = llvm::omp::OMPScheduleType::Auto;
       break;
     case omp::ClauseScheduleKind::Runtime:
-      schedType = llvm::omp::OMPScheduleType::Runtime;
+      if (isSimd)
+        schedType = llvm::omp::OMPScheduleType::RuntimeSimd;
+      else
+        schedType = llvm::omp::OMPScheduleType::Runtime;
       break;
     default:
       llvm_unreachable("Unknown schedule value");

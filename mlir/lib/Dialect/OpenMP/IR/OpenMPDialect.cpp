@@ -413,7 +413,7 @@ parseLinearClause(OpAsmParser &parser,
 /// sched-wo-chunk ::=  `auto` | `runtime`
 static ParseResult
 parseScheduleClause(OpAsmParser &parser, SmallString<8> &schedule,
-                    SmallVector<SmallString<12>> &modifiers,
+                    SmallVectorImpl<SmallString<12>> &modifiers,
                     Optional<OpAsmParser::OperandType> &chunkSize) {
   if (parser.parseLParen())
     return failure();
@@ -438,7 +438,7 @@ parseScheduleClause(OpAsmParser &parser, SmallString<8> &schedule,
   }
 
   // If there is a comma, we have one or more modifiers..
-  if (succeeded(parser.parseOptionalComma())) {
+  while (succeeded(parser.parseOptionalComma())) {
     StringRef mod;
     if (parser.parseKeyword(&mod))
       return failure();
@@ -636,10 +636,13 @@ static ParseResult parseWsLoopOp(OpAsmParser &parser, OperationState &result) {
     schedule[0] = llvm::toUpper(schedule[0]);
     auto attr = parser.getBuilder().getStringAttr(schedule);
     result.addAttribute("schedule_val", attr);
-    if (modifiers.size() > 0)
-    {
-	    auto mod = parser.getBuilder().getStringAttr(modifiers[0]);
-	    result.addAttribute("schedule_modifiers", mod);
+    if (modifiers.size() > 0) {
+      auto mod = parser.getBuilder().getStringAttr(modifiers[0]);
+      result.addAttribute("schedule_modifiers", mod);
+      if (modifiers.size() > 1) {
+        mod = parser.getBuilder().getStringAttr(modifiers[1]);
+        result.addAttribute("simd_modifier", mod);
+      }
     }
     if (scheduleChunkSize) {
       auto chunkSizeType = parser.getBuilder().getI32Type();
@@ -701,6 +704,10 @@ static void printWsLoopOp(OpAsmPrinter &p, WsLoopOp op) {
     }
     if (auto modifier = op.schedule_modifiers()) {
       p << ", " << modifier;
+    }
+    auto simd = op.simd_modifier();
+    if (simd.hasValue() && *simd != "none") {
+      p << ", " << simd;
     }
     p << ")";
   }
