@@ -365,7 +365,7 @@ BoxProcType::verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
 }
 
 static bool canBePointerOrHeapElementType(mlir::Type eleTy) {
-  return eleTy.isa<BoxType, BoxCharType, BoxProcType, ShapeType, ShapeShiftType,
+  return eleTy.isa<BoxCharType, BoxProcType, ShapeType, ShapeShiftType,
                    SliceType, FieldType, LenType, HeapType, PointerType,
                    ReferenceType, TypeDescType>();
 }
