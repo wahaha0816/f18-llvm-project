@@ -112,6 +112,10 @@ class DebugDumpParseTreeAction : public PrescanAndSemaAction {
   void ExecuteAction() override;
 };
 
+class DebugDumpAllAction : public PrescanAndSemaAction {
+  void ExecuteAction() override;
+};
+
 class DebugPreFIRTreeAction : public PrescanAndSemaAction {
   void ExecuteAction() override;
 };
