@@ -14,8 +14,9 @@
    ! CHECK: fir.do_loop
    ! CHECK: cmpf ogt, %{{.*}}, %[[four]]
    ! CHECK: fir.array_merge_store %{{.*}}, %{{.*}} to %[[tvec]]
+   ! CHECK: %[[tmask:.*]] = fir.array_load %[[tvec]]
    ! CHECK: fir.do_loop
-   ! CHECK: fir.coordinate_of %[[tvec]]
+   ! CHECK: fir.array_fetch %[[tmask]]
    ! CHECK: fir.if
    ! CHECK: fir.array_fetch
    ! CHECK: fir.negf
@@ -37,8 +38,9 @@
      ! CHECK: fir.do_loop
      ! CHECK: cmpf ogt, %{{.*}}, %[[cst]]
      ! CHECK: fir.array_merge_store %{{.*}}, %{{.*}} to %[[tvec]]
+     ! CHECK: %[[tmask:.*]] = fir.array_load %[[tvec]]
      ! CHECK: fir.do_loop
-     ! CHECK: fir.coordinate_of %[[tvec]]
+     ! CHECK: fir.array_fetch %[[tmask]]
      ! CHECK: fir.if
      ! CHECK: fir.array_fetch
      ! CHECK: mulf
@@ -57,11 +59,12 @@
      ! CHECK: fir.do_loop
      ! CHECK: cmpf ogt, %{{.*}}, %[[cst50]]
      ! CHECK: fir.array_merge_store %{{.*}}, %{{.*}} to %[[uvec]]
+     ! CHECK-DAG: %[[umask:.*]] = fir.array_load %[[uvec]]
      ! CHECK: fir.do_loop
-     ! CHECK: fir.coordinate_of %[[tvec]]
+     ! CHECK: fir.array_fetch %[[tmask]]
      ! CHECK: fir.if
      ! CHECK: } else {
-     ! CHECK: fir.coordinate_of %[[uvec]]
+     ! CHECK: fir.array_fetch %[[umask]]
      ! CHECK: fir.if
      ! CHECK: fir.array_fetch
      ! CHECK: addf
@@ -73,10 +76,10 @@
      b = 3.0 + a
    ! Use cached conditions
      ! CHECK: fir.do_loop
-     ! CHECK: fir.coordinate_of %[[tvec]]
+     ! CHECK: fir.array_fetch %[[tmask]]
      ! CHECK: fir.if
      ! CHECK: } else {
-     ! CHECK: fir.coordinate_of %[[uvec]]
+     ! CHECK: fir.array_fetch %[[umask]]
      ! CHECK: fir.if
      ! CHECK: fir.array_fetch
      ! CHECK: subf
@@ -89,10 +92,10 @@
    elsewhere
    ! Use cached conditions, always false
      ! CHECK: fir.do_loop
-     ! CHECK: fir.coordinate_of %[[tvec]]
+     ! CHECK: fir.array_fetch %[[tmask]]
      ! CHECK: fir.if
      ! CHECK: } else {
-     ! CHECK: fir.coordinate_of %[[uvec]]
+     ! CHECK: fir.array_fetch %[[umask]]
      ! CHECK: fir.if
      ! CHECK: } else {
      ! CHECK: fir.array_fetch
@@ -107,3 +110,28 @@
    ! CHECK-DAG: freemem %[[uvec]]
    ! CHECK: return
 end
+
+! CHECK-LABEL: func @_QPissue855(
+! CHECK-SAME: %[[x:.*]]: !fir.ref<!fir.array<?x?xf32>>
+subroutine issue855(x, n)
+  integer(8) :: n
+  real :: x(n, n)
+  ! CHECK-DAG: fir.array_load %[[x]](%{{.*}}) : (!fir.ref<!fir.array<?x?xf32>>, !fir.shape<2>) -> !fir.array<?x?xf32>
+  ! CHECK-DAG: %[[two:.*]] = constant 2.0{{.*}} : f32
+  ! CHECK: %[[tvec:.*]] = fir.allocmem !fir.array<?x?x!fir.logical
+  ! CHECK-DAG: fir.array_load %[[tvec]]
+  ! CHECK: fir.do_loop
+  ! CHECK: cmpf ogt, %{{.*}}, %[[two]]
+  ! CHECK: fir.array_merge_store %{{.*}}, %{{.*}} to %[[tvec]]
+  ! CHECK: %[[tmask:.*]] = fir.array_load %[[tvec]]
+  ! CHECK: fir.do_loop
+  ! CHECK: fir.array_fetch %[[tmask]]
+  ! CHECK: fir.if
+  ! CHECK: fir.array_update
+  ! CHECK: } else {
+  ! CHECK: }
+  ! CHECK: }
+  ! CHECK: fir.array_merge_store
+  ! CHECK: fir.freemem %[[tvec]]
+   where( x > 2. ) x = 1.
+end subroutine

@@ -25,6 +25,10 @@ template <typename>
 class Expr;
 } // namespace Fortran::evaluate
 
+namespace fir {
+class ArrayLoadOp;
+}
+
 namespace Fortran::lower {
 
 /// Collect WHERE construct mask expressions in the bridge and forward lowering
@@ -63,7 +67,7 @@ public:
 
   // Map each mask expression back to the temporary holding the initial
   // evaluation results.
-  llvm::DenseMap<FrontEndMaskExpr, mlir::Value> vmap;
+  llvm::DenseMap<FrontEndMaskExpr, fir::ArrayLoadOp> vmap;
 
   // Inflate the statement context for the entire WHERE construct. We have to
   // cache the mask expression results across the entire construct.

@@ -2487,8 +2487,15 @@ public:
       for (const auto *e : masks->getExprs())
         if (e && !masks->vmap.count(e)) {
           ScalarExprLowering sel(getLoc(), converter, symMap, stmtCtx);
-          auto tmp = fir::getBase(sel.asArray(*e));
-          masks->vmap.try_emplace(e, tmp);
+          auto tmp = sel.asArray(*e);
+          auto tmpAddr = fir::getBase(tmp);
+          auto seqTy = fir::dyn_cast_ptrOrBoxEleTy(tmpAddr.getType());
+          auto shapeOp = builder.createShape(loc, tmp);
+          mlir::Value emptySlice;
+          auto maskLoad = builder.create<fir::ArrayLoadOp>(
+              loc, seqTy, tmpAddr, shapeOp, emptySlice,
+              /*typeparams=*/llvm::None);
+          masks->vmap.try_emplace(e, maskLoad);
         }
     }
 
@@ -2543,15 +2550,12 @@ public:
 
     // Generate the mask conditional structure, if there are masks.
     if (masks && !masks->empty()) {
-      auto genCond = [&](mlir::Value tmp, IterSpace iters) {
-        auto arrTy = fir::dyn_cast_ptrOrBoxEleTy(tmp.getType());
-        auto eleTy = arrTy.cast<fir::SequenceType>().getEleTy();
-        auto eleRefTy = builder.getRefType(eleTy);
+      auto genCond = [&](fir::ArrayLoadOp maskLoad, IterSpace iters) {
+        auto eleTy = maskLoad.getType().cast<fir::SequenceType>().getEleTy();
+        auto fetch = builder.create<fir::ArrayFetchOp>(
+            loc, eleTy, maskLoad, iters.iterVec(), /*typeparams=*/llvm::None);
         auto i1Ty = builder.getI1Type();
-        auto addr = builder.create<fir::CoordinateOp>(loc, eleRefTy, tmp,
-                                                      iters.iterVec());
-        auto load = builder.create<fir::LoadOp>(loc, addr);
-        return builder.createConvert(loc, i1Ty, load);
+        return builder.createConvert(loc, i1Ty, fetch);
       };
 
       // Handle the negated conditions. See 10.2.3.2p4 as to why this control
