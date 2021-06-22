@@ -61,9 +61,11 @@ add_flang_library(FortranRuntime PARTIAL_SOURCES_INTENDED
   stop.cpp
   sum.cpp
   terminator.cpp
+  time-intrinsic.cpp
   tools.cpp
   transformational.cpp
   type-code.cpp
+  type-info.cpp
   unit.cpp
   unit-map.cpp
 
