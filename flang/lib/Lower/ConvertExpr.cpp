@@ -2248,20 +2248,20 @@ class ArrayExprLowering {
       indices.insert(indices.begin() + i, v);
     }
 
-    void setElement(mlir::Value ele) {
+    void setElement(fir::ExtendedValue &&ele) {
       assert(!element);
-      element = ele;
+      element.emplace(std::move(ele));
     }
 
-    mlir::Value getElement() const {
+    const fir::ExtendedValue &getElement() const {
       assert(element);
-      return element;
+      return *element;
     }
 
   private:
     mlir::Value inArg;
     mlir::Value outRes;
-    mlir::Value element;
+    llvm::Optional<fir::ExtendedValue> element;
     llvm::SmallVector<mlir::Value> indices;
   };
 
@@ -2469,28 +2469,25 @@ public:
     // Convert to array elemental type is needed for logical.
     auto eleTy = innerArg.getType().cast<fir::SequenceType>().getEleTy();
     auto exv = f(iterSpace);
-    auto element = exv.match(
-        [&](const fir::UnboxedValue &v) {
+    iterSpace.setElement(exv.match(
+        [&](const fir::UnboxedValue &v) -> ExtValue {
           return builder.createConvert(loc,
                                        isAdjustedArrayElementType(eleTy)
                                            ? builder.getRefType(eleTy)
                                            : eleTy,
                                        v);
         },
-        [&](const fir::CharBoxValue &v) {
-          return builder.createConvert(loc, builder.getRefType(eleTy),
-                                       v.getBuffer());
+        [&](const fir::CharBoxValue &v) -> ExtValue {
+          // Do not cast the buffer type. Array value copy will need to
+          // actual element type to implement character copy.
+          return v;
         },
-        [&](const auto &) -> mlir::Value {
+        [&](const auto &) -> ExtValue {
           fir::emitFatalError(loc, "unhandled value for array update");
-        });
-    iterSpace.setElement(element);
-    auto resTy = adjustedArrayElementType(innerArg.getType());
+        }));
     mlir::Value upd = ccDest.hasValue()
                           ? fir::getBase(ccDest.getValue()(iterSpace))
-                          : builder.create<fir::ArrayUpdateOp>(
-                                loc, resTy, innerArg, element,
-                                iterSpace.iterVec(), destination.typeparams());
+                          : genArrayUpdate(iterSpace);
     builder.create<fir::ResultOp>(loc, upd);
     builder.restoreInsertionPoint(insPt);
     return fir::substBase(exv, iterSpace.outerResult());
@@ -3537,6 +3534,19 @@ public:
     return genarr(asScalarRef(sym));
   }
 
+  mlir::Value genArrayUpdate(IterSpace iters) {
+    auto innerArg = iters.innerArgument();
+    auto eleTy = innerArg.getType();
+    auto resTy = adjustedArrayElementType(eleTy);
+    auto element = fir::getBase(iters.getElement());
+    llvm::SmallVector<mlir::Value> typeparams = destination.typeparams();
+    auto ty = fir::dyn_cast_ptrEleTy(element.getType());
+    if (ty && fir::isa_char(ty) && fir::hasDynamicSize(ty))
+      typeparams.emplace_back(fir::getLen(iters.getElement()));
+    return builder.create<fir::ArrayUpdateOp>(
+        getLoc(), resTy, innerArg, element, iters.iterVec(), typeparams);
+  }
+
   CC genarr(const ExtValue &extMemref) {
     auto loc = getLoc();
     auto memref = fir::getBase(extMemref);
@@ -3593,11 +3603,7 @@ public:
     if (isProjectedCopyInCopyOut()) {
       destination = arrLoad;
       return [=](IterSpace iters) -> ExtValue {
-        auto innerArg = iters.innerArgument();
-        auto resTy = adjustedArrayElementType(innerArg.getType());
-        auto arrUpdate = builder.create<fir::ArrayUpdateOp>(
-            loc, resTy, innerArg, iters.getElement(), iters.iterVec(),
-            destination.typeparams());
+        auto arrUpdate = genArrayUpdate(iters);
         return arrayElementToExtendedValue(builder, loc, extMemref, arrUpdate);
       };
     }

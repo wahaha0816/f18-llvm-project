@@ -488,8 +488,9 @@ public:
             fir::unwrapSequenceType(update.getType());
         if (auto inChrTy = inEleTy.dyn_cast<fir::CharacterType>()) {
           assert(outEleTy.isa<fir::CharacterType>());
-          fir::factory::genCharacterCopy(input, recoverCharLen(input), coor,
-                                         recoverCharLen(coor), rewriter, loc);
+          fir::factory::genCharacterCopy(input, update.getMergeLength(), coor,
+                                         update.getArrayLength(), rewriter,
+                                         loc);
         } else if (inEleTy.isa<fir::RecordType>()) {
           TODO(loc, "copy derived type");
         } else {
@@ -544,32 +545,6 @@ public:
     update.replaceAllUsesWith(load.getResult());
     rewriter.replaceOp(update, load.getResult());
     return mlir::success();
-  }
-
-  static llvm::SmallVector<mlir::Value> recoverTypeParams(mlir::Value val) {
-    auto *op = val.getDefiningOp();
-    if (!fir::hasDynamicSize(fir::dyn_cast_ptrEleTy(val.getType())))
-      return {};
-    if (auto co = mlir::dyn_cast<fir::ConvertOp>(op))
-      return recoverTypeParams(co.value());
-    if (auto ao = mlir::dyn_cast<fir::ArrayFetchOp>(op))
-      return {ao.typeparams().begin(), ao.typeparams().end()};
-    if (auto ao = mlir::dyn_cast<fir::ArrayUpdateOp>(op))
-      return {ao.typeparams().begin(), ao.typeparams().end()};
-    if (auto ao = mlir::dyn_cast<fir::ArrayLoadOp>(op))
-      return {ao.typeparams().begin(), ao.typeparams().end()};
-    if (auto ao = mlir::dyn_cast<fir::ArrayCoorOp>(op))
-      return {ao.typeparams().begin(), ao.typeparams().end()};
-    if (auto ao = mlir::dyn_cast<fir::AllocaOp>(op))
-      return {ao.typeparams().begin(), ao.typeparams().end()};
-    if (auto ao = mlir::dyn_cast<fir::AllocMemOp>(op))
-      return {ao.typeparams().begin(), ao.typeparams().end()};
-    llvm::report_fatal_error("unexpected buffer");
-  }
-
-  static mlir::Value recoverCharLen(mlir::Value val) {
-    auto params = recoverTypeParams(val);
-    return params.empty() ? mlir::Value{} : params[0];
   }
 
   void genArrayCopy(mlir::Location loc, mlir::PatternRewriter &rewriter,

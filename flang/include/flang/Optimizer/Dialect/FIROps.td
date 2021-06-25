@@ -1689,14 +1689,16 @@ def fir_ArrayUpdateOp : fir_Op<"array_update", [AttrSizedOperandSegments,
       `:` functional-type(operands, results)
   }];
 
-  let verifier = [{
-    auto arrTy = sequence().getType().cast<fir::SequenceType>();
-    if (adjustedElementType(merge().getType()) != arrTy.getEleTy())
-      return emitOpError("merged value does not have element type");
-    if (indices().size() != arrTy.getDimension())
-      return emitOpError("number of indices != dimension of array");
-    return mlir::success();
+  let extraClassDeclaration = [{
+    /// When this is a character array update, get array length if it is dynamic.
+    /// Return an empty value otherwise.
+    mlir::Value getArrayLength();
+    /// When this is a character array update, get merge length if it is dynamic.
+    /// Return an empty value otherwise.
+    mlir::Value getMergeLength();
   }];
+
+  let verifier = [{ return ::verify(*this); }];
 }
 
 def fir_ArrayMergeStoreOp : fir_Op<"array_merge_store",

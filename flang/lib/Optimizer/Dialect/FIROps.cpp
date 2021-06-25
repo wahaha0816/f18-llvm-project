@@ -402,6 +402,55 @@ static mlir::LogicalResult verify(fir::ArrayMergeStoreOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// ArrayUpdateOp
+//===----------------------------------------------------------------------===//
+
+static mlir::LogicalResult verify(fir::ArrayUpdateOp op) {
+  auto arrTy = op.sequence().getType().cast<fir::SequenceType>();
+  auto eleTy = arrTy.getEleTy();
+  auto mergeTy = adjustedElementType(op.merge().getType());
+  if (fir::isa_char(eleTy)) {
+    if (!fir::isa_char(mergeTy))
+      return op.emitOpError("merge value must be a character");
+    unsigned expectedLengths = fir::hasDynamicSize(eleTy) ? 1 : 0;
+    expectedLengths += fir::hasDynamicSize(mergeTy) ? 1 : 0;
+    if (expectedLengths < op.typeparams().size())
+      return op.emitOpError("has too many typeparams");
+    else if (expectedLengths > op.typeparams().size())
+      return op.emitOpError("typeparams must be provided for array or merge");
+  } else {
+    if (eleTy != mergeTy)
+      return op.emitOpError("merged value does not have element type");
+  }
+  if (op.indices().size() != arrTy.getDimension())
+    return op.emitOpError("number of indices != dimension of array");
+  return mlir::success();
+}
+
+mlir::Value fir::ArrayUpdateOp::getArrayLength() {
+  auto arrTy = sequence().getType().cast<fir::SequenceType>();
+  if (fir::hasDynamicSize(arrTy.getEleTy())) {
+    assert(!typeparams().empty() && "missing dynamic length");
+    return typeparams()[0];
+  }
+  return {};
+}
+
+mlir::Value fir::ArrayUpdateOp::getMergeLength() {
+  auto mergeTy = adjustedElementType(merge().getType());
+  if (fir::hasDynamicSize(mergeTy)) {
+    auto arrTy = sequence().getType().cast<fir::SequenceType>();
+    if (fir::hasDynamicSize(arrTy.getEleTy())) {
+      assert(typeparams().size() == 2 && "missing dynamic length");
+      return typeparams()[1];
+    }
+    assert(!typeparams().empty() && "missing dynamic length");
+    return typeparams()[0];
+  }
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // BoxAddrOp
 //===----------------------------------------------------------------------===//
 
