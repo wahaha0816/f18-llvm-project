@@ -481,7 +481,7 @@ subroutine test19b(a,b)
   ! CHECK-DAG: fir.array_load %{{.*}}(%{{.*}}) : (!fir.ref<!fir.array<20x!fir.char<2,10>>>, !fir.shape<1>) -> !fir.array<20x!fir.char<2,10>>
   ! CHECK: fir.do_loop %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%{{.*}} = %{{.*}}) -> (!fir.array<20x!fir.char<2,8>>) {
   ! CHECK: fir.array_fetch %{{.*}}, %{{.*}} : (!fir.array<20x!fir.char<2,10>>, index) -> !fir.ref<!fir.char<2,10>>
-  ! CHECK: fir.array_update %{{.*}}, %{{.*}}, %{{.*}} : (!fir.array<20x!fir.char<2,8>>, !fir.ref<!fir.char<2,8>>, index) -> !fir.array<20x!fir.char<2,8>>
+  ! CHECK: fir.array_update %{{.*}}, %{{.*}}, %{{.*}} : (!fir.array<20x!fir.char<2,8>>, !fir.ref<!fir.char<2,10>>, index) -> !fir.array<20x!fir.char<2,8>>
   ! CHECK: fir.array_merge_store %{{.*}}, %{{.*}} to %{{.*}} : !fir.array<20x!fir.char<2,8>>, !fir.array<20x!fir.char<2,8>>, !fir.ref<!fir.array<20x!fir.char<2,8>>>
   ! CHECK: return
 
@@ -497,7 +497,7 @@ subroutine test19c(a,b,i)
   ! CHECK-DAG: fir.array_load %{{.*}}(%{{.*}}) : (!fir.ref<!fir.array<30x!fir.char<4,10>>>, !fir.shape<1>) -> !fir.array<30x!fir.char<4,10>>
   ! CHECK: fir.do_loop %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%{{.*}} = %{{.*}}) -> (!fir.array<30x!fir.char<4,?>>) {
   ! CHECK: fir.array_fetch %{{.*}}, %{{.*}} : (!fir.array<30x!fir.char<4,10>>, index) -> !fir.ref<!fir.char<4,10>>
-  ! CHECK: fir.array_update %{{.*}}, %{{.*}}, %{{.*}} typeparams %{{.*}} : (!fir.array<30x!fir.char<4,?>>, !fir.ref<!fir.char<4,?>>, index, i32) -> !fir.array<30x!fir.char<4,?>>
+  ! CHECK: fir.array_update %{{.*}}, %{{.*}}, %{{.*}} typeparams %{{.*}} : (!fir.array<30x!fir.char<4,?>>, !fir.ref<!fir.char<4,10>>, index, i32) -> !fir.array<30x!fir.char<4,?>>
   ! CHECK: fir.array_merge_store %{{.*}}, %{{.*}} to %{{.*}} typeparams %{{.*}} : !fir.array<30x!fir.char<4,?>>, !fir.array<30x!fir.char<4,?>>, !fir.ref<!fir.array<30x!fir.char<4,?>>>, i32
 
   a = b
@@ -512,7 +512,7 @@ subroutine test19d(a,b,i,j)
   ! CHECK-DAG: fir.array_load %{{.*}}(%{{.*}}) typeparams %{{.*}} : (!fir.ref<!fir.array<40x!fir.char<1,?>>>, !fir.shape<1>, i32) -> !fir.array<40x!fir.char<1,?>>
   ! CHECK: fir.do_loop %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%{{.*}} = %{{.*}}) -> (!fir.array<40x!fir.char<1,?>>) {
   ! CHECK: fir.array_fetch %{{.*}}, %{{.*}} typeparams %{{.*}} : (!fir.array<40x!fir.char<1,?>>, index, i32) -> !fir.ref<!fir.char<1,?>>
-  ! CHECK: fir.array_update %{{.*}}, %{{.*}}, %{{.*}} typeparams %{{.*}} : (!fir.array<40x!fir.char<1,?>>, !fir.ref<!fir.char<1,?>>, index, i32) -> !fir.array<40x!fir.char<1,?>>
+  ! CHECK: fir.array_update %{{.*}}, %{{.*}}, %{{.*}} typeparams %{{.*}} %{{.*}} : (!fir.array<40x!fir.char<1,?>>, !fir.ref<!fir.char<1,?>>, index, i32, i32) -> !fir.array<40x!fir.char<1,?>>
   ! CHECK: fir.array_merge_store %{{.*}}, %{{.*}} to %{{.*}} typeparams %{{.*}} : !fir.array<40x!fir.char<1,?>>, !fir.array<40x!fir.char<1,?>>, !fir.ref<!fir.array<40x!fir.char<1,?>>>, i32
 
   a = b
@@ -527,7 +527,7 @@ subroutine test19e(a,b)
   ! CHECK-DAG: fir.array_load %{{.*}}(%{{.*}}) typeparams %{{.*}}#1 : (!fir.ref<!fir.array<50x!fir.char<1,?>>>, !fir.shape<1>, index) -> !fir.array<50x!fir.char<1,?>>
   ! CHECK: fir.do_loop %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%{{.*}} = %{{.*}}) -> (!fir.array<50x!fir.char<1,?>>) {
   ! CHECK: fir.array_fetch %{{.*}}, %{{.*}} typeparams %{{.*}}#1 : (!fir.array<50x!fir.char<1,?>>, index, index) -> !fir.ref<!fir.char<1,?>>
-  ! CHECK: fir.array_update %{{.*}}, %{{.*}}, %{{.*}} typeparams %{{.*}}#1 : (!fir.array<50x!fir.char<1,?>>, !fir.ref<!fir.char<1,?>>, index, index) -> !fir.array<50x!fir.char<1,?>>
+  ! CHECK: fir.array_update %{{.*}}, %{{.*}}, %{{.*}} typeparams %{{.*}}#1, %{{.*}}#1 : (!fir.array<50x!fir.char<1,?>>, !fir.ref<!fir.char<1,?>>, index, index, index) -> !fir.array<50x!fir.char<1,?>>
   ! CHECK: fir.array_merge_store %{{.*}}, %{{.*}} to %{{.*}} typeparams %{{.*}}#1 : !fir.array<50x!fir.char<1,?>>, !fir.array<50x!fir.char<1,?>>, !fir.ref<!fir.array<50x!fir.char<1,?>>>, index
 
   a = b
@@ -547,7 +547,7 @@ subroutine test19f(a,b)
   ! CHECK: fir.do_loop %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
   ! CHECK: fir.load %{{.*}} : !fir.ref<!fir.char<1>>
   ! CHECK: fir.store %{{.*}} to %{{.*}} : !fir.ref<!fir.char<1>>
-  ! CHECK: fir.array_update %{{.*}}, %{{.*}}, %{{.*}} typeparams %{{.*}} : (!fir.array<60x!fir.char<1,?>>, !fir.ref<!fir.char<1,?>>, index, index) -> !fir.array<60x!fir.char<1,?>>
+  ! CHECK: fir.array_update %{{.*}}, %{{.*}}, %{{.*}} typeparams %{{.*}}, %{{.*}} : (!fir.array<60x!fir.char<1,?>>, !fir.ref<!fir.char<1,?>>, index, index, index) -> !fir.array<60x!fir.char<1,?>>
   ! CHECK: fir.array_merge_store %{{.*}}, %{{.*}} to %{{.*}} typeparams %{{.*}} : !fir.array<60x!fir.char<1,?>>, !fir.array<60x!fir.char<1,?>>, !fir.ref<!fir.array<60x!fir.char<1,?>>>, index
   a = "prefix " // b
 end subroutine test19f

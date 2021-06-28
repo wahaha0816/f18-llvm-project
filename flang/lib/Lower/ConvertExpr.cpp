@@ -3541,8 +3541,19 @@ public:
     auto element = fir::getBase(iters.getElement());
     llvm::SmallVector<mlir::Value> typeparams = destination.typeparams();
     auto ty = fir::dyn_cast_ptrEleTy(element.getType());
-    if (ty && fir::isa_char(ty) && fir::hasDynamicSize(ty))
-      typeparams.emplace_back(fir::getLen(iters.getElement()));
+    if (ty && fir::isa_char(ty)) {
+      // Put RHS and LHS dynamic length into ArrayUpdateOp typeparams so that
+      // fir.array_update can implement character assignment semantics.
+      auto dest = destination.memref();
+      if (dest.getType().isa<fir::BoxType>()) {
+        auto destBox = fir::BoxValue(dest);
+        if (fir::hasDynamicSize(destBox.getEleTy()))
+          typeparams.emplace_back(
+              Fortran::lower::readCharLen(builder, getLoc(), destBox));
+      }
+      if (fir::hasDynamicSize(ty))
+        typeparams.emplace_back(fir::getLen(iters.getElement()));
+    }
     return builder.create<fir::ArrayUpdateOp>(
         getLoc(), resTy, innerArg, element, iters.iterVec(), typeparams);
   }
