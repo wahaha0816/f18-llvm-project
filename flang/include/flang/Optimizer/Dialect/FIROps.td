@@ -1147,8 +1147,8 @@ def fir_EmboxCharOp : fir_Op<"emboxchar", [NoSideEffect]> {
   }];
 
   let verifier = [{
-    auto eleTy = elementTypeOf(memref().getType());
-    if (!eleTy.dyn_cast<CharacterType>())
+    auto eleTy = fir::dyn_cast_ptrEleTy(memref().getType());
+    if (!eleTy.dyn_cast_or_null<CharacterType>())
       return mlir::failure();
     return mlir::success();
   }];
@@ -1821,7 +1821,7 @@ def fir_CoordinateOp : fir_Op<"coordinate_of", [NoSideEffect]> {
     TypeAttr:$baseType
   );
 
-  let results = (outs fir_ReferenceType);
+  let results = (outs RefOrLLVMPtr);
 
   let parser =  [{ return parseCoordinateCustom(parser, result); }];
   let printer = [{ ::print(p, *this); }];

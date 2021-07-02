@@ -199,7 +199,8 @@ bool isa_fir_or_std_type(mlir::Type t) {
 }
 
 bool isa_ref_type(mlir::Type t) {
-  return t.isa<ReferenceType>() || t.isa<PointerType>() || t.isa<HeapType>();
+  return t.isa<ReferenceType>() || t.isa<PointerType>() || t.isa<HeapType>() ||
+         t.isa<fir::LLVMPointerType>();
 }
 
 bool isa_box_type(mlir::Type t) {
@@ -218,15 +219,15 @@ bool isa_aggregate(mlir::Type t) {
 
 mlir::Type dyn_cast_ptrEleTy(mlir::Type t) {
   return llvm::TypeSwitch<mlir::Type, mlir::Type>(t)
-      .Case<fir::ReferenceType, fir::PointerType, fir::HeapType>(
-          [](auto p) { return p.getEleTy(); })
+      .Case<fir::ReferenceType, fir::PointerType, fir::HeapType,
+            fir::LLVMPointerType>([](auto p) { return p.getEleTy(); })
       .Default([](mlir::Type) { return mlir::Type{}; });
 }
 
 mlir::Type dyn_cast_ptrOrBoxEleTy(mlir::Type t) {
   return llvm::TypeSwitch<mlir::Type, mlir::Type>(t)
-      .Case<fir::ReferenceType, fir::PointerType, fir::HeapType>(
-          [](auto p) { return p.getEleTy(); })
+      .Case<fir::ReferenceType, fir::PointerType, fir::HeapType,
+            fir::LLVMPointerType>([](auto p) { return p.getEleTy(); })
       .Case<fir::BoxType>([](auto p) {
         auto eleTy = p.getEleTy();
         if (auto ty = fir::dyn_cast_ptrEleTy(eleTy))
@@ -364,8 +365,8 @@ BoxProcType::verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
   return emitError() << "invalid type for boxproc" << eleTy << '\n';
 }
 
-static bool canBePointerOrHeapElementType(mlir::Type eleTy) {
-  return eleTy.isa<BoxCharType, BoxProcType, ShapeType, ShapeShiftType,
+static bool cannotBePointerOrHeapElementType(mlir::Type eleTy) {
+  return eleTy.isa<BoxType, BoxCharType, BoxProcType, ShapeType, ShapeShiftType,
                    SliceType, FieldType, LenType, HeapType, PointerType,
                    ReferenceType, TypeDescType>();
 }
@@ -500,7 +501,7 @@ void fir::HeapType::print(mlir::DialectAsmPrinter &printer) const {
 mlir::LogicalResult
 fir::HeapType::verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
                       mlir::Type eleTy) {
-  if (canBePointerOrHeapElementType(eleTy))
+  if (cannotBePointerOrHeapElementType(eleTy))
     return emitError() << "cannot build a heap pointer to type: " << eleTy
                        << '\n';
   return mlir::success();
@@ -535,6 +536,20 @@ void fir::LogicalType::print(mlir::DialectAsmPrinter &printer) const {
 }
 
 //===----------------------------------------------------------------------===//
+// LLVMPointerType
+//===----------------------------------------------------------------------===//
+
+// `llvm_ptr` `<` type `>`
+mlir::Type fir::LLVMPointerType::parse(mlir::MLIRContext *context,
+                                       mlir::DialectAsmParser &parser) {
+  return parseTypeSingleton<fir::LLVMPointerType>(parser);
+}
+
+void fir::LLVMPointerType::print(mlir::DialectAsmPrinter &printer) const {
+  printer << getMnemonic() << "<" << getEleTy() << '>';
+}
+
+//===----------------------------------------------------------------------===//
 // PointerType
 //===----------------------------------------------------------------------===//
 
@@ -551,7 +566,7 @@ void fir::PointerType::print(mlir::DialectAsmPrinter &printer) const {
 mlir::LogicalResult fir::PointerType::verify(
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
     mlir::Type eleTy) {
-  if (canBePointerOrHeapElementType(eleTy))
+  if (cannotBePointerOrHeapElementType(eleTy))
     return emitError() << "cannot build a pointer to type: " << eleTy << '\n';
   return mlir::success();
 }
@@ -939,7 +954,7 @@ bool fir::VectorType::isValidElementType(mlir::Type t) {
 void FIROpsDialect::registerTypes() {
   addTypes<BoxType, BoxCharType, BoxProcType, CharacterType, fir::ComplexType,
            FieldType, HeapType, fir::IntegerType, LenType, LogicalType,
-           PointerType, RealType, RecordType, ReferenceType, SequenceType,
-           ShapeType, ShapeShiftType, ShiftType, SliceType, TypeDescType,
-           fir::VectorType>();
+           LLVMPointerType, PointerType, RealType, RecordType, ReferenceType,
+           SequenceType, ShapeType, ShapeShiftType, ShiftType, SliceType,
+           TypeDescType, fir::VectorType>();
 }
