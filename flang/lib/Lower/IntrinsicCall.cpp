@@ -107,6 +107,11 @@ fir::ExtendedValue Fortran::lower::getAbsentIntrinsicArgument() {
 static bool isAbsent(const fir::ExtendedValue &exv) {
   return !fir::getBase(exv);
 }
+/// Test if an argument at \argIndex is absent.
+static bool isAbsent(llvm::ArrayRef<fir::ExtendedValue> args,
+                     unsigned argIndex) {
+  return args.size() <= argIndex || isAbsent(args[argIndex]);
+}
 
 /// Test if an ExtendedValue is present.
 static bool isPresent(const fir::ExtendedValue &exv) { return !isAbsent(exv); }
@@ -2070,7 +2075,7 @@ mlir::Value IntrinsicLibrary::genIeor(mlir::Type resultType,
 fir::ExtendedValue
 IntrinsicLibrary::genIndex(mlir::Type resultType,
                            llvm::ArrayRef<fir::ExtendedValue> args) {
-  assert(args.size() == 4);
+  assert(args.size() >= 2);
 
   auto stringBase = fir::getBase(args[0]);
   auto kind =
@@ -2080,10 +2085,10 @@ IntrinsicLibrary::genIndex(mlir::Type resultType,
   auto substringBase = fir::getBase(args[1]);
   auto substringLen = fir::getLen(args[1]);
   mlir::Value back =
-      isAbsent(args[2])
+      isAbsent(args, 2)
           ? builder.createIntegerConstant(loc, builder.getI1Type(), 0)
           : fir::getBase(args[2]);
-  if (isAbsent(args[3]))
+  if (isAbsent(args, 3))
     return builder.createConvert(
         loc, resultType,
         Fortran::lower::genIndex(builder, loc, kind, stringBase, stringLen,
@@ -2100,11 +2105,11 @@ IntrinsicLibrary::genIndex(mlir::Type resultType,
     builder.create<fir::StoreOp>(loc, castb, temp);
     return builder.createBox(loc, temp);
   };
-  auto backOpt = isAbsent(args[2])
+  auto backOpt = isAbsent(args, 2)
                      ? builder.create<fir::AbsentOp>(
                            loc, fir::BoxType::get(builder.getI1Type()))
                      : makeRefThenEmbox(fir::getBase(args[2]));
-  auto kindVal = isAbsent(args[3])
+  auto kindVal = isAbsent(args, 3)
                      ? builder.createIntegerConstant(
                            loc, builder.getIndexType(),
                            builder.getKindMap().defaultIntegerKind())
