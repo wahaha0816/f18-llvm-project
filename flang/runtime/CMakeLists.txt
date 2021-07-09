@@ -56,6 +56,7 @@ add_flang_library(FortranRuntime PARTIAL_SOURCES_INTENDED
   numeric.cpp
   random.cpp
   reduction.cpp
+  pointer.cpp
   product.cpp
   stat.cpp
   stop.cpp
