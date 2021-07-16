@@ -345,8 +345,8 @@ public:
   static constexpr int maxRank{MAX_RANK};
   static constexpr int maxLengthTypeParameters{MAX_LEN_PARMS};
   static constexpr bool hasAddendum{ADDENDUM || MAX_LEN_PARMS > 0};
-  static constexpr std::size_t byteSize{std::max(sizeof(Descriptor),
-      Descriptor::SizeInBytes(maxRank, hasAddendum, maxLengthTypeParameters))};
+  static constexpr std::size_t byteSize{
+      Descriptor::SizeInBytes(maxRank, hasAddendum, maxLengthTypeParameters)};
 
   StaticDescriptor() { new (storage_) Descriptor{}; }
 
