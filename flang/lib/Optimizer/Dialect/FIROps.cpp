@@ -1256,16 +1256,8 @@ mlir::Value fir::IterWhileOp::blockArgToSourceOp(unsigned blockArgNum) {
 // LoadOp
 //===----------------------------------------------------------------------===//
 
-/// Get the element type of a reference like type; otherwise null
-static mlir::Type elementTypeOf(mlir::Type ref) {
-  return llvm::TypeSwitch<mlir::Type, mlir::Type>(ref)
-      .Case<ReferenceType, PointerType, HeapType>(
-          [](auto type) { return type.getEleTy(); })
-      .Default([](mlir::Type) { return mlir::Type{}; });
-}
-
 mlir::ParseResult fir::LoadOp::getElementOf(mlir::Type &ele, mlir::Type ref) {
-  if ((ele = elementTypeOf(ref)))
+  if ((ele = fir::dyn_cast_ptrEleTy(ref)))
     return mlir::success();
   return mlir::failure();
 }
@@ -2058,13 +2050,7 @@ unsigned fir::SliceOp::getOutputRank(mlir::ValueRange triples) {
 //===----------------------------------------------------------------------===//
 
 mlir::Type fir::StoreOp::elementType(mlir::Type refType) {
-  if (auto ref = refType.dyn_cast<ReferenceType>())
-    return ref.getEleTy();
-  if (auto ref = refType.dyn_cast<PointerType>())
-    return ref.getEleTy();
-  if (auto ref = refType.dyn_cast<HeapType>())
-    return ref.getEleTy();
-  return {};
+  return fir::dyn_cast_ptrEleTy(refType);
 }
 
 //===----------------------------------------------------------------------===//
