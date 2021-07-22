@@ -5,11 +5,13 @@
 subroutine acc_exit_data
   integer :: async = 1
   real, dimension(10, 10) :: a, b, c
+  real, pointer :: d
   logical :: ifCondition = .TRUE.
 
 !CHECK: [[A:%.*]] = fir.alloca !fir.array<10x10xf32> {{{.*}}uniq_name = "{{.*}}Ea"}
 !CHECK: [[B:%.*]] = fir.alloca !fir.array<10x10xf32> {{{.*}}uniq_name = "{{.*}}Eb"}
 !CHECK: [[C:%.*]] = fir.alloca !fir.array<10x10xf32> {{{.*}}uniq_name = "{{.*}}Ec"}
+!CHECK: [[D:%.*]] = fir.alloca !fir.box<!fir.ptr<f32>> {bindc_name = "d", uniq_name = "{{.*}}Ed"}
 
   !$acc exit data delete(a)
 !CHECK: acc.exit_data delete([[A]] : !fir.ref<!fir.array<10x10xf32>>){{$}}
@@ -26,8 +28,8 @@ subroutine acc_exit_data
   !$acc exit data delete(a) delete(b) delete(c)
 !CHECK: acc.exit_data delete([[A]], [[B]], [[C]] : !fir.ref<!fir.array<10x10xf32>>, !fir.ref<!fir.array<10x10xf32>>, !fir.ref<!fir.array<10x10xf32>>){{$}}
 
-  !$acc exit data copyout(a) delete(b) detach(c)
-!CHECK: acc.exit_data copyout([[A]] : !fir.ref<!fir.array<10x10xf32>>) delete([[B]] : !fir.ref<!fir.array<10x10xf32>>) detach([[C]] : !fir.ref<!fir.array<10x10xf32>>){{$}}
+  !$acc exit data copyout(a) delete(b) detach(d)
+!CHECK: acc.exit_data copyout([[A]] : !fir.ref<!fir.array<10x10xf32>>) delete([[B]] : !fir.ref<!fir.array<10x10xf32>>) detach([[D]] : !fir.ref<!fir.box<!fir.ptr<f32>>>){{$}}
 
   !$acc exit data delete(a) async
 !CHECK: acc.exit_data delete([[A]] : !fir.ref<!fir.array<10x10xf32>>) attributes {async}

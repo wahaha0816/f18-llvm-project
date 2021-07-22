@@ -31,8 +31,7 @@ public:
     addConversion([&](BoxType box) { return convertBoxType(box); });
     addConversion([&](BoxCharType boxchar) {
       LLVM_DEBUG(llvm::dbgs() << "type convert: " << boxchar << '\n');
-      return 
-          convertType(specifics->boxcharMemoryType(boxchar.getEleTy()));
+      return convertType(specifics->boxcharMemoryType(boxchar.getEleTy()));
     });
     addConversion(
         [&](BoxProcType boxproc) { return convertBoxProcType(boxproc); });
@@ -58,6 +57,9 @@ public:
     addConversion([&](fir::LogicalType boolTy) {
       return mlir::IntegerType::get(
           &getContext(), kindMapping.getLogicalBitsize(boolTy.getFKind()));
+    });
+    addConversion([&](fir::LLVMPointerType pointer) {
+      return convertPointerLike(pointer);
     });
     addConversion(
         [&](fir::PointerType pointer) { return convertPointerLike(pointer); });
@@ -171,8 +173,7 @@ public:
     // opt-type-ptr: i8* (see fir.tdesc)
     if (requiresExtendedDesc(ele)) {
       parts.push_back(getExtendedDescFieldTypeModel<8>()(&getContext()));
-      parts.push_back(getExtendedDescFieldTypeModel<9>()(&getContext()));
-      auto rowTy = getExtendedDescFieldTypeModel<10>()(&getContext());
+      auto rowTy = getExtendedDescFieldTypeModel<9>()(&getContext());
       parts.push_back(mlir::LLVM::LLVMArrayType::get(rowTy, 1));
       if (auto recTy = fir::unwrapSequenceType(ele).dyn_cast<fir::RecordType>())
         if (recTy.getNumLenParams() > 0) {

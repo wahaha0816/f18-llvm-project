@@ -34,7 +34,9 @@ add_flang_library(FortranRuntime PARTIAL_SOURCES_INTENDED
   character.cpp
   connection.cpp
   derived.cpp
+  derived-api.cpp
   descriptor.cpp
+  descriptor-io.cpp
   dot-product.cpp
   edit-input.cpp
   edit-output.cpp
@@ -56,6 +58,7 @@ add_flang_library(FortranRuntime PARTIAL_SOURCES_INTENDED
   numeric.cpp
   random.cpp
   reduction.cpp
+  pointer.cpp
   product.cpp
   stat.cpp
   stop.cpp
