@@ -117,10 +117,16 @@ enum class OMPScheduleType {
   Runtime = 37,
   Auto = 38, // auto
 
-  ModifierNonmonotonic =
-      (1 << 30), /**< Set if the nonmonotonic schedule modifier was present */
+  StaticBalancedChunked = 45, // static with chunk adjustment (e.g., simd)
+  GuidedSimd = 46,            // guided with chunk adjustment
+  RuntimeSimd = 47,           // runtime with chunk adjustment
 
-  LLVM_MARK_AS_BITMASK_ENUM(/* LargestValue */ ModifierNonmonotonic)
+  ModifierMonotonic =
+      (1 << 29), // Set if the monotonic schedule modifier was present
+  ModifierNonmonotonic =
+      (1 << 30), // Set if the nonmonotonic schedule modifier was present
+  ModifierMask = ModifierMonotonic | ModifierNonmonotonic,
+  LLVM_MARK_AS_BITMASK_ENUM(/* LargestValue */ ModifierMask)
 };
 
 } // end namespace omp
