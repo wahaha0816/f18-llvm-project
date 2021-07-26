@@ -46,7 +46,7 @@ static void CheckImplicitInterfaceArg(
     }
   }
   if (const auto *expr{arg.UnwrapExpr()}) {
-    if (IsBOZLiteral(*expr)) {
+    if (std::holds_alternative<evaluate::BOZLiteralConstant>(expr->u)) {
       messages.Say("BOZ argument requires an explicit interface"_err_en_US);
     }
     if (auto named{evaluate::ExtractNamedEntity(*expr)}) {
