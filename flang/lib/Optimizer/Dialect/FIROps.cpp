@@ -402,6 +402,51 @@ static mlir::LogicalResult verify(fir::ArrayMergeStoreOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// ArrayFetchOp
+//===----------------------------------------------------------------------===//
+
+// Template function used for both array_fetch and array_update verification.
+template <typename A>
+mlir::Type validArraySubobject(A op) {
+  auto ty = op.sequence().getType();
+  return fir::applyPathToType(ty, op.indices());
+}
+
+static mlir::LogicalResult verify(fir::ArrayFetchOp op) {
+  auto arrTy = op.sequence().getType().cast<fir::SequenceType>();
+  auto indSize = op.indices().size();
+  if (indSize < arrTy.getDimension())
+    return op.emitOpError("number of indices != dimension of array");
+  if (indSize == arrTy.getDimension() &&
+      ::adjustedElementType(op.element().getType()) != arrTy.getEleTy())
+    return op.emitOpError("return type does not match array");
+  auto ty = validArraySubobject(op);
+  if (!ty || ty != ::adjustedElementType(op.getType()))
+    return op.emitOpError("return type and/or indices do not type check");
+  if (!isa<fir::ArrayLoadOp>(op.sequence().getDefiningOp()))
+    return op.emitOpError("argument #0 must be result of fir.array_load");
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
+// ArrayUpdateOp
+//===----------------------------------------------------------------------===//
+
+static mlir::LogicalResult verify(fir::ArrayUpdateOp op) {
+  auto arrTy = op.sequence().getType().cast<fir::SequenceType>();
+  auto indSize = op.indices().size();
+  if (indSize < arrTy.getDimension())
+    return op.emitOpError("number of indices != dimension of array");
+  if (indSize == arrTy.getDimension() &&
+      ::adjustedElementType(op.merge().getType()) != arrTy.getEleTy())
+    return op.emitOpError("merged value does not have element type");
+  auto ty = validArraySubobject(op);
+  if (!ty || ty != ::adjustedElementType(op.merge().getType()))
+    return op.emitOpError("merged value and/or indices do not type check");
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
 // BoxAddrOp
 //===----------------------------------------------------------------------===//
 
@@ -2352,51 +2397,43 @@ bool fir::anyFuncArgsHaveAttr(mlir::FuncOp func, llvm::StringRef attr) {
   return false;
 }
 
-mlir::Type fir::applyPathToType(mlir::Type rootTy, mlir::ValueRange path) {
-  auto eleTy = rootTy;
-  for (auto i = path.begin(), end = path.end(); eleTy && i != end; ++i) {
-    auto v = *i;
-    eleTy =
-        llvm::TypeSwitch<mlir::Type, mlir::Type>(eleTy)
-            .Case<fir::RecordType>([&](fir::RecordType ty) -> mlir::Type {
-              if (auto op = v.getDefiningOp()) {
-                if (auto off = mlir::dyn_cast<fir::FieldIndexOp>(op))
-                  return ty.getType(off.getFieldName());
-                if (auto off = mlir::dyn_cast<mlir::ConstantOp>(op))
-                  return ty.getType(fir::toInt(off));
-              }
-              return {};
-            })
-            .Case<fir::SequenceType>([&](fir::SequenceType ty) -> mlir::Type {
-              auto rank = ty.getDimension();
-              if (std::distance(i, end) >= rank && rank > 0) {
-                for (auto ii = i, ee = i + rank; ii != ee; ++ii) {
-                  auto vv = *ii;
-                  if (!fir::isa_integer(vv.getType()))
-                    return {};
-                }
-                i += rank - 1;
-                return ty.getEleTy();
-              }
-              return {};
-            })
-            .Case<mlir::TupleType>([&](mlir::TupleType ty) -> mlir::Type {
-              if (auto op = v.getDefiningOp())
-                if (auto off = mlir::dyn_cast<mlir::ConstantOp>(op))
-                  return ty.getType(fir::toInt(off));
-              return {};
-            })
-            .Case<fir::ComplexType>([&](fir::ComplexType ty) -> mlir::Type {
-              if (fir::isa_integer(v.getType()))
-                return ty.getElementType();
-              return {};
-            })
-            .Case<mlir::ComplexType>([&](mlir::ComplexType ty) -> mlir::Type {
-              if (fir::isa_integer(v.getType()))
-                return ty.getElementType();
-              return {};
-            })
-            .Default([&](auto) -> mlir::Type { return {}; });
+mlir::Type fir::applyPathToType(mlir::Type eleTy, mlir::ValueRange path) {
+  for (auto i = path.begin(), end = path.end(); eleTy && i < end;) {
+    eleTy = llvm::TypeSwitch<mlir::Type, mlir::Type>(eleTy)
+                .Case<fir::RecordType>([&](fir::RecordType ty) {
+                  if (auto op = (*i++).getDefiningOp()) {
+                    if (auto off = mlir::dyn_cast<fir::FieldIndexOp>(op))
+                      return ty.getType(off.getFieldName());
+                    if (auto off = mlir::dyn_cast<mlir::ConstantOp>(op))
+                      return ty.getType(fir::toInt(off));
+                  }
+                  return mlir::Type{};
+                })
+                .Case<fir::SequenceType>([&](fir::SequenceType ty) {
+                  bool valid = true;
+                  const auto rank = ty.getDimension();
+                  for (std::remove_const_t<decltype(rank)> ii = 0;
+                       valid && ii < rank; ++ii)
+                    valid = i < end && fir::isa_integer((*i++).getType());
+                  return valid ? ty.getEleTy() : mlir::Type{};
+                })
+                .Case<mlir::TupleType>([&](mlir::TupleType ty) {
+                  if (auto op = (*i++).getDefiningOp())
+                    if (auto off = mlir::dyn_cast<mlir::ConstantOp>(op))
+                      return ty.getType(fir::toInt(off));
+                  return mlir::Type{};
+                })
+                .Case<fir::ComplexType>([&](fir::ComplexType ty) {
+                  if (fir::isa_integer((*i++).getType()))
+                    return ty.getElementType();
+                  return mlir::Type{};
+                })
+                .Case<mlir::ComplexType>([&](mlir::ComplexType ty) {
+                  if (fir::isa_integer((*i++).getType()))
+                    return ty.getElementType();
+                  return mlir::Type{};
+                })
+                .Default([&](const auto &) { return mlir::Type{}; });
   }
   return eleTy;
 }
