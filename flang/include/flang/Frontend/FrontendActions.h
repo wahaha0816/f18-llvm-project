@@ -127,6 +127,19 @@ class ParseSyntaxOnlyAction : public PrescanAndSemaAction {
   void ExecuteAction() override;
 };
 
+//===----------------------------------------------------------------------===//
+// CodeGen Actions
+//===----------------------------------------------------------------------===//
+class CodeGenAction : public FrontendAction {
+
+  void ExecuteAction() override = 0;
+  bool BeginSourceFileAction() override;
+};
+
+class EmitFirAction : public CodeGenAction {
+  void ExecuteAction() override;
+};
+
 } // namespace Fortran::frontend
 
 #endif // LLVM_FLANG_FRONTEND_FRONTENDACTIONS_H
