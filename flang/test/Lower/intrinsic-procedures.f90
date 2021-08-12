@@ -338,6 +338,46 @@ subroutine test_count3(rslt, mask)
 ! CHECK:  %{{.*}} = fir.convert %[[a4]] : (i64) -> i16
 end subroutine
 
+! EXPONENT
+! CHECK-LABEL: exponent_test
+subroutine exponent_test
+
+  integer :: i1, i2, i3, i4
+! CHECK: %[[i1:.*]] = fir.alloca i32 {bindc_name = "i1", uniq_name = "_QFexponent_testEi1"}
+! CHECK: %[[i2:.*]] = fir.alloca i32 {bindc_name = "i2", uniq_name = "_QFexponent_testEi2"}
+! CHECK: %[[i3:.*]] = fir.alloca i32 {bindc_name = "i3", uniq_name = "_QFexponent_testEi3"}
+! CHECK: %[[i4:.*]] = fir.alloca i32 {bindc_name = "i4", uniq_name = "_QFexponent_testEi4"}
+
+  real(kind = 4) :: x1
+  real(kind = 8) :: x2
+  real(kind = 10) :: x3
+  real(kind = 16) :: x4
+! CHECK: %[[allocx1:.*]] = fir.alloca f32 {bindc_name = "x1", uniq_name = "_QFexponent_testEx1"}
+! CHECK: %[[allocx2:.*]] = fir.alloca f64 {bindc_name = "x2", uniq_name = "_QFexponent_testEx2"}
+! CHECK: %[[allocx3:.*]] = fir.alloca f80 {bindc_name = "x3", uniq_name = "_QFexponent_testEx3"}
+! CHECK: %[[allocx4:.*]] = fir.alloca f128 {bindc_name = "x4", uniq_name = "_QFexponent_testEx4"}
+
+  i1 = exponent(x1)
+! CHECK: %[[x1:.*]] = fir.load %[[allocx1:.*]] : !fir.ref<f32>
+! CHECK: %[[result1:.*]] = fir.call @_FortranAExponent4_4(%[[x1:.*]]) : (f32) -> i32
+! CHECK: fir.store %[[result1:.*]] to %[[i1:.*]] : !fir.ref<i32>
+
+  i2 = exponent(x2)
+! CHECK: %[[x2:.*]] = fir.load %[[allocx2:.*]] : !fir.ref<f64>
+! CHECK: %[[result2:.*]] = fir.call @_FortranAExponent8_4(%[[x2:.*]]) : (f64) -> i32
+! CHECK: fir.store %[[result2:.*]] to %[[i2:.*]] : !fir.ref<i32>
+
+  i3 = exponent(x3)
+! CHECK: %[[x3:.*]] = fir.load %[[allocx3:.*]] : !fir.ref<f80>
+! CHECK: %[[result3:.*]] = fir.call @_FortranAExponent10_4(%[[x3:.*]]) : (f80) -> i32
+! CHECK: fir.store %[[result3:.*]] to %[[i3:.*]] : !fir.ref<i32>
+
+  i4 = exponent(x4)
+! CHECK: %[[x4:.*]] = fir.load %[[allocx4:.*]] : !fir.ref<f128>
+! CHECK: %[[result4:.*]] = fir.call @_FortranAExponent16_4(%[[x4:.*]]) : (f128) -> i32
+! CHECK: fir.store %[[result4:.*]] to %[[i4:.*]] : !fir.ref<i32>
+end subroutine exponent_test
+
 ! FLOOR
 ! CHECK-LABEL: floor_test1
 subroutine floor_test1(i, a)
@@ -355,6 +395,39 @@ subroutine floor_test2(i, a)
   ! CHECK: %[[f:.*]] = fir.call @llvm.floor.f32
   ! CHECK: fir.convert %[[f]] : (f32) -> i64
 end subroutine
+
+! FRACTION
+! CHECK-LABE: fraction_test
+subroutine fraction_test
+  real(kind=4) :: x1 = 178.1387e-4
+  real(kind=8) :: x2 = 178.1387e-4
+  real(kind=10) :: x3 = 178.1387e-4
+  real(kind=16) :: x4 = 178.1387e-4
+! CHECK: %[[addr1:.*]] = fir.address_of(@_QFfraction_testEx1) : !fir.ref<f32>
+! CHECK: %[[addr2:.*]] = fir.address_of(@_QFfraction_testEx2) : !fir.ref<f64>
+! CHECK: %[[addr3:.*]] = fir.address_of(@_QFfraction_testEx3) : !fir.ref<f80>
+! CHECK: %[[addr4:.*]] = fir.address_of(@_QFfraction_testEx4) : !fir.ref<f128>
+
+  x1 = fraction(x1)
+! CHECK: %[[r1:.*]] = fir.load %[[addr1:.*]] : !fir.ref<f32>
+! CHECK: %[[result1:.*]] = fir.call @_FortranAFraction4(%[[r1:.*]]) : (f32) -> f32
+! CHECK: fir.store %[[result1:.*]] to %[[addr1:.*]] : !fir.ref<f32>
+
+  x2 = fraction(x2)
+! CHECK: %[[r2:.*]] = fir.load %[[addr2:.*]] : !fir.ref<f64>
+! CHECK: %[[result2:.*]] = fir.call @_FortranAFraction8(%[[r2:.*]]) : (f64) -> f64
+! CHECK: fir.store %[[result2:.*]] to %[[addr2:.*]] : !fir.ref<f64>
+
+  x3 = fraction(x3)
+! CHECK: %[[r3:.*]] = fir.load %[[addr3:.*]] : !fir.ref<f80>
+! CHECK: %[[result3:.*]] = fir.call @_FortranAFraction10(%[[r3:.*]]) : (f80) -> f80
+! CHECK: fir.store %[[result3:.*]] to %[[addr3:.*]] : !fir.ref<f80>
+
+  x4 = fraction(x4)
+! CHECK: %[[r4:.*]] = fir.load %[[addr4:.*]] : !fir.ref<f128>
+! CHECK: %[[result4:.*]] = fir.call @_FortranAFraction16(%[[r4:.*]]) : (f128) -> f128
+! CHECK: fir.store %[[result4:.*]] to %[[addr4:.*]] : !fir.ref<f128>
+end subroutine fraction_test
 
 ! IABS
 ! CHECK-LABEL: iabs_test
@@ -1121,6 +1194,50 @@ integer function scan_test2(s1, s2)
   ! CHECK: = fir.call @_FortranAScan1(%[[a1]], %[[a2]], %[[a3]], %[[a4]], %{{.*}}) : (!fir.ref<i8>, i64, !fir.ref<i8>, i64, i1) -> i64
   scan_test2 = scan(s1, s2, .true.)
 end function scan_test2
+
+! SET_EXPONENT
+! CHECK-LABEL: set_exponent_test
+subroutine set_exponent_test
+
+  real(kind = 4) :: x1 = 178.1378e-4
+  real(kind = 8) :: x2 = 178.1378e-4
+  real(kind = 10) :: x3 = 178.1378e-4
+  real(kind = 16) :: x4 = 178.1378e-4
+  integer :: i = 17
+! CHECK: %[[addri:.*]] = fir.address_of(@_QFset_exponent_testEi) : !fir.ref<i32>
+! CHECK: %[[addrx1:.*]] = fir.address_of(@_QFset_exponent_testEx1) : !fir.ref<f32>
+! CHECK: %[[addrx2:.*]] = fir.address_of(@_QFset_exponent_testEx2) : !fir.ref<f64>
+! CHECK: %[[addrx3:.*]] = fir.address_of(@_QFset_exponent_testEx3) : !fir.ref<f80>
+! CHECK: %[[addrx4:.*]] = fir.address_of(@_QFset_exponent_testEx4) : !fir.ref<f128>
+
+  x1 = set_exponent(x1, i)
+! CHECK: %[[x1:.*]] = fir.load %[[addrx1:.*]] : !fir.ref<f32>
+! CHECK: %[[i1:.*]] = fir.load %[[addri:.*]] : !fir.ref<i32>
+! CHECK: %[[i64v1:.*]] = fir.convert %[[i1:.*]] : (i32) -> i64
+! CHECK: %[[result1:.*]] = fir.call @_FortranASetExponent4(%[[x1:.*]], %[[i64v1:.*]]) : (f32, i64) -> f32
+! CHECK: fir.store %[[result1:.*]] to %[[addrx1:.*]] : !fir.ref<f32>
+
+  x2 = set_exponent(x2, i)
+! CHECK: %[[x2:.*]] = fir.load %[[addrx2:.*]] : !fir.ref<f64>
+! CHECK: %[[i2:.*]] = fir.load %[[addri:.*]] : !fir.ref<i32>
+! CHECK: %[[i64v2:.*]] = fir.convert %[[i2:.*]] : (i32) -> i64
+! CHECK: %[[result2:.*]] = fir.call @_FortranASetExponent8(%[[x2:.*]], %[[i64v2:.*]]) : (f64, i64) -> f64
+! CHECK: fir.store %[[result2:.*]] to %[[addrx2:.*]] : !fir.ref<f64>
+
+  x3 = set_exponent(x3, i)
+! CHECK: %[[x3:.*]] = fir.load %[[addrx3:.*]] : !fir.ref<f80>
+! CHECK: %[[i3:.*]] = fir.load %[[addri:.*]] : !fir.ref<i32>
+! CHECK: %[[i64v3:.*]] = fir.convert %[[i3:.*]] : (i32) -> i64
+! CHECK: %[[result3:.*]] = fir.call @_FortranASetExponent10(%[[x3:.*]], %[[i64v3:.*]]) : (f80, i64) -> f80
+! CHECK: fir.store %[[result3:.*]] to %[[addrx3:.*]] : !fir.ref<f80>
+
+  x4 = set_exponent(x4, i)
+! CHECK: %[[x4:.*]] = fir.load %[[addrx4:.*]] : !fir.ref<f128>
+! CHECK: %[[i4:.*]] = fir.load %[[addri:.*]] : !fir.ref<i32>
+! CHECK: %[[i64v4:.*]] = fir.convert %18 : (i32) -> i64
+! CHECK: %[[result4:.*]] = fir.call @_FortranASetExponent16(%[[x4:.*]], %[[i64v4:.*]]) : (f128, i64) -> f128
+! CHECK: fir.store %[[result4:.*]] to %[[addrx4:.*]] : !fir.ref<f128>
+end subroutine set_exponent_test
 
 ! SIGN
 ! CHECK-LABEL: sign_testi

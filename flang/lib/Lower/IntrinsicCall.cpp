@@ -411,8 +411,8 @@ struct IntrinsicLibrary {
 
   template <void (*CallRuntime)(Fortran::lower::FirOpBuilder &,
                                 mlir::Location loc, mlir::Value, mlir::Value)>
-     fir::ExtendedValue genAdjustRtCall(mlir::Type,
-                                 llvm::ArrayRef<fir::ExtendedValue>);
+  fir::ExtendedValue genAdjustRtCall(mlir::Type,
+                                     llvm::ArrayRef<fir::ExtendedValue>);
 
   mlir::Value genAimag(mlir::Type, llvm::ArrayRef<mlir::Value>);
   mlir::Value genAint(mlir::Type, llvm::ArrayRef<mlir::Value>);
@@ -437,7 +437,10 @@ struct IntrinsicLibrary {
   mlir::Value genDprod(mlir::Type, llvm::ArrayRef<mlir::Value>);
   template <Extremum, ExtremumBehavior>
   mlir::Value genExtremum(mlir::Type, llvm::ArrayRef<mlir::Value>);
+  mlir::Value genExponent(mlir::Type, llvm::ArrayRef<mlir::Value>);
   mlir::Value genFloor(mlir::Type, llvm::ArrayRef<mlir::Value>);
+  mlir::Value genFraction(mlir::Type resultType,
+                          mlir::ArrayRef<mlir::Value> args);
   mlir::Value genIand(mlir::Type, llvm::ArrayRef<mlir::Value>);
   mlir::Value genIbclr(mlir::Type, llvm::ArrayRef<mlir::Value>);
   mlir::Value genIbits(mlir::Type, llvm::ArrayRef<mlir::Value>);
@@ -470,6 +473,8 @@ struct IntrinsicLibrary {
   mlir::Value genRRSpacing(mlir::Type resultType,
                            llvm::ArrayRef<mlir::Value> args);
   fir::ExtendedValue genScan(mlir::Type, llvm::ArrayRef<fir::ExtendedValue>);
+  mlir::Value genSetExponent(mlir::Type resultType,
+                             llvm::ArrayRef<mlir::Value> args);
   mlir::Value genSign(mlir::Type, llvm::ArrayRef<mlir::Value>);
   mlir::Value genSpacing(mlir::Type resultType,
                          llvm::ArrayRef<mlir::Value> args);
@@ -590,12 +595,14 @@ using I = IntrinsicLibrary;
 static constexpr IntrinsicHandler handlers[]{
     {"abs", &I::genAbs},
     {"achar", &I::genChar},
-    {"adjustl", &I::genAdjustRtCall<Fortran::lower::genAdjustL>,
-      {{{"string", asAddr}}},   
-      /*isElemental=*/true},
-    {"adjustr", &I::genAdjustRtCall<Fortran::lower::genAdjustR>,
-      {{{"string", asAddr}}},   
-      /*isElemental=*/true},
+    {"adjustl",
+     &I::genAdjustRtCall<Fortran::lower::genAdjustL>,
+     {{{"string", asAddr}}},
+     /*isElemental=*/true},
+    {"adjustr",
+     &I::genAdjustRtCall<Fortran::lower::genAdjustR>,
+     {{{"string", asAddr}}},
+     /*isElemental=*/true},
     {"aimag", &I::genAimag},
     {"aint", &I::genAint},
     {"all",
@@ -637,7 +644,9 @@ static constexpr IntrinsicHandler handlers[]{
     {"dble", &I::genConversion},
     {"dim", &I::genDim},
     {"dprod", &I::genDprod},
+    {"exponent", &I::genExponent},
     {"floor", &I::genFloor},
+    {"fraction", &I::genFraction},
     {"iachar", &I::genIchar},
     {"iand", &I::genIand},
     {"ibclr", &I::genIbclr},
@@ -731,6 +740,7 @@ static constexpr IntrinsicHandler handlers[]{
        {"back", asValue},
        {"kind", asValue}}},
      /*isElemental=*/true},
+    {"set_exponent", &I::genSetExponent},
     {"sign", &I::genSign},
     {"spacing", &I::genSpacing},
     {"spread",
@@ -1634,11 +1644,11 @@ mlir::Value IntrinsicLibrary::genAbs(mlir::Type resultType,
 }
 
 // ADJUSTL & ADJUSTR
-template<void (*CallRuntime)(Fortran::lower::FirOpBuilder &, 
-                             mlir::Location loc, 
-                             mlir::Value, mlir::Value)>
-fir::ExtendedValue IntrinsicLibrary::genAdjustRtCall(mlir::Type resultType,
-                          llvm::ArrayRef<fir::ExtendedValue> args) {
+template <void (*CallRuntime)(Fortran::lower::FirOpBuilder &,
+                              mlir::Location loc, mlir::Value, mlir::Value)>
+fir::ExtendedValue
+IntrinsicLibrary::genAdjustRtCall(mlir::Type resultType,
+                                  llvm::ArrayRef<fir::ExtendedValue> args) {
   assert(args.size() == 1);
   auto string = builder.createBox(loc, args[0]);
   // Create a mutable fir.box to be passed to the runtime for the result.
@@ -1650,18 +1660,17 @@ fir::ExtendedValue IntrinsicLibrary::genAdjustRtCall(mlir::Type resultType,
   // Call the runtime -- the runtime will allocate the result.
   CallRuntime(builder, loc, resultIrBox, string);
 
- // Read result from mutable fir.box and add it to the list of temps to be
+  // Read result from mutable fir.box and add it to the list of temps to be
   // finalized by the StatementContext.
   auto res = Fortran::lower::genMutableBoxRead(builder, loc, resultMutableBox);
   return res.match(
-    [&](const fir::CharBoxValue &box) -> fir::ExtendedValue {
-      addCleanUpForTemp(loc, fir::getBase(box));
-      return box;
-    },
-    [&](const auto &) -> fir::ExtendedValue {
-      fir::emitFatalError(loc, "result of ADJUSTL is not a scalar character");
-    });
-
+      [&](const fir::CharBoxValue &box) -> fir::ExtendedValue {
+        addCleanUpForTemp(loc, fir::getBase(box));
+        return box;
+      },
+      [&](const auto &) -> fir::ExtendedValue {
+        fir::emitFatalError(loc, "result of ADJUSTL is not a scalar character");
+      });
 }
 
 // AIMAG
@@ -1994,6 +2003,17 @@ mlir::Value IntrinsicLibrary::genDprod(mlir::Type resultType,
   return builder.create<mlir::MulFOp>(loc, a, b);
 }
 
+// EXPONENT
+mlir::Value IntrinsicLibrary::genExponent(mlir::Type resultType,
+                                          llvm::ArrayRef<mlir::Value> args) {
+  assert(args.size() == 1);
+
+  return builder.createConvert(
+      loc, resultType,
+      Fortran::lower::genExponent(builder, loc, resultType,
+                                  fir::getBase(args[0])));
+}
+
 // FLOOR
 mlir::Value IntrinsicLibrary::genFloor(mlir::Type resultType,
                                        llvm::ArrayRef<mlir::Value> args) {
@@ -2003,6 +2023,16 @@ mlir::Value IntrinsicLibrary::genFloor(mlir::Type resultType,
   // Use LLVM floor that returns real.
   auto floor = genRuntimeCall("floor", arg.getType(), {arg});
   return builder.createConvert(loc, resultType, floor);
+}
+
+// FRACTION
+mlir::Value IntrinsicLibrary::genFraction(mlir::Type resultType,
+                                          llvm::ArrayRef<mlir::Value> args) {
+  assert(args.size() == 1);
+
+  return builder.createConvert(
+      loc, resultType,
+      Fortran::lower::genFraction(builder, loc, fir::getBase(args[0])));
 }
 
 // IAND
@@ -2628,6 +2658,17 @@ IntrinsicLibrary::genScan(mlir::Type resultType,
       [&](const auto &) -> fir::ExtendedValue {
         fir::emitFatalError(loc, "unexpected result for SCAN");
       });
+}
+
+// SET_EXPONENT
+mlir::Value IntrinsicLibrary::genSetExponent(mlir::Type resultType,
+                                             llvm::ArrayRef<mlir::Value> args) {
+  assert(args.size() == 2);
+
+  return builder.createConvert(
+      loc, resultType,
+      Fortran::lower::genSetExponent(builder, loc, fir::getBase(args[0]),
+                                     fir::getBase(args[1])));
 }
 
 // SIGN
