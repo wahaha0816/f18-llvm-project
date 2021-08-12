@@ -3596,14 +3596,34 @@ public:
           operands[arg.firArgument] = [=](IterSpace iters) { return exv; };
         }
       } break;
-      case PassBy::CharBoxValueAttribute:
-        TODO(loc, "CHARACTER, VALUE");
-        break;
-      case PassBy::BoxChar:
-        TODO(loc, "CHARACTER");
-        break;
+      case PassBy::CharBoxValueAttribute: {
+        if (isArray(*expr)) {
+          PushSemantics(ConstituentSemantics::RefOpaque);
+          auto lambda = genarr(*expr);
+          operands[arg.firArgument] = [=](IterSpace iters) {
+            return Fortran::lower::CharacterExprHelper{builder, loc}
+                .createTempFrom(lambda(iters));
+          };
+        } else {
+          Fortran::lower::CharacterExprHelper helper(builder, loc);
+          auto argVal = helper.createTempFrom(asScalarRef(*expr));
+          operands[arg.firArgument] = [=](IterSpace iters) -> ExtValue {
+            return argVal;
+          };
+        }
+      } break;
+      case PassBy::BoxChar: {
+        PushSemantics(ConstituentSemantics::RefOpaque);
+        auto lambda = genarr(*expr);
+        operands[arg.firArgument] = [=](IterSpace iters) {
+          return lambda(iters);
+        };
+      } break;
       case PassBy::AddressAndLength:
-        TODO(loc, "address and length argument");
+        // PassBy::AddressAndLength is only used for character results. Results
+        // are not handled here.
+        fir::emitFatalError(
+            loc, "unexpected PassBy::AddressAndLength in elemental call");
         break;
       case PassBy::Box:
       case PassBy::MutableBox:
@@ -3614,6 +3634,11 @@ public:
 
     if (caller.getIfIndirectCallSymbol())
       fir::emitFatalError(loc, "cannot be indirect call");
+
+    // TODO: share logic with the scalar function calls when the result must be
+    // allocated on the caller side.
+    if (caller.callerAllocateResult())
+      TODO(loc, "elemental call requiring result allocation");
     auto funcSym = builder.getSymbolRefAttr(caller.getMangledName());
     auto resTys = caller.getFuncOp().getType().getResults();
     if (caller.getFuncOp().getType().getResults() !=
@@ -3621,8 +3646,16 @@ public:
       fir::emitFatalError(loc, "type mismatch on declared function");
     return [=](IterSpace iters) -> ExtValue {
       llvm::SmallVector<mlir::Value> args;
-      for (const auto &cc : operands)
-        args.push_back(fir::getBase(cc(iters)));
+      for (const auto &cc : operands) {
+        auto exv = cc(iters);
+        auto arg = exv.match(
+            [&](const fir::CharBoxValue &cb) -> mlir::Value {
+              return Fortran::lower::CharacterExprHelper{builder, loc}
+                  .createEmbox(cb);
+            },
+            [&](const auto &) { return fir::getBase(exv); });
+        args.push_back(arg);
+      }
       auto call = builder.create<fir::CallOp>(loc, resTys, funcSym, args);
       return call.getResult(0);
     };
