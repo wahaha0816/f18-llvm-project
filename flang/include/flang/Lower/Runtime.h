@@ -70,6 +70,9 @@ void genSyncTeamStatement(AbstractConverter &, const parser::SyncTeamStmt &);
 void genUnlockStatement(AbstractConverter &, const parser::UnlockStmt &);
 void genPauseStatement(AbstractConverter &, const parser::PauseStmt &);
 
+mlir::Value genAssociated(FirOpBuilder &, mlir::Location, mlir::Value pointer,
+                          mlir::Value target);
+
 mlir::Value genCpuTime(FirOpBuilder &, mlir::Location);
 void genDateAndTime(FirOpBuilder &, mlir::Location,
                     llvm::Optional<fir::CharBoxValue> date,
@@ -91,6 +94,11 @@ void genTransfer(Fortran::lower::FirOpBuilder &builder, mlir::Location loc,
 void genTransferSize(Fortran::lower::FirOpBuilder &builder, mlir::Location loc,
                      mlir::Value resultBox, mlir::Value sourceBox,
                      mlir::Value moldBox, mlir::Value size);
+
+/// generate system_clock runtime call/s
+/// all intrinsic arguments are optional and may appear here as mlir::Value{}
+void genSystemClock(FirOpBuilder &, mlir::Location, mlir::Value count,
+                    mlir::Value rate, mlir::Value max);
 
 } // namespace lower
 } // namespace Fortran

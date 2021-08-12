@@ -27,11 +27,11 @@ program wsloop
 !FIRDialect:     %[[WS_LB:.*]] = constant 1 : i32
 !FIRDialect:     %[[WS_UB:.*]] = constant 9 : i32
 !FIRDialect:     %[[WS_STEP:.*]] = constant 1 : i32
-!FIRDialect:     omp.wsloop (%[[I:.*]]) : i32 = (%[[WS_LB]]) to (%[[WS_UB]]) step (%[[WS_STEP]]) schedule(static) nowait inclusive
+!FIRDialect:     omp.wsloop (%[[I:.*]]) : i32 = (%[[WS_LB]]) to (%[[WS_UB]]) step (%[[WS_STEP]]) schedule(static, none) nowait inclusive
 
 !LLVMIRDialect:  %[[WS_UB:.*]] = llvm.mlir.constant(9 : i32) : i32
 !LLVMIRDialect:  %[[WS_LB_STEP:.*]] = llvm.mlir.constant(1 : i32) : i32
-!LLVMIRDialect:  omp.wsloop (%[[I:.*]]) : i32 = (%[[WS_LB_STEP]]) to (%[[WS_UB]]) step (%[[WS_LB_STEP]]) schedule(static) nowait inclusive
+!LLVMIRDialect:  omp.wsloop (%[[I:.*]]) : i32 = (%[[WS_LB_STEP]]) to (%[[WS_UB]]) step (%[[WS_LB_STEP]]) schedule(static, none) nowait inclusive
 
 !LLVMIR:  define internal void @_QQmain..omp_par
 !LLVMIR:  omp.par.entry:
@@ -81,10 +81,12 @@ print*, i
 
 end do
 !FIRDialect:       omp.yield
+!FIRDialect:         }
 !FIRDialect:       omp.terminator
 !FIRDialect:     }
 
 !LLVMIRDialect:    omp.yield
+!LLVMIRDialect:      }
 !LLVMIRDialect:    omp.terminator
 !LLVMIRDialect:  }
 !LLVMIRDialect:  llvm.return

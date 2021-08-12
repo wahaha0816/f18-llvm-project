@@ -143,6 +143,12 @@ public:
     return createTemporary(loc, type, llvm::StringRef{}, {}, {}, attrs);
   }
 
+  mlir::Value createTemporary(mlir::Location loc, mlir::Type type,
+                              llvm::StringRef name,
+                              llvm::ArrayRef<mlir::NamedAttribute> attrs) {
+    return createTemporary(loc, type, name, {}, {}, attrs);
+  }
+
   /// Create a global value.
   fir::GlobalOp createGlobal(mlir::Location loc, mlir::Type type,
                              llvm::StringRef name,
@@ -243,8 +249,12 @@ public:
 
   /// Construct one of the two forms of shape op from an array box.
   mlir::Value consShape(mlir::Location loc, const fir::AbstractArrayBox &arr);
+  mlir::Value consShape(mlir::Location loc, llvm::ArrayRef<mlir::Value> shift,
+                        llvm::ArrayRef<mlir::Value> exts);
+  mlir::Value consShape(mlir::Location loc, llvm::ArrayRef<mlir::Value> exts);
 
-  /// Create one of the shape ops given an extended value.
+  /// Create one of the shape ops given an extended value. For a boxed value,
+  /// this may create a `fir.shift` op.
   mlir::Value createShape(mlir::Location loc, const fir::ExtendedValue &exv);
 
   /// Create a slice op extended value. The value to be sliced, `exv`, must be
@@ -270,6 +280,8 @@ public:
 
   /// Helper class to create if-then-else in a structured way:
   /// Usage: genIfOp().then([&](){...}).else([&](){...}).end();
+  /// Alternatively, getResults() can be used instead of end() to end the ifOp
+  /// and get the ifOp results.
   class IfBuilder {
   public:
     IfBuilder(fir::IfOp ifOp, FirOpBuilder &builder)
@@ -288,6 +300,12 @@ public:
       return *this;
     }
     void end() { builder.setInsertionPointAfter(ifOp); }
+
+    /// End the IfOp and return the results if any.
+    mlir::Operation::result_range getResults() {
+      end();
+      return ifOp.getResults();
+    }
 
   private:
     fir::IfOp ifOp;
@@ -315,6 +333,9 @@ public:
     auto op = create<fir::IfOp>(loc, llvm::None, cdt, true);
     return IfBuilder(op, *this);
   }
+
+  /// Generate code testing \p addr is not a null address.
+  mlir::Value genIsNotNull(mlir::Location loc, mlir::Value addr);
 
 private:
   const fir::KindMapping &kindMap;
@@ -429,6 +450,12 @@ private:
   const uint8_t *address;
   size_t size;
 };
+
+/// Lowers the extents from the sequence type to Values.
+/// Any unknown extents are lowered to undefined values.
+llvm::SmallVector<mlir::Value> createExtents(FirOpBuilder &builder,
+                                             mlir::Location loc,
+                                             fir::SequenceType seqTy);
 
 //===--------------------------------------------------------------------===//
 // Location helpers

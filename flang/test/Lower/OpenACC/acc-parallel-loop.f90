@@ -15,6 +15,7 @@ subroutine acc_parallel_loop
   integer, parameter :: n = 10
   real, dimension(n) :: a, b, c
   real, dimension(n, n) :: d, e
+  real, pointer :: f, g
 
   integer :: gangNum = 8
   integer :: gangStatic = 8
@@ -24,6 +25,8 @@ subroutine acc_parallel_loop
 !CHECK: [[A:%.*]] = fir.alloca !fir.array<10xf32> {{{.*}}uniq_name = "{{.*}}Ea"}
 !CHECK: [[B:%.*]] = fir.alloca !fir.array<10xf32> {{{.*}}uniq_name = "{{.*}}Eb"}
 !CHECK: [[C:%.*]] = fir.alloca !fir.array<10xf32> {{{.*}}uniq_name = "{{.*}}Ec"}
+!CHECK: [[F:%.*]] = fir.alloca !fir.box<!fir.ptr<f32>> {bindc_name = "f", uniq_name = "{{.*}}Ef"}
+!CHECK: [[G:%.*]] = fir.alloca !fir.box<!fir.ptr<f32>> {bindc_name = "g", uniq_name = "{{.*}}Eg"}
 !CHECK: [[IFCONDITION:%.*]] = fir.address_of(@{{.*}}ifcondition) : !fir.ref<!fir.logical<4>>
 
   !$acc parallel loop
@@ -396,12 +399,12 @@ subroutine acc_parallel_loop
 !CHECK:        acc.yield
 !CHECK-NEXT: }{{$}}
 
-  !$acc parallel loop attach(b, a)
+  !$acc parallel loop attach(f, g)
   DO i = 1, n
     a(i) = b(i)
   END DO
 
-!CHECK:      acc.parallel attach([[B]]: !fir.ref<!fir.array<10xf32>>, [[A]]: !fir.ref<!fir.array<10xf32>>) {
+!CHECK:      acc.parallel attach([[F]]: !fir.ref<!fir.box<!fir.ptr<f32>>>, [[G]]: !fir.ref<!fir.box<!fir.ptr<f32>>>) {
 !CHECK:        acc.loop {
 !CHECK:          fir.do_loop
 !CHECK:          acc.yield

@@ -31,6 +31,10 @@ mlir::Value genFraction(Fortran::lower::FirOpBuilder &builder,
 mlir::Value genRRSpacing(Fortran::lower::FirOpBuilder &builder,
                          mlir::Location loc, mlir::Value x);
 
+/// Generate call to Scale intrinsic runtime routine.
+mlir::Value genScale(Fortran::lower::FirOpBuilder &builder, mlir::Location loc,
+                     mlir::Value x, mlir::Value i);
+
 /// Generate call to Set_exponent intrinsic runtime routine.
 mlir::Value genSetExponent(Fortran::lower::FirOpBuilder &builder,
                            mlir::Location loc, mlir::Value x, mlir::Value i);

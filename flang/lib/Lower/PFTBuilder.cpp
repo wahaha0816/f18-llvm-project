@@ -1344,16 +1344,21 @@ struct SymbolDependenceDepth {
     const auto *symTy = sym.GetType();
     assert(symTy && "symbol must have a type");
 
-    // check CHARACTER's length
-    if (symTy->category() == semantics::DeclTypeSpec::Character)
-      if (auto e = symTy->characterTypeSpec().length().GetExplicit()) {
-        // turn variable into a global if this unit is not reentrant
-        global = global || !reentrant;
-        for (const auto &s : evaluate::CollectSymbols(*e))
-          depth = std::max(analyze(s) + 1, depth);
-      }
-
+    // Analyze symbols appearing in object entity specification expression. This
+    // ensures these symbols will be instantiated before the current one.
+    // This is not done for object entities that are host associated because
+    // they must be instantiated from the value of the host symbols (the
+    // specification expressions should not be re-evaluated).
     if (const auto *details = sym.detailsIf<semantics::ObjectEntityDetails>()) {
+      // check CHARACTER's length
+      if (symTy->category() == semantics::DeclTypeSpec::Character)
+        if (auto e = symTy->characterTypeSpec().length().GetExplicit()) {
+          // turn variable into a global if this unit is not reentrant
+          global = global || !reentrant;
+          for (const auto &s : evaluate::CollectSymbols(*e))
+            depth = std::max(analyze(s) + 1, depth);
+        }
+
       auto doExplicit = [&](const auto &bound) {
         if (bound.isExplicit()) {
           semantics::SomeExpr e{*bound.GetExplicit()};
@@ -1682,4 +1687,19 @@ Fortran::lower::pft::buildFuncResultDependencyList(
          "result sym should be last");
   variableList[0].pop_back();
   return variableList[0];
+}
+
+Fortran::lower::pft::Variable::AggregateStore::AggregateStore(
+    Interval &&interval, const Fortran::semantics::Scope &scope,
+    const llvm::SmallVector<const semantics::Symbol *> &unorderedVars,
+    bool isDeclaration)
+    : interval{std::move(interval)}, scope{&scope}, vars{unorderedVars},
+      isDecl{isDeclaration} {
+  // Sort the variables according to their offsets (they are coming here in
+  // source order because that is how the front-end is sorting symbol in
+  // scopes).
+  auto compare = [](const semantics::Symbol *a, const semantics::Symbol *b) {
+    return a->offset() < b->offset();
+  };
+  std::sort(vars.begin(), vars.end(), compare);
 }

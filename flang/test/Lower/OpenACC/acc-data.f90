@@ -4,11 +4,14 @@
 
 subroutine acc_data
   real, dimension(10, 10) :: a, b, c
+  real, pointer :: d, e
   logical :: ifCondition = .TRUE.
 
 !CHECK: [[A:%.*]] = fir.alloca !fir.array<10x10xf32> {{{.*}}uniq_name = "{{.*}}Ea"}
 !CHECK: [[B:%.*]] = fir.alloca !fir.array<10x10xf32> {{{.*}}uniq_name = "{{.*}}Eb"}
 !CHECK: [[C:%.*]] = fir.alloca !fir.array<10x10xf32> {{{.*}}uniq_name = "{{.*}}Ec"}
+!CHECK: [[D:%.*]] = fir.alloca !fir.box<!fir.ptr<f32>> {bindc_name = "d", uniq_name = "{{.*}}Ed"}
+!CHECK: [[E:%.*]] = fir.alloca !fir.box<!fir.ptr<f32>> {bindc_name = "e", uniq_name = "{{.*}}Ee"}
 
   !$acc data if(.TRUE.) copy(a)
   !$acc end data
@@ -83,10 +86,10 @@ subroutine acc_data
 !CHECK:        acc.terminator
 !CHECK-NEXT: }{{$}}
 
-  !$acc data attach(b, c)
+  !$acc data attach(d, e)
   !$acc end data
 
-!CHECK:      acc.data attach([[B]], [[C]] : !fir.ref<!fir.array<10x10xf32>>, !fir.ref<!fir.array<10x10xf32>>) {
+!CHECK:      acc.data attach([[D]], [[E]] : !fir.ref<!fir.box<!fir.ptr<f32>>>, !fir.ref<!fir.box<!fir.ptr<f32>>>) {
 !CHECK:        acc.terminator
 !CHECK-NEXT: }{{$}}
 

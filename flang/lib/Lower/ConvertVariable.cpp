@@ -19,6 +19,7 @@
 #include "flang/Lower/CallInterface.h"
 #include "flang/Lower/CharacterExpr.h"
 #include "flang/Lower/ConvertExpr.h"
+#include "flang/Lower/DerivedRuntime.h"
 #include "flang/Lower/FIRBuilder.h"
 #include "flang/Lower/Mangler.h"
 #include "flang/Lower/PFTBuilder.h"
@@ -84,6 +85,16 @@ static mlir::Value genScalarValue(Fortran::lower::AbstractConverter &converter,
   // symbol mapping to be used expression lowering.
   return fir::getBase(Fortran::lower::createSomeExtendedExpression(
       loc, converter, expr, symMap, context));
+}
+
+/// Does this variable has a default initialization ?
+static bool hasDefaultInitialization(const Fortran::semantics::Symbol &sym) {
+  if (sym.has<Fortran::semantics::ObjectEntityDetails>())
+    if (!Fortran::semantics::IsAllocatableOrPointer(sym))
+      if (const auto *declTypeSpec = sym.GetType())
+        if (const auto *derivedTypeSpec = declTypeSpec->AsDerived())
+          return derivedTypeSpec->HasDefaultInitialization();
+  return false;
 }
 
 //===----------------------------------------------------------------===//
@@ -243,6 +254,102 @@ mlir::Value Fortran::lower::genInitialDataTarget(
                                       mlir::ValueRange{targetLenValue});
 }
 
+static mlir::Value genDefaultInitializerValue(
+    Fortran::lower::AbstractConverter &converter, mlir::Location loc,
+    const Fortran::semantics::Symbol &sym, mlir::Type symTy,
+    Fortran::lower::StatementContext &stmtCtx) {
+  auto &builder = converter.getFirOpBuilder();
+  auto scalarType = symTy;
+  fir::SequenceType sequenceType;
+  if (auto ty = symTy.dyn_cast<fir::SequenceType>()) {
+    sequenceType = ty;
+    scalarType = ty.getEleTy();
+  }
+  // Build a scalar default value of the symbol type, looping through the
+  // components to build each component initial value.
+  auto recTy = scalarType.cast<fir::RecordType>();
+  auto fieldTy = fir::FieldType::get(scalarType.getContext());
+  mlir::Value initialValue = builder.create<fir::UndefOp>(loc, scalarType);
+  const auto *declTy = sym.GetType();
+  assert(declTy && "var with default initialization must have a type");
+  Fortran::semantics::OrderedComponentIterator components(
+      declTy->derivedTypeSpec());
+  for (const auto &component : components) {
+    // Skip parent components, the sub-components of parent types are part of
+    // components and will be looped through right after.
+    if (component.test(Fortran::semantics::Symbol::Flag::ParentComp))
+      continue;
+    mlir::Value componentValue;
+    auto name = toStringRef(component.name());
+    auto componentTy = recTy.getType(name);
+    assert(componentTy && "component not found in type");
+    if (const auto *object{
+            component.detailsIf<Fortran::semantics::ObjectEntityDetails>()}) {
+      if (const auto &init = object->init()) {
+        // Component has explicit initialization.
+        if (Fortran::semantics::IsPointer(component))
+          // Initial data target.
+          componentValue =
+              genInitialDataTarget(converter, loc, componentTy, *init);
+        else
+          // Initial value.
+          componentValue = fir::getBase(
+              genInitializerExprValue(converter, loc, *init, stmtCtx));
+      } else if (Fortran::semantics::IsAllocatableOrPointer(component)) {
+        // Pointer or allocatable without initialization.
+        // Create deallocated/disassociated value.
+        // From a standard point of view, pointer without initialization do not
+        // need to be disassociated, but for sanity and simplicity, do it in
+        // global constructor since this has no runtime cost.
+        componentValue = Fortran::lower::createUnallocatedBox(
+            builder, loc, componentTy, llvm::None);
+      } else if (hasDefaultInitialization(component)) {
+        // Component type has default initialization.
+        componentValue = genDefaultInitializerValue(converter, loc, component,
+                                                    componentTy, stmtCtx);
+      } else {
+        // Component has no initial value.
+        componentValue = builder.create<fir::UndefOp>(loc, componentTy);
+      }
+    } else if (const auto *proc{
+                   component
+                       .detailsIf<Fortran::semantics::ProcEntityDetails>()}) {
+      if (proc->init().has_value())
+        TODO(loc, "procedure pointer component default initialization");
+      else
+        componentValue = builder.create<fir::UndefOp>(loc, componentTy);
+    }
+    assert(componentValue && "must have been computed");
+    componentValue = builder.createConvert(loc, componentTy, componentValue);
+    // FIXME: type parameters must come from the derived-type-spec
+    mlir::Value field = builder.create<fir::FieldIndexOp>(
+        loc, fieldTy, name, scalarType,
+        /*typeParams=*/mlir::ValueRange{} /*TODO*/);
+    initialValue = builder.create<fir::InsertValueOp>(loc, recTy, initialValue,
+                                                      componentValue, field);
+  }
+
+  if (sequenceType) {
+    // For arrays, duplicate the scalar value to all elements with an
+    // fir.insert_range covering the whole array.
+    auto arrayInitialValue = builder.create<fir::UndefOp>(loc, sequenceType);
+    llvm::SmallVector<mlir::Value> rangeBounds;
+    auto idxTy = builder.getIndexType();
+    auto zero = builder.createIntegerConstant(loc, idxTy, 0);
+    for (auto extent : sequenceType.getShape()) {
+      if (extent == fir::SequenceType::getUnknownExtent())
+        TODO(loc,
+             "default initial value of array component with length parameters");
+      rangeBounds.push_back(zero);
+      rangeBounds.push_back(
+          builder.createIntegerConstant(loc, idxTy, extent - 1));
+    }
+    return builder.create<fir::InsertOnRangeOp>(
+        loc, sequenceType, arrayInitialValue, initialValue, rangeBounds);
+  }
+  return initialValue;
+}
+
 /// Create the global op and its init if it has one
 static fir::GlobalOp defineGlobal(Fortran::lower::AbstractConverter &converter,
                                   const Fortran::lower::pft::Variable &var,
@@ -304,6 +411,20 @@ static fir::GlobalOp defineGlobal(Fortran::lower::AbstractConverter &converter,
             },
             linkage);
       }
+    } else if (hasDefaultInitialization(sym)) {
+      auto symTy = converter.genType(var);
+      global = builder.createGlobal(
+          loc, symTy, globalName, isConst,
+          [&](Fortran::lower::FirOpBuilder &builder) {
+            Fortran::lower::StatementContext stmtCtx(/*prohibited=*/true);
+            auto initVal =
+                genDefaultInitializerValue(converter, loc, sym, symTy, stmtCtx);
+            auto castTo =
+                builder.createConvert(loc, symTy, fir::getBase(initVal));
+            stmtCtx.finalize();
+            builder.create<fir::HasValueOp>(loc, castTo);
+          },
+          linkage);
     }
   } else if (sym.has<Fortran::semantics::CommonBlockDetails>()) {
     mlir::emitError(loc, "COMMON symbol processed elsewhere");
@@ -379,18 +500,51 @@ static mlir::Value createNewLocal(Fortran::lower::AbstractConverter &converter,
   const auto &ultimateSymbol = var.getSymbol().GetUltimate();
   auto symNm = toStringRef(ultimateSymbol.name());
   auto isTarg = var.isTarget();
-  if (shape.size())
-    if (auto arrTy = ty.dyn_cast<fir::SequenceType>()) {
-      // elide the constant dimensions before construction
-      assert(shape.size() == arrTy.getDimension());
-      llvm::SmallVector<mlir::Value> args;
-      auto typeShape = arrTy.getShape();
-      for (unsigned i = 0, end = arrTy.getDimension(); i < end; ++i)
-        if (typeShape[i] == fir::SequenceType::getUnknownExtent())
-          args.push_back(shape[i]);
-      return builder.allocateLocal(loc, ty, nm, symNm, args, lenParams, isTarg);
-    }
+  // Let the builder do all the heavy lifting.
   return builder.allocateLocal(loc, ty, nm, symNm, shape, lenParams, isTarg);
+}
+
+/// Must \p var be default initialized at runtime when entering its scope.
+static bool
+mustBeDefaultInitializedAtRuntime(const Fortran::lower::pft::Variable &var) {
+  if (!var.hasSymbol())
+    return false;
+  const auto &sym = var.getSymbol();
+  if (var.isGlobal())
+    // Global variables are statically initialized.
+    return false;
+  if (Fortran::semantics::IsDummy(sym) && !Fortran::semantics::IsIntentOut(sym))
+    return false;
+  // Local variables (including function results), and intent(out) dummies must
+  // be default initialized at runtime if their type has default initialization.
+  return hasDefaultInitialization(sym);
+}
+
+/// Call default initialization runtime routine to initialize \p var.
+static void
+defaultInitializeAtRuntime(Fortran::lower::AbstractConverter &converter,
+                           const Fortran::lower::pft::Variable &var,
+                           Fortran::lower::SymMap &symMap) {
+  auto &builder = converter.getFirOpBuilder();
+  auto loc = converter.getCurrentLocation();
+  const auto &sym = var.getSymbol();
+  auto exv = symMap.lookupSymbol(sym).toExtendedValue();
+  if (Fortran::semantics::IsOptional(sym)) {
+    // 15.5.2.12 point 3, absent optional dummies are not initialized.
+    // Creating descriptor/passing null descriptor to the runtime would
+    // create runtime crashes.
+    auto isPresent = builder.create<fir::IsPresentOp>(loc, builder.getI1Type(),
+                                                      fir::getBase(exv));
+    builder.genIfThen(loc, isPresent)
+        .genThen([&]() {
+          auto box = builder.createBox(loc, exv);
+          Fortran::lower::genDerivedTypeInitialize(builder, loc, box);
+        })
+        .end();
+  } else {
+    auto box = builder.createBox(loc, exv);
+    Fortran::lower::genDerivedTypeInitialize(builder, loc, box);
+  }
 }
 
 /// Instantiate a local variable. Precondition: Each variable will be visited
@@ -402,6 +556,8 @@ static void instantiateLocal(Fortran::lower::AbstractConverter &converter,
   assert(!var.isAlias());
   Fortran::lower::StatementContext stmtCtx;
   mapSymbolAttributes(converter, var, symMap, stmtCtx);
+  if (mustBeDefaultInitializedAtRuntime(var))
+    defaultInitializeAtRuntime(converter, var, symMap);
 }
 
 //===----------------------------------------------------------------===//
@@ -435,6 +591,78 @@ static std::string mangleGlobalAggregateStore(
   assert(st.isGlobal() && "cannot name local aggregate");
   return Fortran::lower::mangle::mangleName(*st.vars[0]);
 }
+
+// In equivalences, 19.5.3.4 point 10 gives rules regarding explicit and default
+// initialization interaction. The interpretation of this point is not
+// ubiquitous among compilers, but the majority (nag, ifort, nvfortran) accept
+// full or partial overlap of explicit init over default init. In case of
+// partial overlap, these compiler still apply the default init for the
+// components for which the storage is not explicitly initialized.
+//
+// In the example below, the equivalence storage must be initialized to [3 , 2].
+// 3 comes from the explicit init of k, and 2 from part of the deafult init of
+// a.
+//
+//  type t
+//    i = 1
+//    j = 2
+//  end type
+//  type(t), save :: a
+//  integer, save :: k = 3
+//  equivalence (a, k)
+//
+
+/// Helper to analyze overlaps between default and explicit initialization in
+/// equivalences. \p offset is the current equivalence offset, memIter is the
+/// current symbol iterator over the equivalence members. It must point to a
+/// member that has default initialization. \p endIter must be the end of the
+/// equivalence members iterators. This will tell if the equivalence member \p
+/// memIter is fully, partially, or not overlapped by members with explicit
+/// initialization.
+enum class OverlapWithExplicitInit { None, Partial, Full };
+template <typename SymIter>
+static OverlapWithExplicitInit analyzeDefaultInitOverlap(std::size_t offset,
+                                                         SymIter memIter,
+                                                         SymIter endIter) {
+  const auto *mem = *memIter;
+  auto isFullyEquivalencedByExplicitInit = false;
+  auto overlapsWithExplicitInit = false;
+  if (mem->offset() < offset)
+    // Explicit initialization was already performed for part of the storage
+    // that also have default initialization.
+    overlapsWithExplicitInit = true;
+  auto memEnd = mem->offset() + mem->size();
+  if (memEnd > offset) {
+    // The default initialization overlaps storage that has no initialization
+    // yet. It may have to be taken into account if no further explicit
+    // initialization overrides it.
+    auto fullExplicitInitUntil = offset;
+    for (auto peek = memIter; peek < endIter; ++peek) {
+      const auto *nextSym = *peek;
+      if (nextSym->offset() > memEnd)
+        // Reached the end of the storage that may be default initialized.
+        break;
+      if (const auto *nextDet = nextSym->template detailsIf<
+                                Fortran::semantics::ObjectEntityDetails>())
+        if (nextDet->init()) {
+          // Test there is no gap between the previous explicit init and this
+          // one.
+          overlapsWithExplicitInit = true;
+          if (nextSym->offset() == fullExplicitInitUntil)
+            fullExplicitInitUntil = nextSym->offset() + nextSym->size();
+        }
+    }
+    isFullyEquivalencedByExplicitInit = fullExplicitInitUntil >= memEnd;
+  } else {
+    isFullyEquivalencedByExplicitInit = overlapsWithExplicitInit;
+  }
+  if (!overlapsWithExplicitInit)
+    return OverlapWithExplicitInit::None;
+  if (isFullyEquivalencedByExplicitInit)
+    return OverlapWithExplicitInit::Full;
+  return OverlapWithExplicitInit::Partial;
+}
+
 /// Build the type for the storage of an equivalence.
 static mlir::TupleType
 getAggregateType(Fortran::lower::AbstractConverter &converter,
@@ -443,7 +671,9 @@ getAggregateType(Fortran::lower::AbstractConverter &converter,
   auto i8Ty = builder.getIntegerType(8);
   llvm::SmallVector<mlir::Type> members;
   std::size_t counter = std::get<0>(st.interval);
-  for (const auto *mem : st.vars) {
+
+  for (auto iter = st.vars.begin(); iter != st.vars.end(); ++iter) {
+    const auto *mem = *iter;
     if (const auto *memDet =
             mem->detailsIf<Fortran::semantics::ObjectEntityDetails>()) {
       if (mem->offset() > counter) {
@@ -458,6 +688,36 @@ getAggregateType(Fortran::lower::AbstractConverter &converter,
         auto memTy = converter.genType(*mem);
         members.push_back(memTy);
         counter = mem->offset() + mem->size();
+      } else if (hasDefaultInitialization(*mem)) {
+        auto overlap = analyzeDefaultInitOverlap(counter, iter, st.vars.end());
+        if (overlap == OverlapWithExplicitInit::None) {
+          if (mem->offset() == counter) {
+            // No overlap with explicit init on the storage and default init
+            // not yet performed for this storage. Apply default initialization.
+            auto memTy = converter.genType(*mem);
+            members.push_back(memTy);
+            counter = mem->offset() + mem->size();
+          } else {
+            // It is possible the storage was already default initialized by an
+            // entity of the same type. The standard mandates in 19.5.3.4 point
+            // 10 that only one type must provide default initialization for a
+            // storage. Simply ensure the already default initialized storage
+            // has the same size.
+            assert(counter == mem->offset() + mem->size() &&
+                   "bad default init overlap");
+          }
+        } else if (overlap == OverlapWithExplicitInit::Partial) {
+          // Must interleave pieces of default initialization with explicit init
+          // to achieve ifort, nvfortran and nag semantics.
+          TODO(converter.genLocation(mem->name()),
+               "overlapping default and explicit initialization in equivalence "
+               "storage");
+        } else {
+          // The storage if fully covered with explicit initialization, simply
+          // ignore the default initialization and let explicit initialization
+          // happen.
+          assert(overlap == OverlapWithExplicitInit::Full);
+        }
       }
     }
   }
@@ -484,7 +744,7 @@ static fir::GlobalOp defineGlobalAggregateStore(
     StringRef aggName, mlir::StringAttr linkage) {
   assert(aggregate.isGlobal() && "not a global interval");
   auto &builder = converter.getFirOpBuilder();
-  auto loc = converter.genLocation();
+  auto loc = converter.getCurrentLocation();
   auto idxTy = builder.getIndexType();
   mlir::TupleType aggTy = getAggregateType(converter, aggregate);
   auto initFunc = [&](Fortran::lower::FirOpBuilder &builder) {
@@ -492,22 +752,51 @@ static fir::GlobalOp defineGlobalAggregateStore(
     unsigned tupIdx = 0;
     std::size_t offset = std::get<0>(aggregate.interval);
     LLVM_DEBUG(llvm::dbgs() << "equivalence {\n");
-    for (const auto *mem : aggregate.vars) {
+    for (auto iter = aggregate.vars.begin(); iter != aggregate.vars.end();
+         ++iter) {
+      const auto *mem = *iter;
       if (const auto *memDet =
               mem->detailsIf<Fortran::semantics::ObjectEntityDetails>()) {
         if (mem->offset() > offset) {
           ++tupIdx;
           offset = mem->offset();
         }
-        if (memDet->init()) {
+        bool applyDefaultInit = false;
+        if (hasDefaultInitialization(*mem)) {
+          auto overlap =
+              analyzeDefaultInitOverlap(offset, iter, aggregate.vars.end());
+          if (overlap == OverlapWithExplicitInit::None) {
+            if (mem->offset() == offset)
+              // No explicit init. Not yet default initialized.
+              applyDefaultInit = true;
+            else
+              // Already default initialized.
+              assert(offset == mem->offset() + mem->size() &&
+                     "bad default init overlap");
+          } else if (overlap == OverlapWithExplicitInit::Partial) {
+            TODO(converter.genLocation(mem->name()),
+                 "overlapping default and explicit initialization in "
+                 "equivalence storage");
+          } else {
+            // Explicit inits completely override default init.
+            assert(overlap == OverlapWithExplicitInit::Full);
+          }
+        }
+        if (memDet->init() || applyDefaultInit) {
           LLVM_DEBUG(llvm::dbgs()
                      << "offset: " << mem->offset() << " is " << *mem << '\n');
           Fortran::lower::StatementContext stmtCtx;
-          auto initVal = genInitializerExprValue(
-              converter, loc, memDet->init().value(), stmtCtx);
+          mlir::Value initVal;
+          if (memDet->init())
+            // Explicit initialization.
+            initVal = fir::getBase(genInitializerExprValue(
+                converter, loc, memDet->init().value(), stmtCtx));
+          else
+            initVal = genDefaultInitializerValue(
+                converter, loc, *mem, converter.genType(*mem), stmtCtx);
           auto offVal = builder.createIntegerConstant(loc, idxTy, tupIdx);
-          auto castVal = builder.createConvert(loc, aggTy.getType(tupIdx),
-                                               fir::getBase(initVal));
+          auto castVal =
+              builder.createConvert(loc, aggTy.getType(tupIdx), initVal);
           cb = builder.create<fir::InsertValueOp>(loc, aggTy, cb, castVal,
                                                   offVal);
           ++tupIdx;
@@ -548,7 +837,7 @@ instantiateAggregateStore(Fortran::lower::AbstractConverter &converter,
   assert(var.isAggregateStore() && "not an interval");
   auto &builder = converter.getFirOpBuilder();
   auto i8Ty = builder.getIntegerType(8);
-  auto loc = converter.genLocation();
+  auto loc = converter.getCurrentLocation();
   if (var.isGlobal()) {
     // The scope of this aggregate is this procedure.
     auto aggName = mangleGlobalAggregateStore(var.getAggregateStore());
@@ -612,6 +901,15 @@ static void instantiateAlias(Fortran::lower::AbstractConverter &converter,
       loc, builder.getRefType(converter.genType(sym)), ptr);
   Fortran::lower::StatementContext stmtCtx;
   mapSymbolAttributes(converter, var, symMap, stmtCtx, preAlloc);
+  // Default initialization is possible for equivalence members: see
+  // F2018 19.5.3.4. Note that if several equivalenced entities have
+  // default initialization, they must have the same type, and the standard
+  // allows the storage to be default initialized several times (this has
+  // no consequences other than wasting some execution time). For now,
+  // do not try optimizing this to single default initializations of
+  // the equivalenced storages. Keep lowering simple.
+  if (mustBeDefaultInitializedAtRuntime(var))
+    defaultInitializeAtRuntime(converter, var, symMap);
 }
 
 //===--------------------------------------------------------------===//
@@ -717,9 +1015,12 @@ defineCommonBlock(Fortran::lower::AbstractConverter &converter,
   auto idxTy = builder.getIndexType();
   auto linkage = builder.createCommonLinkage();
   if (!common.name().size() || !commonBlockHasInit(cmnBlkMems)) {
-    const auto sz = static_cast<fir::SequenceType::Extent>(common.size());
-    // anonymous COMMON must always be initialized to zero
-    // a named COMMON sans initializers is also initialized to zero
+    // A blank (anonymous) COMMON block must always be initialized to zero.
+    // A named COMMON block sans initializers is also initialized to zero.
+    // mlir::Vector types must have a strictly positive size, so at least
+    // temporarily, force a zero size COMMON block to have one byte.
+    const auto sz = static_cast<fir::SequenceType::Extent>(
+        common.size() > 0 ? common.size() : 1);
     fir::SequenceType::Shape shape = {sz};
     auto i8Ty = builder.getIntegerType(8);
     auto commonTy = fir::SequenceType::get(shape, i8Ty);
@@ -950,8 +1251,8 @@ void Fortran::lower::mapSymbolAttributes(
   const auto isResult = Fortran::semantics::IsFunctionResult(sym);
   const auto replace = isDummy || isResult;
   Fortran::lower::CharacterExprHelper charHelp{builder, loc};
-  Fortran::lower::BoxAnalyzer sba;
-  sba.analyze(sym);
+  Fortran::lower::BoxAnalyzer ba;
+  ba.analyze(sym);
 
   // First deal with pointers an allocatables, because their handling here
   // is the same regardless of their rank.
@@ -968,8 +1269,8 @@ void Fortran::lower::mapSymbolAttributes(
       boxAlloc = createNewLocal(converter, loc, var, preAlloc);
     // Lower non deferred parameters.
     llvm::SmallVector<mlir::Value> nonDeferredLenParams;
-    if (sba.isChar()) {
-      if (auto len = lowerExplicitCharLen(converter, loc, sba, symMap, stmtCtx))
+    if (ba.isChar()) {
+      if (auto len = lowerExplicitCharLen(converter, loc, ba, symMap, stmtCtx))
         nonDeferredLenParams.push_back(len);
       else if (Fortran::semantics::IsAssumedLengthCharacter(sym))
         TODO(loc, "assumed length character allocatable");
@@ -993,13 +1294,13 @@ void Fortran::lower::mapSymbolAttributes(
       llvm::SmallVector<mlir::Value> explicitParams;
       // Lower lower bounds, explicit type parameters and explicit
       // extents if any.
-      if (sba.isChar())
+      if (ba.isChar())
         if (auto len =
-                lowerExplicitCharLen(converter, loc, sba, symMap, stmtCtx))
+                lowerExplicitCharLen(converter, loc, ba, symMap, stmtCtx))
           explicitParams.push_back(len);
       // TODO: derived type length parameters.
-      lowerExplicitLowerBounds(converter, loc, sba, lbounds, symMap, stmtCtx);
-      lowerExplicitExtents(converter, loc, sba, lbounds, extents, symMap,
+      lowerExplicitLowerBounds(converter, loc, ba, lbounds, symMap, stmtCtx);
+      lowerExplicitExtents(converter, loc, ba, lbounds, extents, symMap,
                            stmtCtx);
       symMap.addBoxSymbol(sym, dummyArg, lbounds, explicitParams, extents,
                           replace);
@@ -1085,7 +1386,7 @@ void Fortran::lower::mapSymbolAttributes(
     }
   };
 
-  sba.match(
+  ba.match(
       //===--------------------------------------------------------------===//
       // Trivial case.
       //===--------------------------------------------------------------===//
