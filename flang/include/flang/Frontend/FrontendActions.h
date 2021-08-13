@@ -47,7 +47,7 @@ class InitOnlyAction : public FrontendAction {
 //===----------------------------------------------------------------------===//
 class PrescanAction : public FrontendAction {
   void ExecuteAction() override = 0;
-  bool BeginSourceFileAction(CompilerInstance &ci) override;
+  bool BeginSourceFileAction() override;
 };
 
 class PrintPreprocessedAction : public PrescanAction {
@@ -71,7 +71,7 @@ class DebugMeasureParseTreeAction : public PrescanAction {
 //===----------------------------------------------------------------------===//
 class PrescanAndParseAction : public FrontendAction {
   void ExecuteAction() override = 0;
-  bool BeginSourceFileAction(CompilerInstance &ci) override;
+  bool BeginSourceFileAction() override;
 };
 
 class DebugUnparseNoSemaAction : public PrescanAndParseAction {
@@ -88,7 +88,7 @@ class DebugDumpParseTreeNoSemaAction : public PrescanAndParseAction {
 class PrescanAndSemaAction : public FrontendAction {
 
   void ExecuteAction() override = 0;
-  bool BeginSourceFileAction(CompilerInstance &ci) override;
+  bool BeginSourceFileAction() override;
 };
 
 class DebugUnparseWithSymbolsAction : public PrescanAndSemaAction {
