@@ -345,8 +345,8 @@ convertOmpWsLoop(Operation &opInst, llvm::IRBuilderBase &builder,
   }
 
   if (schedule == omp::ClauseScheduleKind::Static) {
-    ompBuilder->createStaticWorkshareLoop(ompLoc, loopInfo, allocaIP,
-                                          !loop.nowait(), chunk);
+    ompBuilder->applyStaticWorkshareLoop(ompLoc.DL, loopInfo, allocaIP,
+                                         !loop.nowait(), chunk);
   } else {
     llvm::omp::OMPScheduleType schedType;
     switch (schedule) {
@@ -389,8 +389,8 @@ convertOmpWsLoop(Operation &opInst, llvm::IRBuilderBase &builder,
         break;
       }
     }
-    ompBuilder->createDynamicWorkshareLoop(ompLoc, loopInfo, allocaIP,
-                                           schedType, !loop.nowait(), chunk);
+    ompBuilder->applyDynamicWorkshareLoop(ompLoc.DL, loopInfo, allocaIP,
+                                          schedType, !loop.nowait(), chunk);
   }
 
   // Continue building IR after the loop. Note that the LoopInfo returned by
