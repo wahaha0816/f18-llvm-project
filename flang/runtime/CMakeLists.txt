@@ -27,6 +27,7 @@ include_directories(AFTER ${CMAKE_CURRENT_BINARY_DIR})
 add_flang_library(FortranRuntime PARTIAL_SOURCES_INTENDED
   ISO_Fortran_binding.cpp
   allocatable.cpp
+  assign.cpp
   buffer.cpp
   clock.cpp
   complex-reduction.c
