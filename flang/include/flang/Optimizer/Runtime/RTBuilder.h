@@ -14,19 +14,16 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#ifndef FORTRAN_LOWER_RTBUILDER_H
-#define FORTRAN_LOWER_RTBUILDER_H
+#ifndef FORTRAN_OPTIMIZER_RUNTIME_RTBUILDER_H
+#define FORTRAN_OPTIMIZER_RUNTIME_RTBUILDER_H
 
-#include "flang/Lower/ConvertType.h"
+#include "flang/Common/Fortran.h"
 #include "flang/Optimizer/Builder/FIRBuilder.h"
 #include "flang/Optimizer/Dialect/FIRType.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "llvm/ADT/SmallVector.h"
 #include <functional>
-
-// List the runtime headers we want to be able to dissect
-#include "../../runtime/io-api.h"
 
 // Incomplete type indicating C99 complex ABI in interfaces. Beware, _Complex
 // and std::complex are layout compatible, but not compatible in all ABI call
@@ -35,7 +32,11 @@
 struct c_float_complex_t;
 struct c_double_complex_t;
 
-namespace Fortran::lower {
+namespace Fortran::runtime {
+class Descriptor;
+}
+
+namespace fir::runtime {
 
 using TypeBuilderFunc = mlir::Type (*)(mlir::MLIRContext *);
 using FuncTypeBuilderFunc = mlir::FunctionType (*)(mlir::MLIRContext *);
@@ -73,13 +74,6 @@ constexpr TypeBuilderFunc getModel<int &>() {
   return [](mlir::MLIRContext *context) -> mlir::Type {
     TypeBuilderFunc f{getModel<int>()};
     return fir::ReferenceType::get(f(context));
-  };
-}
-template <>
-constexpr TypeBuilderFunc getModel<Fortran::runtime::io::Iostat>() {
-  return [](mlir::MLIRContext *context) -> mlir::Type {
-    return mlir::IntegerType::get(context,
-                                  8 * sizeof(Fortran::runtime::io::Iostat));
   };
 }
 template <>
@@ -154,10 +148,6 @@ constexpr TypeBuilderFunc getModel<unsigned long long>() {
   return [](mlir::MLIRContext *context) -> mlir::Type {
     return mlir::IntegerType::get(context, 8 * sizeof(unsigned long long));
   };
-}
-template <>
-constexpr TypeBuilderFunc getModel<Fortran::runtime::io::IoStatementState *>() {
-  return getModel<char *>();
 }
 template <>
 constexpr TypeBuilderFunc getModel<double>() {
@@ -261,13 +251,6 @@ constexpr TypeBuilderFunc getModel<Fortran::common::TypeCategory>() {
   };
 }
 template <>
-constexpr TypeBuilderFunc
-getModel<const Fortran::runtime::io::NamelistGroup &>() {
-  return [](mlir::MLIRContext *context) -> mlir::Type {
-    return fir::ReferenceType::get(mlir::TupleType::get(context));
-  };
-}
-template <>
 constexpr TypeBuilderFunc getModel<void>() {
   return [](mlir::MLIRContext *context) -> mlir::Type {
     return mlir::NoneType::get(context);
@@ -355,10 +338,10 @@ struct RuntimeTableEntry<RuntimeTableKey<KT>, RuntimeIdentifier<Cs...>> {
       E(X, 43), E(X, 44), E(X, 45), E(X, 46), E(X, 47), E(X, 48), E(X, 49)
 #define ExpandKey(X) MacroExpandKey(QuoteKey(X))
 #define FullSeq(X) std::integer_sequence<char, ExpandKey(X)>
-#define AsSequence(X) decltype(Fortran::lower::details::filter(FullSeq(X){}))
+#define AsSequence(X) decltype(fir::runtime::details::filter(FullSeq(X){}))
 #define mkKey(X)                                                               \
-  Fortran::lower::RuntimeTableEntry<                                           \
-      Fortran::lower::RuntimeTableKey<decltype(X)>, AsSequence(X)>
+  fir::runtime::RuntimeTableEntry<fir::runtime::RuntimeTableKey<decltype(X)>,  \
+                                  AsSequence(X)>
 #define mkRTKey(X) mkKey(RTNAME(X))
 
 /// Get (or generate) the MLIR FuncOp for a given runtime function. Its template
@@ -405,6 +388,6 @@ createArguments(fir::FirOpBuilder &builder, mlir::Location loc,
   return result;
 }
 
-} // namespace Fortran::lower
+} // namespace fir::runtime
 
-#endif // FORTRAN_LOWER_RTBUILDER_H
+#endif // FORTRAN_OPTIMIZER_RUNTIME_RTBUILDER_H
