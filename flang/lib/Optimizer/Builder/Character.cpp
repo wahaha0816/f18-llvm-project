@@ -1,4 +1,4 @@
-//===-- CharacterExpr.cpp -------------------------------------------------===//
+//===-- Character.cpp -----------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -10,11 +10,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "flang/Lower/CharacterExpr.h"
-#include "flang/Lower/ConvertType.h"
-#include "flang/Lower/DoLoopHelper.h"
-#include "flang/Lower/IntrinsicCall.h"
+#include "flang/Optimizer/Builder/Character.h"
 #include "flang/Lower/Todo.h"
+#include "flang/Optimizer/Builder/DoLoopHelper.h"
 #include "llvm/Support/Debug.h"
 
 #define DEBUG_TYPE "flang-lower-character"
@@ -40,18 +38,18 @@ static fir::CharacterType recoverCharacterType(mlir::Type type) {
 
 /// Get fir.char<kind> type with the same kind as inside str.
 fir::CharacterType
-Fortran::lower::CharacterExprHelper::getCharacterType(mlir::Type type) {
+fir::factory::CharacterExprHelper::getCharacterType(mlir::Type type) {
   assert(isCharacterScalar(type) && "expected scalar character");
   return recoverCharacterType(type);
 }
 
-fir::CharacterType Fortran::lower::CharacterExprHelper::getCharacterType(
+fir::CharacterType fir::factory::CharacterExprHelper::getCharacterType(
     const fir::CharBoxValue &box) {
   return getCharacterType(box.getBuffer().getType());
 }
 
 fir::CharacterType
-Fortran::lower::CharacterExprHelper::getCharacterType(mlir::Value str) {
+fir::factory::CharacterExprHelper::getCharacterType(mlir::Value str) {
   return getCharacterType(str.getType());
 }
 
@@ -84,7 +82,7 @@ static llvm::Optional<std::int64_t> getIntIfConstant(mlir::Value value) {
 /// value will be converted into a memory-based temporary and an extended
 /// boxchar value returned.
 fir::CharBoxValue
-Fortran::lower::CharacterExprHelper::materializeValue(mlir::Value str) {
+fir::factory::CharacterExprHelper::materializeValue(mlir::Value str) {
   assert(needToMaterialize(str));
   auto ty = str.getType();
   assert(isCharacterScalar(ty) && "expected scalar character");
@@ -103,8 +101,8 @@ Fortran::lower::CharacterExprHelper::materializeValue(mlir::Value str) {
 }
 
 fir::ExtendedValue
-Fortran::lower::CharacterExprHelper::toExtendedValue(mlir::Value character,
-                                                     mlir::Value len) {
+fir::factory::CharacterExprHelper::toExtendedValue(mlir::Value character,
+                                                   mlir::Value len) {
   auto lenType = builder.getCharacterLengthType();
   auto type = character.getType();
   auto base = fir::isa_passbyref_type(type) ? character : mlir::Value{};
@@ -179,7 +177,7 @@ static mlir::Type getSingletonCharType(mlir::MLIRContext *ctxt, int kind) {
 }
 
 mlir::Value
-Fortran::lower::CharacterExprHelper::createEmbox(const fir::CharBoxValue &box) {
+fir::factory::CharacterExprHelper::createEmbox(const fir::CharBoxValue &box) {
   // Base CharBoxValue of CharArrayBoxValue are ok here (do not require a scalar
   // type)
   auto charTy = recoverCharacterType(box.getBuffer().getType());
@@ -202,7 +200,7 @@ Fortran::lower::CharacterExprHelper::createEmbox(const fir::CharBoxValue &box) {
   return builder.create<fir::EmboxCharOp>(loc, boxCharType, buff, len);
 }
 
-fir::CharBoxValue Fortran::lower::CharacterExprHelper::toScalarCharacter(
+fir::CharBoxValue fir::factory::CharacterExprHelper::toScalarCharacter(
     const fir::CharArrayBoxValue &box) {
   if (box.getBuffer().getType().isa<fir::PointerType>())
     TODO(loc, "concatenating non contiguous character array into a scalar");
@@ -225,7 +223,7 @@ fir::CharBoxValue Fortran::lower::CharacterExprHelper::toScalarCharacter(
   return {buffer, len};
 }
 
-mlir::Value Fortran::lower::CharacterExprHelper::createEmbox(
+mlir::Value fir::factory::CharacterExprHelper::createEmbox(
     const fir::CharArrayBoxValue &box) {
   // Use same embox as for scalar. It's losing the actual data size information
   // (We do not multiply the length by the array size), but that is what Fortran
@@ -239,8 +237,8 @@ mlir::Value Fortran::lower::CharacterExprHelper::createEmbox(
 /// unknown. \p index must have any integer type, and is zero based. The return
 /// value is a singleton address (!fir.ref<!fir.char<kind>>)
 mlir::Value
-Fortran::lower::CharacterExprHelper::createElementAddr(mlir::Value buffer,
-                                                       mlir::Value index) {
+fir::factory::CharacterExprHelper::createElementAddr(mlir::Value buffer,
+                                                     mlir::Value index) {
   // The only way to address an element of a fir.ref<char<kind, len>> is to cast
   // it to a fir.array<len x fir.char<kind>> and use fir.coordinate_of.
   auto bufferType = buffer.getType();
@@ -262,8 +260,8 @@ Fortran::lower::CharacterExprHelper::createElementAddr(mlir::Value buffer,
 /// Load a character out of `buff` from offset `index`.
 /// `buff` must be a reference to memory.
 mlir::Value
-Fortran::lower::CharacterExprHelper::createLoadCharAt(mlir::Value buff,
-                                                      mlir::Value index) {
+fir::factory::CharacterExprHelper::createLoadCharAt(mlir::Value buff,
+                                                    mlir::Value index) {
   LLVM_DEBUG(llvm::dbgs() << "load a char: " << buff << " type: "
                           << buff.getType() << " at: " << index << '\n');
   return builder.create<fir::LoadOp>(loc, createElementAddr(buff, index));
@@ -271,9 +269,9 @@ Fortran::lower::CharacterExprHelper::createLoadCharAt(mlir::Value buff,
 
 /// Store the singleton character `c` to `str` at offset `index`.
 /// `str` must be a reference to memory.
-void Fortran::lower::CharacterExprHelper::createStoreCharAt(mlir::Value str,
-                                                            mlir::Value index,
-                                                            mlir::Value c) {
+void fir::factory::CharacterExprHelper::createStoreCharAt(mlir::Value str,
+                                                          mlir::Value index,
+                                                          mlir::Value c) {
   LLVM_DEBUG(llvm::dbgs() << "store the char: " << c << " into: " << str
                           << " type: " << str.getType() << " at: " << index
                           << '\n');
@@ -286,7 +284,7 @@ void Fortran::lower::CharacterExprHelper::createStoreCharAt(mlir::Value str,
 // character should never be loaded.
 // If this is a fir.array<>, allocate and store the value so that
 // fir.cooridnate_of can be use on the value.
-mlir::Value Fortran::lower::CharacterExprHelper::getCharBoxBuffer(
+mlir::Value fir::factory::CharacterExprHelper::getCharBoxBuffer(
     const fir::CharBoxValue &box) {
   auto buff = box.getBuffer();
   if (fir::isa_char(buff.getType())) {
@@ -298,8 +296,7 @@ mlir::Value Fortran::lower::CharacterExprHelper::getCharBoxBuffer(
 }
 
 /// Get the LLVM intrinsic for `memcpy`. Use the 64 bit version.
-mlir::FuncOp
-Fortran::lower::getLlvmMemcpy(Fortran::lower::FirOpBuilder &builder) {
+mlir::FuncOp fir::factory::getLlvmMemcpy(fir::FirOpBuilder &builder) {
   auto ptrTy = builder.getRefType(builder.getIntegerType(8));
   llvm::SmallVector<mlir::Type> args = {ptrTy, ptrTy, builder.getI64Type(),
                                         builder.getI1Type()};
@@ -310,8 +307,7 @@ Fortran::lower::getLlvmMemcpy(Fortran::lower::FirOpBuilder &builder) {
 }
 
 /// Get the LLVM intrinsic for `memmove`. Use the 64 bit version.
-mlir::FuncOp
-Fortran::lower::getLlvmMemmove(Fortran::lower::FirOpBuilder &builder) {
+mlir::FuncOp fir::factory::getLlvmMemmove(fir::FirOpBuilder &builder) {
   auto ptrTy = builder.getRefType(builder.getIntegerType(8));
   llvm::SmallVector<mlir::Type> args = {ptrTy, ptrTy, builder.getI64Type(),
                                         builder.getI1Type()};
@@ -322,8 +318,7 @@ Fortran::lower::getLlvmMemmove(Fortran::lower::FirOpBuilder &builder) {
 }
 
 /// Get the LLVM intrinsic for `memset`. Use the 64 bit version.
-mlir::FuncOp
-Fortran::lower::getLlvmMemset(Fortran::lower::FirOpBuilder &builder) {
+mlir::FuncOp fir::factory::getLlvmMemset(fir::FirOpBuilder &builder) {
   auto ptrTy = builder.getRefType(builder.getIntegerType(8));
   llvm::SmallVector<mlir::Type> args = {ptrTy, ptrTy, builder.getI64Type(),
                                         builder.getI1Type()};
@@ -334,7 +329,7 @@ Fortran::lower::getLlvmMemset(Fortran::lower::FirOpBuilder &builder) {
 }
 
 /// Get the standard `realloc` function.
-mlir::FuncOp Fortran::lower::getRealloc(Fortran::lower::FirOpBuilder &builder) {
+mlir::FuncOp fir::factory::getRealloc(fir::FirOpBuilder &builder) {
   auto ptrTy = builder.getRefType(builder.getIntegerType(8));
   llvm::SmallVector<mlir::Type> args = {ptrTy, builder.getI64Type()};
   auto reallocTy = mlir::FunctionType::get(builder.getContext(), args, {ptrTy});
@@ -344,7 +339,7 @@ mlir::FuncOp Fortran::lower::getRealloc(Fortran::lower::FirOpBuilder &builder) {
 
 /// Create a loop to copy `count` characters from `src` to `dest`. Note that the
 /// KIND indicates the number of bits in a code point. (ASCII, UCS-2, or UCS-4.)
-void Fortran::lower::CharacterExprHelper::createCopy(
+void fir::factory::CharacterExprHelper::createCopy(
     const fir::CharBoxValue &dest, const fir::CharBoxValue &src,
     mlir::Value count) {
   auto fromBuff = getCharBoxBuffer(src);
@@ -376,21 +371,21 @@ void Fortran::lower::CharacterExprHelper::createCopy(
                                      dest.getBuffer());
 }
 
-void Fortran::lower::CharacterExprHelper::createPadding(
+void fir::factory::CharacterExprHelper::createPadding(
     const fir::CharBoxValue &str, mlir::Value lower, mlir::Value upper) {
   auto blank = createBlankConstant(getCharacterType(str));
   // Always create the loop, if upper < lower, no iteration will be
   // executed.
   auto toBuff = getCharBoxBuffer(str);
-  Fortran::lower::DoLoopHelper{builder, loc}.createLoop(
-      lower, upper, [&](Fortran::lower::FirOpBuilder &, mlir::Value index) {
+  fir::factory::DoLoopHelper{builder, loc}.createLoop(
+      lower, upper, [&](fir::FirOpBuilder &, mlir::Value index) {
         createStoreCharAt(toBuff, index, blank);
       });
 }
 
 fir::CharBoxValue
-Fortran::lower::CharacterExprHelper::createCharacterTemp(mlir::Type type,
-                                                         mlir::Value len) {
+fir::factory::CharacterExprHelper::createCharacterTemp(mlir::Type type,
+                                                       mlir::Value len) {
   auto kind = recoverCharacterType(type).getFKind();
   auto typeLen = fir::CharacterType::unknownLen();
   // If len is a constant, reflect the length in the type.
@@ -406,7 +401,7 @@ Fortran::lower::CharacterExprHelper::createCharacterTemp(mlir::Type type,
   return {ref, len};
 }
 
-fir::CharBoxValue Fortran::lower::CharacterExprHelper::createTempFrom(
+fir::CharBoxValue fir::factory::CharacterExprHelper::createTempFrom(
     const fir::ExtendedValue &source) {
   const auto *charBox = source.getCharBox();
   if (!charBox)
@@ -425,7 +420,7 @@ fir::CharBoxValue Fortran::lower::CharacterExprHelper::createTempFrom(
 }
 
 // Simple length one character assignment without loops.
-void Fortran::lower::CharacterExprHelper::createLengthOneAssign(
+void fir::factory::CharacterExprHelper::createLengthOneAssign(
     const fir::CharBoxValue &lhs, const fir::CharBoxValue &rhs) {
   auto addr = lhs.getBuffer();
   mlir::Value val = builder.create<fir::LoadOp>(loc, rhs.getBuffer());
@@ -434,7 +429,14 @@ void Fortran::lower::CharacterExprHelper::createLengthOneAssign(
   builder.create<fir::StoreOp>(loc, val, addr);
 }
 
-void Fortran::lower::CharacterExprHelper::createAssign(
+/// Returns the minimum of integer mlir::Value \p a and \b.
+mlir::Value genMin(fir::FirOpBuilder &builder, mlir::Location loc,
+                   mlir::Value a, mlir::Value b) {
+  auto cmp = builder.create<mlir::CmpIOp>(loc, mlir::CmpIPredicate::slt, a, b);
+  return builder.create<mlir::SelectOp>(loc, cmp, a, b);
+}
+
+void fir::factory::CharacterExprHelper::createAssign(
     const fir::CharBoxValue &lhs, const fir::CharBoxValue &rhs) {
   auto rhsCstLen = getCompileTimeLength(rhs);
   auto lhsCstLen = getCompileTimeLength(lhs);
@@ -453,7 +455,7 @@ void Fortran::lower::CharacterExprHelper::createAssign(
   if (!compileTimeSameLength) {
     auto lhsLen = builder.createConvert(loc, idxTy, lhs.getLen());
     auto rhsLen = builder.createConvert(loc, idxTy, rhs.getLen());
-    copyCount = Fortran::lower::genMin(builder, loc, {lhsLen, rhsLen});
+    copyCount = genMin(builder, loc, lhsLen, rhsLen);
   }
 
   // Actual copy
@@ -467,7 +469,7 @@ void Fortran::lower::CharacterExprHelper::createAssign(
   }
 }
 
-fir::CharBoxValue Fortran::lower::CharacterExprHelper::createConcatenate(
+fir::CharBoxValue fir::factory::CharacterExprHelper::createConcatenate(
     const fir::CharBoxValue &lhs, const fir::CharBoxValue &rhs) {
   auto lhsLen = builder.createConvert(loc, builder.getCharacterLengthType(),
                                       lhs.getLen());
@@ -481,9 +483,9 @@ fir::CharBoxValue Fortran::lower::CharacterExprHelper::createConcatenate(
   auto lhsLenIdx = builder.createConvert(loc, builder.getIndexType(), lhsLen);
   auto fromBuff = getCharBoxBuffer(rhs);
   auto toBuff = getCharBoxBuffer(temp);
-  Fortran::lower::DoLoopHelper{builder, loc}.createLoop(
+  fir::factory::DoLoopHelper{builder, loc}.createLoop(
       lhsLenIdx, upperBound, one,
-      [&](Fortran::lower::FirOpBuilder &bldr, mlir::Value index) {
+      [&](fir::FirOpBuilder &bldr, mlir::Value index) {
         auto rhsIndex = bldr.create<mlir::SubIOp>(loc, index, lhsLenIdx);
         auto charVal = createLoadCharAt(fromBuff, rhsIndex);
         createStoreCharAt(toBuff, index, charVal);
@@ -491,7 +493,7 @@ fir::CharBoxValue Fortran::lower::CharacterExprHelper::createConcatenate(
   return temp;
 }
 
-fir::CharBoxValue Fortran::lower::CharacterExprHelper::createSubstring(
+fir::CharBoxValue fir::factory::CharacterExprHelper::createSubstring(
     const fir::CharBoxValue &box, llvm::ArrayRef<mlir::Value> bounds) {
   // Constant need to be materialize in memory to use fir.coordinate_of.
   auto nbounds = bounds.size();
@@ -534,8 +536,8 @@ fir::CharBoxValue Fortran::lower::CharacterExprHelper::createSubstring(
   return {substringRef, substringLen};
 }
 
-mlir::Value Fortran::lower::CharacterExprHelper::createLenTrim(
-    const fir::CharBoxValue &str) {
+mlir::Value
+fir::factory::CharacterExprHelper::createLenTrim(const fir::CharBoxValue &str) {
   // Note: Runtime for LEN_TRIM should also be available at some
   // point. For now use an inlined implementation.
   auto indexType = builder.getIndexType();
@@ -568,13 +570,13 @@ mlir::Value Fortran::lower::CharacterExprHelper::createLenTrim(
   mlir::Value newLen =
       builder.create<mlir::AddIOp>(loc, iterWhile.getResult(1), one);
   auto result =
-      builder.create<SelectOp>(loc, iterWhile.getResult(0), zero, newLen);
+      builder.create<mlir::SelectOp>(loc, iterWhile.getResult(0), zero, newLen);
   return builder.createConvert(loc, builder.getCharacterLengthType(), result);
 }
 
 fir::CharBoxValue
-Fortran::lower::CharacterExprHelper::createCharacterTemp(mlir::Type type,
-                                                         int len) {
+fir::factory::CharacterExprHelper::createCharacterTemp(mlir::Type type,
+                                                       int len) {
   assert(len >= 0 && "expected positive length");
   auto kind = recoverCharacterType(type).getFKind();
   auto charType = fir::CharacterType::get(builder.getContext(), kind, len);
@@ -586,20 +588,20 @@ Fortran::lower::CharacterExprHelper::createCharacterTemp(mlir::Type type,
 
 // Returns integer with code for blank. The integer has the same
 // size as the character. Blank has ascii space code for all kinds.
-mlir::Value Fortran::lower::CharacterExprHelper::createBlankConstantCode(
+mlir::Value fir::factory::CharacterExprHelper::createBlankConstantCode(
     fir::CharacterType type) {
   auto bits = builder.getKindMap().getCharacterBitsize(type.getFKind());
   auto intType = builder.getIntegerType(bits);
   return builder.createIntegerConstant(loc, intType, ' ');
 }
 
-mlir::Value Fortran::lower::CharacterExprHelper::createBlankConstant(
+mlir::Value fir::factory::CharacterExprHelper::createBlankConstant(
     fir::CharacterType type) {
   return createSingletonFromCode(createBlankConstantCode(type),
                                  type.getFKind());
 }
 
-void Fortran::lower::CharacterExprHelper::createAssign(
+void fir::factory::CharacterExprHelper::createAssign(
     const fir::ExtendedValue &lhs, const fir::ExtendedValue &rhs) {
   if (auto *str = rhs.getBoxOf<fir::CharBoxValue>()) {
     if (auto *to = lhs.getBoxOf<fir::CharBoxValue>()) {
@@ -613,13 +615,13 @@ void Fortran::lower::CharacterExprHelper::createAssign(
 }
 
 mlir::Value
-Fortran::lower::CharacterExprHelper::createEmboxChar(mlir::Value addr,
-                                                     mlir::Value len) {
+fir::factory::CharacterExprHelper::createEmboxChar(mlir::Value addr,
+                                                   mlir::Value len) {
   return createEmbox(fir::CharBoxValue{addr, len});
 }
 
 std::pair<mlir::Value, mlir::Value>
-Fortran::lower::CharacterExprHelper::createUnboxChar(mlir::Value boxChar) {
+fir::factory::CharacterExprHelper::createUnboxChar(mlir::Value boxChar) {
   using T = std::pair<mlir::Value, mlir::Value>;
   return toExtendedValue(boxChar).match(
       [](const fir::CharBoxValue &b) -> T {
@@ -631,14 +633,14 @@ Fortran::lower::CharacterExprHelper::createUnboxChar(mlir::Value boxChar) {
       [](const auto &) -> T { llvm::report_fatal_error("not a character"); });
 }
 
-bool Fortran::lower::CharacterExprHelper::isCharacterLiteral(mlir::Type type) {
+bool fir::factory::CharacterExprHelper::isCharacterLiteral(mlir::Type type) {
   if (auto seqType = type.dyn_cast<fir::SequenceType>())
     return (seqType.getShape().size() == 1) &&
            fir::isa_char(seqType.getEleTy());
   return false;
 }
 
-bool Fortran::lower::CharacterExprHelper::isCharacterScalar(mlir::Type type) {
+bool fir::factory::CharacterExprHelper::isCharacterScalar(mlir::Type type) {
   if (type.isa<fir::BoxCharType>())
     return true;
   if (auto pointedType = fir::dyn_cast_ptrEleTy(type))
@@ -653,29 +655,29 @@ bool Fortran::lower::CharacterExprHelper::isCharacterScalar(mlir::Type type) {
 }
 
 fir::KindTy
-Fortran::lower::CharacterExprHelper::getCharacterKind(mlir::Type type) {
+fir::factory::CharacterExprHelper::getCharacterKind(mlir::Type type) {
   assert(isCharacterScalar(type) && "expected scalar character");
   return recoverCharacterType(type).getFKind();
 }
 
-fir::KindTy Fortran::lower::CharacterExprHelper::getCharacterOrSequenceKind(
-    mlir::Type type) {
+fir::KindTy
+fir::factory::CharacterExprHelper::getCharacterOrSequenceKind(mlir::Type type) {
   return recoverCharacterType(type).getFKind();
 }
 
-bool Fortran::lower::CharacterExprHelper::isArray(mlir::Type type) {
+bool fir::factory::CharacterExprHelper::isArray(mlir::Type type) {
   return !isCharacterScalar(type);
 }
 
-bool Fortran::lower::CharacterExprHelper::hasConstantLengthInType(
+bool fir::factory::CharacterExprHelper::hasConstantLengthInType(
     const fir::ExtendedValue &exv) {
   auto charTy = recoverCharacterType(fir::getBase(exv).getType());
   return charTy.hasConstantLen();
 }
 
 mlir::Value
-Fortran::lower::CharacterExprHelper::createSingletonFromCode(mlir::Value code,
-                                                             int kind) {
+fir::factory::CharacterExprHelper::createSingletonFromCode(mlir::Value code,
+                                                           int kind) {
   auto charType = fir::CharacterType::get(builder.getContext(), kind, 1);
   auto bits = builder.getKindMap().getCharacterBitsize(kind);
   auto intType = builder.getIntegerType(bits);
@@ -685,7 +687,7 @@ Fortran::lower::CharacterExprHelper::createSingletonFromCode(mlir::Value code,
   return builder.create<fir::InsertValueOp>(loc, charType, undef, cast, zero);
 }
 
-mlir::Value Fortran::lower::CharacterExprHelper::extractCodeFromSingleton(
+mlir::Value fir::factory::CharacterExprHelper::extractCodeFromSingleton(
     mlir::Value singleton) {
   auto type = getCharacterType(singleton);
   assert(type.getLen() == 1);
@@ -696,7 +698,7 @@ mlir::Value Fortran::lower::CharacterExprHelper::extractCodeFromSingleton(
 }
 
 mlir::Value
-Fortran::lower::CharacterExprHelper::readLengthFromBox(mlir::Value box) {
+fir::factory::CharacterExprHelper::readLengthFromBox(mlir::Value box) {
   auto lenTy = builder.getCharacterLengthType();
   auto size = builder.create<fir::BoxEleSizeOp>(loc, lenTy, box);
   auto charTy = recoverCharacterType(box.getType());
