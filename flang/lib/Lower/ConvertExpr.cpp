@@ -2411,6 +2411,19 @@ class ArrayExprLowering {
       return result;
     }
 
+    /// In an explicit space, the context may include an implicit subspace. The
+    /// RHS of the assignment does not necessarily have rank and can be promoted
+    /// from a scalar to an array. In that case, the implicit subscripts must be
+    /// removed.
+    void removeImplicit() {
+      llvm::SmallVector<AccessValue> newIndices;
+      const auto size = indices.size();
+      for (std::remove_const_t<decltype(size)> i = 0, j = 0; j < size; ++j)
+        if (indices[j].access() != AccessKind::Implicit)
+          newIndices[i++] = indices[j];
+      indices.swap(newIndices);
+    }
+
   private:
     mlir::Value inArg;
     mlir::Value outRes;
@@ -2487,8 +2500,10 @@ public:
     auto lambda = [=](IterSpace iters) -> ExtValue {
       auto innerArg = iters.innerArgument();
       auto resTy = adjustedArrayElementType(innerArg.getType());
+      auto cast = builder.createConvert(loc, fir::unwrapSequenceType(resTy),
+                                        iters.getElement());
       auto arrUpdate = builder.create<fir::ArrayUpdateOp>(
-          loc, resTy, innerArg, iters.getElement(), iters.iterVec(),
+          loc, resTy, innerArg, cast, iters.iterVec(),
           destination.typeparams());
       return abstractArrayExtValue(arrUpdate);
     };
@@ -2537,7 +2552,7 @@ public:
   static void lowerAllocatableArrayAssignment(
       Fortran::lower::AbstractConverter &converter,
       Fortran::lower::SymMap &symMap, Fortran::lower::StatementContext &stmtCtx,
-      const fir::MutableBoxValue &lhs,
+      const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &lhs,
       const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &rhs,
       Fortran::lower::ExplicitIterSpace &explicitSpace,
       Fortran::lower::ImplicitIterSpace &implicitSpace) {
@@ -2553,11 +2568,15 @@ public:
   /// defines the iteration space of the computation and the lhs is
   /// resized/reallocated to fit if necessary.
   void lowerAllocatableArrayAssignment(
-      const fir::MutableBoxValue &mutableBox,
+      const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &lhs,
       const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &rhs) {
     // With assignment to allocatable, we want to lower the rhs first and use
     // its shape to determine if we need to reallocate, etc.
     auto loc = getLoc();
+    // FIXME: If the lhs is in an explicit iteration space, the assignment may
+    // be to an array of allocatable arrays rather than a single allocatable
+    // array.
+    auto mutableBox = createMutableBox(loc, converter, lhs, symMap);
     auto resultTy = converter.genType(rhs);
     auto rhsCC = [&]() {
       PushSemantics(ConstituentSemantics::RefTransparent);
@@ -2775,6 +2794,10 @@ public:
   ExtValue lowerArrayExpression(CC f, mlir::Type resultTy) {
     auto loc = getLoc();
     auto [iterSpace, insPt] = genIterSpace(resultTy);
+#if 0
+    if (explicitScalar)
+      rhsIterSpace.removeImplicit();
+#endif
     auto innerArg = iterSpace.innerArgument();
     auto exv = f(iterSpace);
     mlir::Value upd;
@@ -3218,17 +3241,21 @@ public:
       const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &e) {
     struct Filter : public Fortran::evaluate::AnyTraverse<
                         Filter, std::optional<llvm::SmallVector<mlir::Value>>> {
-      using Base = Fortran::evaluate::AnyTraverse<
-          Filter, std::optional<llvm::SmallVector<mlir::Value>>>;
+      using RT = std::optional<llvm::SmallVector<mlir::Value>>;
+      using Base = Fortran::evaluate::AnyTraverse<Filter, RT>;
       using Base::operator();
 
-      Filter(const llvm::SmallVector<mlir::Value> init)
-          : Base(*this), bounds(init) {}
+      Filter(ArrayExprLowering *const ael) : Base(*this), ael(ael) {}
 
-      std::optional<llvm::SmallVector<mlir::Value>>
-      operator()(const Fortran::evaluate::ArrayRef &ref) {
+      RT operator()(const Fortran::evaluate::ArrayRef &ref) {
         if ((ref.base().IsSymbol() || ref.base().Rank() == 0) &&
             ref.Rank() > 0 && !ref.subscript().empty()) {
+          auto baseTy = ael->raiseBaseType(ref.base());
+          auto ty = ref.base().IsSymbol()
+                        ? baseTy
+                        : baseTy.cast<fir::RecordType>().getType(
+                              toStringRef(ref.GetLastSymbol().name()));
+          auto bounds = ael->getShape(ty);
           assert(ref.subscript().size() == bounds.size());
           llvm::SmallVector<mlir::Value> result;
           auto bdIter = bounds.begin();
@@ -3248,15 +3275,24 @@ public:
         }
         return {};
       }
+      RT operator()(const Fortran::evaluate::Component &cpnt) {
+        if (cpnt.base().Rank() == 0 && cpnt.Rank() > 0)
+          return ael->getShape(ael->raiseBaseType(cpnt));
+        return {};
+      }
+      RT operator()(const Fortran::semantics::Symbol &sym) {
+        if (sym.Rank() > 0)
+          return ael->getShape(ael->raiseBaseType(sym));
+        return {};
+      }
 
-      llvm::SmallVector<mlir::Value> bounds;
+      ArrayExprLowering *const ael;
     };
 
-    auto originalShape = getShape(converter.genType(e));
-    Filter filter(originalShape);
+    Filter filter(this);
     if (auto res = filter(e))
       return *res;
-    return originalShape;
+    return {};
   }
 
   void genMasks() {
@@ -4306,6 +4342,10 @@ public:
     return false;
   }
 
+  /// Set of helper member functions for generating the type of a particular
+  /// component along a path. We cannot use the `converter` here because it is
+  /// not possible to uplift an arbitrary component list to a generic
+  /// `Fortran::evaluate::Expr`.
   mlir::Type raiseBaseType(const Fortran::evaluate::Component &x) {
     auto baseTy = raiseBaseType(x.base());
     auto recTy = baseTy.cast<fir::RecordType>();
@@ -4318,10 +4358,13 @@ public:
     LLVM_DEBUG(llvm::dbgs() << "base type s " << rv << '\n');
     return rv;
   }
+  mlir::Type raiseBaseType(const Fortran::evaluate::NamedEntity &n) {
+    return n.IsSymbol() ? raiseBaseType(n.GetLastSymbol())
+                        : raiseBaseType(n.GetComponent());
+  }
   mlir::Type raiseBaseType(const Fortran::evaluate::ArrayRef &x) {
     auto &base = x.base();
-    mlir::Type baseTy = base.IsSymbol() ? raiseBaseType(base.GetLastSymbol())
-                                        : raiseBaseType(base.GetComponent());
+    mlir::Type baseTy = raiseBaseType(base);
     auto seqTy = baseTy.cast<fir::SequenceType>();
     auto rv = seqTy.getEleTy();
     LLVM_DEBUG(llvm::dbgs() << "base type a " << rv << '\n');
@@ -4387,7 +4430,8 @@ public:
 
   RaiseRT
   raiseToArray(const Fortran::evaluate::DataRef &x,
-               llvm::ArrayRef<const Fortran::semantics::Symbol *> ctrlSet) {
+               llvm::ArrayRef<const Fortran::semantics::Symbol *> ctrlSet,
+               bool isScalar) {
     return std::visit(
         Fortran::common::visitors{
             [&](const Fortran::semantics::SymbolRef &s) -> RaiseRT {
@@ -4401,13 +4445,16 @@ public:
               TODO(getLoc(), "coarray reference");
               return {llvm::None, mlir::Type{}, false, false};
             },
-            [&](const auto &y) -> RaiseRT { return raiseToArray(y, ctrlSet); }},
+            [&](const auto &y) -> RaiseRT {
+              return raiseToArray(y, ctrlSet, isScalar);
+            }},
         x.u);
   }
   RaiseRT
   raiseToArray(const Fortran::evaluate::Component &x,
-               llvm::ArrayRef<const Fortran::semantics::Symbol *> ctrlSet) {
-    auto [fopt, ty, inrank, ranked] = raiseToArray(x.base(), ctrlSet);
+               llvm::ArrayRef<const Fortran::semantics::Symbol *> ctrlSet,
+               bool isScalar) {
+    auto [fopt, ty, inrank, ranked] = raiseToArray(x.base(), ctrlSet, isScalar);
     if (fopt.hasValue()) {
       if (!ranked && x.Rank() > 0) {
         auto [fopt2, ty2] = raiseRankedComponent(fopt, x, ty);
@@ -4424,7 +4471,8 @@ public:
   }
   RaiseRT
   raiseToArray(const Fortran::evaluate::ArrayRef &x,
-               llvm::ArrayRef<const Fortran::semantics::Symbol *> ctrlSet) {
+               llvm::ArrayRef<const Fortran::semantics::Symbol *> ctrlSet,
+               bool isScalar) {
     const auto &base = x.base();
     auto accessUsesControlVariable = [&]() {
       for (const auto &subs : x.subscript())
@@ -4454,16 +4502,16 @@ public:
           }
           // Otherwise, it's a component.
           auto [fopt, ty, inrank, ranked] =
-              raiseToArray(base.GetComponent(), ctrlSet);
+              raiseToArray(base.GetComponent(), ctrlSet, isScalar);
           if (fopt.hasValue())
-            return RaiseRT{fopt, ty, inrank, ranked};
+            return RaiseRT{fopt, ty, inrank, x.Rank() > 0};
           if (x.Rank() > 0 || accessUsesControlVariable()) {
             auto [fopt2, ty2] = raiseBase(base.GetComponent());
             return RaiseRT{fopt2, ty2, inrank, x.Rank() > 0};
           }
           return RaiseRT{fopt, ty, inrank, ranked};
         }(),
-        x);
+        x, isScalar);
   }
   static mlir::Type unwrapBoxEleTy(mlir::Type ty) {
     if (auto boxTy = ty.dyn_cast<fir::BoxType>()) {
@@ -4508,7 +4556,7 @@ public:
     return {};
   }
   RaiseRT raiseSubscript(const RaiseRT &tup,
-                         const Fortran::evaluate::ArrayRef &x) {
+                         const Fortran::evaluate::ArrayRef &x, bool isScalar) {
     auto fopt = std::get<llvm::Optional<CC>>(tup);
     if (fopt.hasValue()) {
       auto arrTy = std::get<mlir::Type>(tup);
@@ -4587,8 +4635,14 @@ public:
         }
       }
       auto one = builder.createIntegerConstant(loc, idxTy, 1);
+      llvm::errs() << "DBG: " << isScalar << ' ' << implicitArguments << ' '
+                   << x.GetFirstSymbol() << '\n';
       auto pc = [=](IterSpace iters) {
         IterationSpace newIters = iters;
+        if (isScalar) {
+          newIters.removeImplicit();
+          assert(!implicitArguments);
+        }
         const auto firstImplicitIndex = iters.beginImplicitIndex();
         auto implicitIndex = iters.endImplicitIndex();
         assert(firstImplicitIndex <= implicitIndex);
@@ -4676,7 +4730,7 @@ public:
   /// variables, i.e. `array(func(i))`, are not.
   template <typename A>
   CC raiseToArray(const A &x) {
-    auto tup = raiseToArray(x, collectControlSymbols());
+    auto tup = raiseToArray(x, collectControlSymbols(), x.Rank() == 0);
     auto fopt = std::get<llvm::Optional<CC>>(tup);
     assert(fopt.hasValue() && "continuation must be returned");
     return fopt.getValue();
@@ -5698,12 +5752,12 @@ void Fortran::lower::createAnyMaskedArrayAssignment(
 
 void Fortran::lower::createAllocatableArrayAssignment(
     Fortran::lower::AbstractConverter &converter,
-    const fir::MutableBoxValue &lhs,
+    const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &lhs,
     const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &rhs,
     Fortran::lower::ExplicitIterSpace &explicitSpace,
     Fortran::lower::ImplicitIterSpace &implicitSpace,
     Fortran::lower::SymMap &symMap, Fortran::lower::StatementContext &stmtCtx) {
-  LLVM_DEBUG(llvm::dbgs() << "defining array: " << lhs << '\n';
+  LLVM_DEBUG(lhs.AsFortran(llvm::dbgs() << "defining array: ") << '\n';
              rhs.AsFortran(llvm::dbgs() << "assign expression: ")
              << " given the explicit iteration space:\n"
              << explicitSpace << "\n and implied mask conditions:\n"
@@ -5731,7 +5785,7 @@ fir::ExtendedValue Fortran::lower::createSomeArrayBox(
                                                       stmtCtx, expr);
 }
 
-fir::MutableBoxValue Fortran::lower::createSomeMutableBox(
+fir::MutableBoxValue Fortran::lower::createMutableBox(
     mlir::Location loc, Fortran::lower::AbstractConverter &converter,
     const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &expr,
     Fortran::lower::SymMap &symMap) {
