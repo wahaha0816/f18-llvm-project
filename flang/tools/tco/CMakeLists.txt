@@ -15,6 +15,8 @@ target_link_libraries(tco PRIVATE
   FIRAnalysis
   FIRSupport
   FIRTransforms
+  FIRBuilder
+  FIRRuntime
   ${dialect_libs}
   MLIRIR
   MLIRLLVMIR

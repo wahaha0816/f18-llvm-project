@@ -8,6 +8,8 @@ target_link_libraries(fir-opt PRIVATE
   FIRSupport
   FIRTransforms
   FIRCodeGen
+  FIRBuilder
+  FIRRuntime
   ${dialect_libs}
   MLIRIR
   MLIRLLVMIR
