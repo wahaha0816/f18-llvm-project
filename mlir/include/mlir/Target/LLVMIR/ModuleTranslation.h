@@ -83,6 +83,9 @@ public:
     return valueMapping.lookup(value);
   }
 
+  /// Looks up remapped a list of remapped values.
+  SmallVector<llvm::Value *> lookupValues(ValueRange values);
+
   /// Stores the mapping between an MLIR block and LLVM IR basic block.
   void mapBlock(Block *mlir, llvm::BasicBlock *llvm) {
     auto result = blockMapping.try_emplace(mlir, llvm);
@@ -110,6 +113,10 @@ public:
     return branchMapping.lookup(op);
   }
 
+  /// Removes the mapping for blocks contained in the region and values defined
+  /// in these blocks.
+  void forgetMapping(Region &region);
+
   /// Returns the LLVM metadata corresponding to a reference to an mlir LLVM
   /// dialect access group operation.
   llvm::MDNode *getAccessGroup(Operation &opInst,
@@ -133,9 +140,6 @@ public:
 
   /// Converts the type from MLIR LLVM dialect to LLVM.
   llvm::Type *convertType(Type type);
-
-  /// Looks up remapped a list of remapped values.
-  SmallVector<llvm::Value *, 8> lookupValues(ValueRange values);
 
   /// Returns the MLIR context of the module being translated.
   MLIRContext &getContext() { return *mlirModule->getContext(); }
@@ -209,7 +213,7 @@ public:
   /// translated makes the frame available when translating ops within that
   /// region.
   template <typename T, typename... Args>
-  void stackPush(Args &&... args) {
+  void stackPush(Args &&...args) {
     static_assert(
         std::is_base_of<StackFrame, T>::value,
         "can only push instances of StackFrame on ModuleTranslation stack");
