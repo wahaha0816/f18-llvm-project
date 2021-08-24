@@ -66,7 +66,9 @@ bool isa_ref_type(mlir::Type t);
 bool isa_passbyref_type(mlir::Type t);
 
 /// Is `t` a boxed type?
-bool isa_box_type(mlir::Type t);
+inline bool isa_box_type(mlir::Type t) {
+  return t.isa<BoxType>() || t.isa<BoxCharType>() || t.isa<BoxProcType>();
+}
 
 /// Is `t` a type that can conform to be pass-by-reference? Depending on the
 /// context, these types may simply demote to pass-by-reference or a reference
@@ -75,8 +77,14 @@ inline bool conformsWithPassByRef(mlir::Type t) {
   return isa_ref_type(t) || isa_box_type(t);
 }
 
+/// Is `t` a derived (record) type?
+inline bool isa_derived(mlir::Type t) { return t.isa<fir::RecordType>(); }
+
 /// Is `t` a FIR dialect aggregate type?
-bool isa_aggregate(mlir::Type t);
+inline bool isa_aggregate(mlir::Type t) {
+  return t.isa<SequenceType>() || fir::isa_derived(t) ||
+         t.isa<mlir::TupleType>();
+}
 
 /// Extract the `Type` pointed to from a FIR memory reference type. If `t` is
 /// not a memory reference type, then returns a null `Type`.
@@ -126,9 +134,6 @@ inline bool isa_char_string(mlir::Type t) {
     return ct.getLen() != fir::CharacterType::singleton();
   return false;
 }
-
-/// Is `t` a derived (record) type?
-inline bool isa_derived(mlir::Type t) { return t.isa<fir::RecordType>(); }
 
 /// Is `t` a box type for which it is not possible to deduce the box size?
 /// It is not possible to deduce the size of a box that describes an entity

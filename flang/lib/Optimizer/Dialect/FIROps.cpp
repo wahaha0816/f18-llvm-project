@@ -314,7 +314,9 @@ static mlir::Type adjustedElementType(mlir::Type t) {
     auto eleTy = ty.getEleTy();
     if (fir::isa_char(eleTy))
       return eleTy;
-    if (eleTy.isa<fir::RecordType>())
+    if (fir::isa_derived(eleTy))
+      return eleTy;
+    if (eleTy.isa<fir::SequenceType>())
       return eleTy;
   }
   return t;
