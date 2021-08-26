@@ -29,7 +29,6 @@ add_flang_library(FortranRuntime PARTIAL_SOURCES_INTENDED
   allocatable.cpp
   assign.cpp
   buffer.cpp
-  clock.cpp
   complex-reduction.c
   copy.cpp
   character.cpp
