@@ -9,7 +9,6 @@ target_link_libraries(fir-opt PRIVATE
   FIRTransforms
   FIRCodeGen
   FIRBuilder
-  FIRRuntime
   ${dialect_libs}
   MLIRIR
   MLIRLLVMIR
