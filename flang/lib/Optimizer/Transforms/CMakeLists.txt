@@ -14,6 +14,7 @@ add_flang_library(FIRTransforms
 
   DEPENDS
   FIRAnalysis
+  FIRBuilder
   FIRDialect
   FIRSupport
   FIROptTransformsPassIncGen
@@ -21,6 +22,7 @@ add_flang_library(FIRTransforms
 
   LINK_LIBS
   FIRAnalysis
+  FIRBuilder
   FIRDialect
   MLIRAffineToStandard
   FIRSupport
