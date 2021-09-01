@@ -8,8 +8,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "flang/Optimizer/Builder/Runtime/Transformational.h"
-#include "../../../runtime/matmul.h"
-#include "../../../runtime/transformational.h"
+#include "flang/../../../flang/runtime/matmul.h"
+#include "flang/../../../flang/runtime/transformational.h"
 #include "flang/Lower/Todo.h"
 #include "flang/Optimizer/Builder/BoxValue.h"
 #include "flang/Optimizer/Builder/Character.h"
