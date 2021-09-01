@@ -9,9 +9,8 @@
 #ifndef FORTRAN_RUNTIME_COMMAND_H_
 #define FORTRAN_RUNTIME_COMMAND_H_
 
+#include "flang/Runtime/cpp-type.h"
 #include "flang/Runtime/entry-names.h"
-
-#include <cstdint>
 
 namespace Fortran::runtime {
 class Descriptor;
@@ -21,7 +20,7 @@ extern "C" {
 //
 // Lowering may need to cast the result to match the precision of the default
 // integer kind.
-std::int32_t RTNAME(ArgumentCount)();
+CppTypeFor<TypeCategory::Integer, 4> RTNAME(ArgumentCount)();
 
 // 16.9.83 GET_COMMAND_ARGUMENT
 // We're breaking up the interface into several different functions, since most
@@ -29,12 +28,14 @@ std::int32_t RTNAME(ArgumentCount)();
 
 // Try to get the value of the n'th argument.
 // Returns a STATUS as described in the standard.
-std::int32_t RTNAME(ArgumentValue)(
-    std::int32_t n, const Descriptor *value, const Descriptor *errmsg);
+CppTypeFor<TypeCategory::Integer, 4> RTNAME(ArgumentValue)(
+    CppTypeFor<TypeCategory::Integer, 4> n, const Descriptor *value,
+    const Descriptor *errmsg);
 
 // Try to get the significant length of the n'th argument.
 // Returns 0 if it doesn't manage.
-std::int64_t RTNAME(ArgumentLength)(std::int32_t n);
+CppTypeFor<TypeCategory::Integer, 4> RTNAME(ArgumentLength)(
+    CppTypeFor<TypeCategory::Integer, 4> n);
 }
 } // namespace Fortran::runtime
 
