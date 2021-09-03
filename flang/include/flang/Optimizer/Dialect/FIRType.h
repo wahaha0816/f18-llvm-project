@@ -163,6 +163,12 @@ inline mlir::Type unwrapSequenceType(mlir::Type t) {
   return t;
 }
 
+inline mlir::Type unwrapRefType(mlir::Type t) {
+  if (auto eleTy = dyn_cast_ptrEleTy(t))
+    return eleTy;
+  return t;
+}
+
 /// If `t` conforms with a pass-by-reference type (box, ref, ptr, etc.) then
 /// return the element type of `t`. Otherwise, return `t`.
 inline mlir::Type unwrapPassByRefType(mlir::Type t) {
@@ -192,6 +198,13 @@ bool isUnlimitedPolymorphicType(mlir::Type ty);
 
 /// Return true iff `ty` is a RecordType with members that are allocatable.
 bool isRecordWithAllocatableMember(mlir::Type ty);
+
+/// Return true iff `ty` is a RecordType with type parameters.
+inline bool isRecordWithTypeParameters(mlir::Type ty) {
+  if (auto recTy = ty.dyn_cast_or_null<fir::RecordType>())
+    return recTy.getNumLenParams() != 0;
+  return false;
+}
 
 /// Apply the components specified by `path` to `rootTy` to determine the type
 /// of the resulting component element. `rootTy` should be an aggregate type.
