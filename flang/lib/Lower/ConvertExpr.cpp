@@ -1481,8 +1481,22 @@ public:
           delta = builder.create<mlir::MulIOp>(loc, delta, ext);
         ++dim;
       }
-      return builder.create<fir::CoordinateOp>(
+      auto origRefTy = refTy;
+      if (fir::factory::CharacterExprHelper::isCharacterScalar(refTy)) {
+        auto chTy = fir::factory::CharacterExprHelper::getCharacterType(refTy);
+        if (fir::characterWithDynamicLen(chTy)) {
+          auto ctx = builder.getContext();
+          auto kind = fir::factory::CharacterExprHelper::getCharacterKind(chTy);
+          auto singleTy = fir::CharacterType::getSingleton(ctx, kind);
+          refTy = builder.getRefType(singleTy);
+          auto seqRefTy = builder.getRefType(builder.getVarLenSeqTy(singleTy));
+          base = builder.createConvert(loc, seqRefTy, base);
+        }
+      }
+      auto coor = builder.create<fir::CoordinateOp>(
           loc, refTy, base, llvm::ArrayRef<mlir::Value>{total});
+      // Convert to expected, original type after address arithmetic.
+      return builder.createConvert(loc, origRefTy, coor);
     };
     return array.match(
         [&](const fir::ArrayBoxValue &arr) -> ExtValue {
