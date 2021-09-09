@@ -9,8 +9,8 @@
 // Basic sanity tests of CHARACTER API; exhaustive testing will be done
 // in Fortran.
 
-#include "../../runtime/character.h"
-#include "../../runtime/descriptor.h"
+#include "flang/Runtime/character.h"
+#include "flang/Runtime/descriptor.h"
 #include "gtest/gtest.h"
 #include <cstring>
 #include <functional>
