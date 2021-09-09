@@ -136,7 +136,7 @@ class CodeGenAction : public FrontendAction {
   bool BeginSourceFileAction() override;
 };
 
-class EmitFirAction : public CodeGenAction {
+class EmitMLIRAction : public CodeGenAction {
   void ExecuteAction() override;
 };
 
