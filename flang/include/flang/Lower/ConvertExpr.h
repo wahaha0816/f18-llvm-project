@@ -170,6 +170,15 @@ createSomeArrayTempValue(AbstractConverter &converter,
                          const evaluate::Expr<evaluate::SomeType> &expr,
                          SymMap &symMap, StatementContext &stmtCtx);
 
+/// Like createSomeArrayTempValue, but the temporary buffer is allocated lazily
+/// (inside the loops instead of before the loops). This can be useful if a
+/// loop's bounds are functions of other loop indices, for example.
+fir::ExtendedValue
+createLazyArrayTempValue(AbstractConverter &converter,
+                         const evaluate::Expr<evaluate::SomeType> &expr,
+                         mlir::Value var, SymMap &symMap,
+                         StatementContext &stmtCtx);
+
 /// Lower an array expression to a value of type box. The expression must be a
 /// variable.
 fir::ExtendedValue
