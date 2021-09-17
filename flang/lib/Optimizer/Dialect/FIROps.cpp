@@ -184,8 +184,10 @@ void fir::AllocaOp::build(mlir::OpBuilder &builder,
                           llvm::StringRef uniq_name, llvm::StringRef bindc_name,
                           mlir::ValueRange typeparams, mlir::ValueRange shape,
                           llvm::ArrayRef<mlir::NamedAttribute> attributes) {
-  auto nameAttr = builder.getStringAttr(uniq_name);
-  auto bindcAttr = builder.getStringAttr(bindc_name);
+  auto nameAttr =
+      uniq_name.empty() ? mlir::StringAttr{} : builder.getStringAttr(uniq_name);
+  auto bindcAttr = bindc_name.empty() ? mlir::StringAttr{}
+                                      : builder.getStringAttr(bindc_name);
   build(builder, result, wrapAllocaResultType(in_type), in_type, nameAttr,
         bindcAttr, typeparams, shape);
   result.addAttributes(attributes);
