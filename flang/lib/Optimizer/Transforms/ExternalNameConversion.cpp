@@ -13,6 +13,7 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/OpenACC/OpenACC.h"
 #include "mlir/Dialect/OpenMP/OpenMPDialect.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -68,7 +69,9 @@ public:
     rewriter.startRootUpdate(op);
     auto result = fir::NameUniquer::deconstruct(op.sym_name());
     if (fir::NameUniquer::isExternalFacingUniquedName(result)) {
-      op.sym_nameAttr(rewriter.getStringAttr(mangleExternalName(result)));
+      auto newName = mangleExternalName(result);
+      op.sym_nameAttr(rewriter.getStringAttr(newName));
+      SymbolTable::setSymbolName(op, newName);
     }
     rewriter.finalizeRootUpdate(op);
     return success();
@@ -84,9 +87,11 @@ public:
                   mlir::PatternRewriter &rewriter) const override {
     rewriter.startRootUpdate(op);
     auto result = fir::NameUniquer::deconstruct(op.symref().getRootReference());
-    if (fir::NameUniquer::isExternalFacingUniquedName(result))
-      op.symrefAttr(mlir::SymbolRefAttr::get(op.getContext(),
-                                             mangleExternalName(result)));
+    if (fir::NameUniquer::isExternalFacingUniquedName(result)) {
+      auto newName = mangleExternalName(result);
+      op.symrefAttr(mlir::SymbolRefAttr::get(op.getContext(), newName));
+      SymbolTable::setSymbolName(op, newName);
+    }
     rewriter.finalizeRootUpdate(op);
     return success();
   }
