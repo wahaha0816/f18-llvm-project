@@ -4470,6 +4470,7 @@ def fintrinsic_modules_path : Separate<["-"], "fintrinsic-modules-path">,  Group
 
 def emit_mlir : Flag<["-"], "emit-mlir">, Group<Action_Group>,
   HelpText<"Build the parse tree, then lower it to MLIR and dump">;
+def emit_fir : Flag<["-"], "emit-fir">, Alias<emit_mlir>;
 }
 
 def J : JoinedOrSeparate<["-"], "J">,
