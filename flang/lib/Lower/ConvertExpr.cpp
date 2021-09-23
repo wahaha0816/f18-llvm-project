@@ -2473,6 +2473,11 @@ public:
       auto oldInnerArg = updateOp.sequence();
       auto offset = expSpace.argPosition(oldInnerArg);
       expSpace.setInnerArg(offset, fir::getBase(lexv));
+    } else if (auto updateOp = mlir::dyn_cast<fir::ArrayModifyOp>(
+                   fir::getBase(lexv).getDefiningOp())) {
+      auto oldInnerArg = updateOp.sequence();
+      auto offset = expSpace.argPosition(oldInnerArg);
+      expSpace.setInnerArg(offset, fir::getBase(lexv));
     }
     return lexv;
   }
@@ -3618,6 +3623,8 @@ public:
     return abstractArrayExtValue(iterSpace.outerResult());
   }
 
+  /// Lower an elemental subroutine call with at least one array argument.
+  /// Not for user defined assignments.
   static void lowerArrayElementalSubroutine(
       Fortran::lower::AbstractConverter &converter,
       Fortran::lower::SymMap &symMap, Fortran::lower::StatementContext &stmtCtx,
@@ -3627,7 +3634,6 @@ public:
     ael.lowerArrayElementalSubroutine(call);
   }
 
-  // ! Not for user defined assignment elemental subroutine.
   void lowerArrayElementalSubroutine(
       const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &call) {
     auto f = genarr(call);
@@ -3635,6 +3641,23 @@ public:
     auto [iterSpace, insPt] = genImplicitLoops(shape, /*innerArg=*/{});
     f(iterSpace);
     builder.restoreInsertionPoint(insPt);
+  }
+
+  static void lowerElementalUserAssignment(
+      Fortran::lower::AbstractConverter &converter,
+      Fortran::lower::SymMap &symMap, Fortran::lower::StatementContext &stmtCtx,
+      const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &call) {
+    ArrayExprLowering ael(converter, stmtCtx, symMap,
+                          ConstituentSemantics::CopyInCopyOut);
+    auto procRef = std::get<Fortran::evaluate::ProcedureRef>(call.u);
+    assert(procRef.arguments().size() == 2);
+    const auto *lhs = procRef.arguments()[0].value().UnwrapExpr();
+    const auto *rhs = procRef.arguments()[1].value().UnwrapExpr();
+    assert(lhs && rhs &&
+           "user defined assignment arguments must be expressions");
+    ael.userDefinedAssignment =
+        Fortran::lower::CallerInterface(procRef, converter).getFuncOp();
+    ael.lowerArrayAssignment(*lhs, *rhs);
   }
 
   /// Compute the shape of a slice.
@@ -4971,15 +4994,64 @@ public:
       // always loaded at the beginning of the statement and merged at the
       // end.
       destination = arrLoad;
+      if (!userDefinedAssignment) {
+        return [=](IterSpace iters) -> ExtValue {
+          auto innerArg = iters.innerArgument();
+          auto resTy = innerArg.getType();
+          auto eleTy = fir::applyPathToType(resTy, iters.iterVec());
+          auto element = tryUpdateConversions(eleTy, iters.getElement());
+          auto arrUpdate = builder.create<fir::ArrayUpdateOp>(
+              loc, resTy, innerArg, element, iters.iterVec(),
+              destination.typeparams());
+          return abstractArrayExtValue(arrUpdate);
+        };
+      }
+      // User defined assignment. Create an array_update to get the LHS element
+      // address and indicate the assignment, and create the call to the user
+      // defined assignment.
+      auto prepareUserDefinedArg = [](fir::FirOpBuilder &builder,
+                                      mlir::Location loc, mlir::Value value,
+                                      mlir::Type argType) -> mlir::Value {
+        // In general, we may not have the rhs length threaded here, since only
+        // the destination length parameters are being tracked.
+        if (argType.isa<fir::BoxCharType>() || argType.isa<fir::BoxType>())
+          TODO(loc, "Type with length parameters in user defined assignments");
+        auto argBaseType = fir::unwrapRefType(argType);
+        assert(!fir::hasDynamicSize(argBaseType));
+        auto from = value;
+        if (argBaseType != fir::unwrapRefType(from.getType())) {
+          // With logicals, it is possible that from is i1 here.
+          if (fir::isa_ref_type(from.getType())) {
+            from = builder.create<fir::LoadOp>(loc, value);
+          }
+          from = builder.createConvert(loc, argBaseType, from);
+        }
+        if (!fir::isa_ref_type(from.getType())) {
+          auto temp = builder.createTemporary(loc, argBaseType);
+          builder.create<fir::StoreOp>(loc, from, temp);
+          from = temp;
+        }
+        return builder.createConvert(loc, argType, from);
+      };
       return [=](IterSpace iters) -> ExtValue {
         auto innerArg = iters.innerArgument();
         auto resTy = innerArg.getType();
         auto eleTy = fir::applyPathToType(resTy, iters.iterVec());
-        auto element = tryUpdateConversions(eleTy, iters.getElement());
-        auto arrUpdate = builder.create<fir::ArrayUpdateOp>(
-            loc, resTy, innerArg, element, iters.iterVec(),
-            destination.typeparams());
-        return abstractArrayExtValue(arrUpdate);
+        auto refEleTy =
+            fir::isa_ref_type(eleTy) ? eleTy : builder.getRefType(eleTy);
+        auto rhsElement = iters.getElement();
+        auto arrModify = builder.create<fir::ArrayModifyOp>(
+            loc, mlir::TypeRange{refEleTy, resTy}, innerArg, rhsElement,
+            iters.iterVec(), destination.typeparams());
+        assert(userDefinedAssignment->getNumArguments() == 2);
+        auto lhsType = userDefinedAssignment->getType().getInput(0);
+        auto rhsType = userDefinedAssignment->getType().getInput(1);
+        auto lhsArg = prepareUserDefinedArg(builder, loc,
+                                            arrModify.getResult(0), lhsType);
+        auto rhsArg = prepareUserDefinedArg(builder, loc, rhsElement, rhsType);
+        builder.create<fir::CallOp>(loc, *userDefinedAssignment,
+                                    mlir::ValueRange{lhsArg, rhsArg});
+        return abstractArrayExtValue(arrModify.getResult(1));
       };
     }
     if (isCopyInCopyOut()) {
@@ -5739,6 +5811,8 @@ private:
   llvm::SmallVector<ArrayOperand> arrayOperands;
   llvm::SmallVector<mlir::Value> sliceTriple;
   llvm::SmallVector<mlir::Value> slicePath;
+  /// User defined assignment function if this is a user defined assignment.
+  llvm::Optional<mlir::FuncOp> userDefinedAssignment;
   /// If there is a user-defined iteration space, explicitShape will hold the
   /// information from the front end.
   Fortran::lower::ExplicitIterSpace *explicitSpace = nullptr;
@@ -5888,9 +5962,11 @@ mlir::Value Fortran::lower::createSubroutineCall(
     // Elemental user defined assignment has special requirements to deal with
     // LHS/RHS overlaps. See 10.2.1.5 p2.
     if (isUserDefAssignment)
-      TODO(converter.getCurrentLocation(), "elemental user defined assignment");
-    ArrayExprLowering::lowerArrayElementalSubroutine(converter, symMap, stmtCtx,
-                                                     call);
+      ArrayExprLowering::lowerElementalUserAssignment(converter, symMap,
+                                                      stmtCtx, call);
+    else
+      ArrayExprLowering::lowerArrayElementalSubroutine(converter, symMap,
+                                                       stmtCtx, call);
     return mlir::Value{};
   }
   // FIXME: The non elemental user defined assignment case with array arguments
