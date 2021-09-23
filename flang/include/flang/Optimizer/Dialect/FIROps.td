@@ -1720,6 +1720,60 @@ def fir_ArrayUpdateOp : fir_Op<"array_update", [AttrSizedOperandSegments,
   let verifier = [{ return ::verify(*this); }];
 }
 
+def fir_ArrayModifyOp : fir_Op<"array_modify", [AttrSizedOperandSegments,
+    NoSideEffect]> {
+  let summary = "Get an address for an array value to modify it.";
+
+  let description = [{
+    Modify the value of an element in an array value through actions done
+    on the returned address. A new array value is also
+    returned where all element values of the input array are identical except
+    for the selected element which is the value after the modification done
+    on the element address.
+
+    ```fortran
+      real :: a(n,m)
+      ...
+      a = ...
+    ```
+
+    One can use `fir.array_modify` to update the (implied) value of `a(i,j)`
+    in an array expression as shown above.
+
+    ```mlir
+      %s = fir.shape %n, %m : (index, index) -> !fir.shape<2>
+      // load the entire array 'a'
+      %v = fir.array_load %a(%s) : (!fir.ref<!fir.array<?x?xf32>>, !fir.shape<2>) -> !fir.array<?x?xf32>
+      // update the value of one of the array value's elements
+      // with a user defined assignment from %rhs 
+      %addr, %r = fir.array_update %v, %rhs, %i, %j : (!fir.array<?x?xf32>, fir.ref<!fir.type<SomeType>>,  index, index) -> fir.ref<f32>, !fir.array<?x?xf32>
+      fir.call @user_def_assign(%addr, %rhs) (fir.ref<f32>, fir.ref<!fir.type<SomeType>>) -> ()
+      fir.array_merge_store %v, %r to %a : !fir.ref<!fir.array<?x?xf32>>
+    ```
+
+    An array value modification behaves as if a mapping function from the indices
+    to the new value has been added, replacing the previous mapping. These
+    mappings can be added to the ssa-value, but will not be materialized in
+    memory until the `fir.array_merge_store` is performed.
+  }];
+
+  let arguments = (ins
+    fir_SequenceType:$sequence,
+    AnyType:$merge,
+    Variadic<AnyCoordinateType>:$indices,
+    Variadic<AnyIntegerType>:$typeparams
+  );
+
+  let results = (outs fir_ReferenceType, fir_SequenceType);
+
+  let assemblyFormat = [{
+    $sequence `,` $merge `,` $indices (`typeparams` $typeparams^)? attr-dict
+      `:` functional-type(operands, results)
+  }];
+
+  let verifier = [{ return ::verify(*this); }];
+}
+
 def fir_ArrayMergeStoreOp : fir_Op<"array_merge_store",
     [AttrSizedOperandSegments]> {
   let summary = "Store merged array value to memory.";

@@ -451,6 +451,20 @@ static mlir::LogicalResult verify(fir::ArrayUpdateOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// ArrayModifyOp
+//===----------------------------------------------------------------------===//
+
+static mlir::LogicalResult verify(fir::ArrayModifyOp op) {
+  auto arrTy = op.sequence().getType().cast<fir::SequenceType>();
+  auto indSize = op.indices().size();
+  if (indSize < arrTy.getDimension())
+    return op.emitOpError("number of indices != dimension of array");
+  // merge value type can be different than array element type in case
+  // of user defined assignment.
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
 // BoxAddrOp
 //===----------------------------------------------------------------------===//
 
