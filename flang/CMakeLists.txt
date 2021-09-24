@@ -2,8 +2,6 @@ cmake_minimum_required(VERSION 3.13.4)
 
 set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
 
-option(FLANG_BUILD_NEW_DRIVER "Build the flang compiler driver" OFF)
-
 # Flang requires C++17.
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
@@ -49,11 +47,9 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   get_filename_component(LLVM_DIR_ABSOLUTE ${LLVM_DIR} REALPATH)
   list(APPEND CMAKE_MODULE_PATH ${LLVM_DIR_ABSOLUTE})
 
-  if(FLANG_BUILD_NEW_DRIVER)
-    # TODO: Remove when libclangDriver is lifted out of Clang
-    list(APPEND CMAKE_MODULE_PATH ${CLANG_DIR})
-    find_package(Clang REQUIRED HINTS "${CLANG_DIR}")
-  endif()
+  # TODO: Remove when libclangDriver is lifted out of Clang
+  list(APPEND CMAKE_MODULE_PATH ${CLANG_DIR})
+  find_package(Clang REQUIRED HINTS "${CLANG_DIR}")
 
   find_package(MLIR REQUIRED HINTS "${MLIR_CMAKE_PATH}")
   list(APPEND CMAKE_MODULE_PATH ${MLIR_DIR})
@@ -74,9 +70,7 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   include(VersionFromVCS)
   include(GetErrcMessages)
 
-  if(FLANG_BUILD_NEW_DRIVER)
-    include(AddClang)
-  endif()
+  include(AddClang)
 
   include(TableGen)
   find_package(MLIR REQUIRED CONFIG)
@@ -199,20 +193,18 @@ endif()
 set(FLANG_INCLUDE_DIR ${FLANG_BINARY_DIR}/include)
 set(FLANG_INTRINSIC_MODULES_DIR ${CMAKE_BINARY_DIR}/include/flang)
 
-if(FLANG_BUILD_NEW_DRIVER)
-    # TODO: Remove when libclangDriver is lifted out of Clang
-    if(FLANG_STANDALONE_BUILD)
-      set(CLANG_INCLUDE_DIR ${CLANG_INCLUDE_DIRS} )
-      # No need to specify TableGen output dir as that's embedded in CLANG_DIR
-    else()
-      set(CLANG_INCLUDE_DIR ${LLVM_MAIN_SRC_DIR}/../clang/include )
-      # Specify TableGen output dir for things like DiagnosticCommonKinds.inc,
-      # DiagnosticDriverKinds.inc (required for reporting diagnostics)
-      set(CLANG_TABLEGEN_OUTPUT_DIR ${CMAKE_BINARY_DIR}/tools/clang/include)
-      include_directories(SYSTEM ${CLANG_TABLEGEN_OUTPUT_DIR})
-    endif()
-    include_directories(SYSTEM ${CLANG_INCLUDE_DIR})
+# TODO: Remove when libclangDriver is lifted out of Clang
+if(FLANG_STANDALONE_BUILD)
+  set(CLANG_INCLUDE_DIR ${CLANG_INCLUDE_DIRS} )
+  # No need to specify TableGen output dir as that's embedded in CLANG_DIR
+else()
+  set(CLANG_INCLUDE_DIR ${LLVM_MAIN_SRC_DIR}/../clang/include )
+  # Specify TableGen output dir for things like DiagnosticCommonKinds.inc,
+  # DiagnosticDriverKinds.inc (required for reporting diagnostics)
+  set(CLANG_TABLEGEN_OUTPUT_DIR ${CMAKE_BINARY_DIR}/tools/clang/include)
+  include_directories(SYSTEM ${CLANG_TABLEGEN_OUTPUT_DIR})
 endif()
+include_directories(SYSTEM ${CLANG_INCLUDE_DIR})
 
 include_directories(BEFORE
   ${FLANG_BINARY_DIR}/include
