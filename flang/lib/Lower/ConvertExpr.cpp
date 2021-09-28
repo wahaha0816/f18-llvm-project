@@ -3611,7 +3611,6 @@ public:
     auto triples = slOp.triples();
     auto idxTy = builder.getIndexType();
     auto loc = getLoc();
-    auto zero = builder.createIntegerConstant(loc, idxTy, 0);
     for (unsigned i = 0, end = triples.size(); i < end; i += 3) {
       if (!mlir::isa_and_nonnull<fir::UndefOp>(
               triples[i + 1].getDefiningOp())) {
