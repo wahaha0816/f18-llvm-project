@@ -17,7 +17,7 @@
 #ifndef FORTRAN_LOWER_CONVERTEXPR_H
 #define FORTRAN_LOWER_CONVERTEXPR_H
 
-#include "flang/Evaluate/shape.h"
+#include "flang/Evaluate/expression.h"
 #include "flang/Optimizer/Builder/BoxValue.h"
 #include "flang/Optimizer/Builder/FIRBuilder.h"
 
@@ -169,10 +169,24 @@ createSomeArrayTempValue(AbstractConverter &converter,
                          const evaluate::Expr<evaluate::SomeType> &expr,
                          SymMap &symMap, StatementContext &stmtCtx);
 
+// Lambda to reload the dynamically allocated pointers to a lazy buffer and its
+// extents. This is used to introduce these ssa-values in a place that will
+// dominate any/all subsequent uses after the loop that created the lazy buffer.
+using LoadLazyBufferLambda =
+    std::function<std::pair<fir::ExtendedValue, mlir::Value>(
+        fir::FirOpBuilder &)>;
+
+// Creating a lazy array temporary returns a pair of values. The first is an
+// extended value which is a pointer to the buffer, of array type, with the
+// appropriate dynamic extents. The second argument is a continuation to reload
+// the buffer at some future point in the code gen.
+using CreateLazyArrayResult =
+    std::pair<fir::ExtendedValue, LoadLazyBufferLambda>;
+
 /// Like createSomeArrayTempValue, but the temporary buffer is allocated lazily
 /// (inside the loops instead of before the loops). This can be useful if a
 /// loop's bounds are functions of other loop indices, for example.
-fir::ExtendedValue
+CreateLazyArrayResult
 createLazyArrayTempValue(AbstractConverter &converter,
                          const evaluate::Expr<evaluate::SomeType> &expr,
                          mlir::Value var, mlir::Value shapeBuffer,
