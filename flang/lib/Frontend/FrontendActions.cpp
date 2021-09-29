@@ -7,11 +7,19 @@
 //===----------------------------------------------------------------------===//
 
 #include "flang/Frontend/FrontendActions.h"
+#include "mlir/IR/Dialect.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Support/LogicalResult.h"
 #include "flang/Common/default-kinds.h"
 #include "flang/Frontend/CompilerInstance.h"
 #include "flang/Frontend/FrontendOptions.h"
 #include "flang/Frontend/PreprocessorOptions.h"
+#include "flang/Lower/Bridge.h"
 #include "flang/Lower/PFTBuilder.h"
+#include "flang/Lower/Support/Verifier.h"
+#include "flang/Optimizer/Dialect/FIRType.h"
+#include "flang/Optimizer/Support/InitFIR.h"
+#include "flang/Optimizer/Support/KindMapping.h"
 #include "flang/Parser/dump-parse-tree.h"
 #include "flang/Parser/parsing.h"
 #include "flang/Parser/provenance.h"
@@ -22,6 +30,7 @@
 #include "flang/Semantics/unparse-with-symbols.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
 #include <clang/Basic/Diagnostic.h>
 #include <memory>
 
@@ -37,6 +46,10 @@ bool PrescanAndParseAction::BeginSourceFileAction() {
 }
 
 bool PrescanAndSemaAction::BeginSourceFileAction() {
+  return RunPrescan() & RunParse() && RunSemanticChecks();
+}
+
+bool CodeGenAction::BeginSourceFileAction() {
   return RunPrescan() & RunParse() && RunSemanticChecks();
 }
 
@@ -349,6 +362,77 @@ void GetSymbolsSourcesAction::ExecuteAction() {
   }
 
   ci.semantics().DumpSymbolsSources(llvm::outs());
+}
+
+// Translate front-end KINDs for use in the IR and code gen. Extracted from
+// bbc.cpp.
+static std::vector<fir::KindTy>
+fromDefaultKinds(const Fortran::common::IntrinsicTypeDefaultKinds &defKinds) {
+  return {static_cast<fir::KindTy>(defKinds.GetDefaultKind(
+              Fortran::common::TypeCategory::Character)),
+          static_cast<fir::KindTy>(
+              defKinds.GetDefaultKind(Fortran::common::TypeCategory::Complex)),
+          static_cast<fir::KindTy>(defKinds.doublePrecisionKind()),
+          static_cast<fir::KindTy>(
+              defKinds.GetDefaultKind(Fortran::common::TypeCategory::Integer)),
+          static_cast<fir::KindTy>(
+              defKinds.GetDefaultKind(Fortran::common::TypeCategory::Logical)),
+          static_cast<fir::KindTy>(
+              defKinds.GetDefaultKind(Fortran::common::TypeCategory::Real))};
+}
+
+void EmitMLIRAction::ExecuteAction() {
+  CompilerInstance &ci = this->instance();
+
+  // Load the MLIR dialects required by Flang
+  mlir::DialectRegistry registry;
+  mlir::MLIRContext ctx(registry);
+  fir::support::registerNonCodegenDialects(registry);
+  fir::support::loadNonCodegenDialects(ctx);
+
+  // Create a LoweringBridge
+  auto &defKinds = ci.invocation().semanticsContext().defaultKinds();
+  fir::KindMapping kindMap(
+      &ctx, llvm::ArrayRef<fir::KindTy>{fromDefaultKinds(defKinds)});
+  auto lb = Fortran::lower::LoweringBridge::create(ctx, defKinds,
+      ci.invocation().semanticsContext().intrinsics(), ci.parsing().allCooked(),
+      "", kindMap);
+
+  // Create a parse tree and lower it to FIR
+  auto &parseTree{*ci.parsing().parseTree()};
+  lb.lower(parseTree, ci.invocation().semanticsContext());
+
+  // Run the default passes.
+  mlir::PassManager pm(&ctx, mlir::OpPassManager::Nesting::Implicit);
+  pm.enableVerifier(/*verifyPasses=*/true);
+  pm.addPass(std::make_unique<Fortran::lower::VerifierPass>());
+  mlir::ModuleOp mlirModule = lb.getModule();
+  if (mlir::failed(pm.run(mlirModule))) {
+    unsigned diagID =
+        ci.diagnostics().getCustomDiagID(clang::DiagnosticsEngine::Error,
+            "verification of lowering to FIR failed");
+    ci.diagnostics().Report(diagID);
+    return;
+  }
+
+  // Print the output. If a pre-defined output stream exists, dump the MLIR
+  // content there.
+  if (!ci.IsOutputStreamNull()) {
+    mlirModule.print(ci.GetOutputStream());
+    return;
+  }
+
+  // ... otherwise, print to a file.
+  auto os{ci.CreateDefaultOutputFile(
+      /*Binary=*/true, /*InFile=*/GetCurrentFileOrBufferName(), "mlir")};
+  if (!os) {
+    unsigned diagID = ci.diagnostics().getCustomDiagID(
+        clang::DiagnosticsEngine::Error, "failed to create the output file");
+    ci.diagnostics().Report(diagID);
+    return;
+  }
+
+  mlirModule.print(*os);
 }
 
 void EmitObjAction::ExecuteAction() {
