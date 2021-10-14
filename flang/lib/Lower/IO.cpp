@@ -500,6 +500,22 @@ static mlir::FuncOp getInputFunc(mlir::Location loc, fir::FirOpBuilder &builder,
   return getIORuntimeFunc<mkIOKey(InputDescriptor)>(loc, builder);
 }
 
+/// Interpret addr as a C++ bool (1 byte), and then set its value to the
+/// equivalent Fortran logical. This needs to be called for logical that were
+/// passed as bool& to the runtime and whose upper bytes, if any, may not be
+/// correct anymore.
+static void boolRefToLogical(mlir::Location loc, fir::FirOpBuilder &builder,
+                             mlir::Value addr) {
+  // Convert C++ boolean to Fortran logical, going through an i1
+  // to avoid any assumption about how Fortran logical are represented.
+  auto boolType = builder.getRefType(builder.getI1Type());
+  auto boolAddr = builder.createConvert(loc, boolType, addr);
+  auto boolValue = builder.create<fir::LoadOp>(loc, boolAddr);
+  auto logicalType = fir::unwrapPassByRefType(addr.getType());
+  auto logicalValue = builder.createConvert(loc, logicalType, boolValue);
+  builder.create<fir::StoreOp>(loc, logicalValue, addr);
+}
+
 static mlir::Value createIoRuntimeCallForItem(mlir::Location loc,
                                               fir::FirOpBuilder &builder,
                                               mlir::FuncOp inputFunc,
@@ -526,8 +542,12 @@ static mlir::Value createIoRuntimeCallForItem(mlir::Location loc,
                    itemTy.cast<mlir::IntegerType>().getWidth() / 8)));
     }
   }
-  return builder.create<fir::CallOp>(loc, inputFunc, inputFuncArgs)
-      .getResult(0);
+  auto call = builder.create<fir::CallOp>(loc, inputFunc, inputFuncArgs);
+  auto itemAddr = fir::getBase(item);
+  auto itemTy = fir::unwrapPassByRefType(itemAddr.getType());
+  if (itemTy.isa<fir::LogicalType>())
+    boolRefToLogical(loc, builder, itemAddr);
+  return call.getResult(0);
 }
 
 /// Generate a sequence of input data transfer calls.
@@ -1898,7 +1918,9 @@ mlir::Value genInquireSpec<Fortran::parser::InquireSpec::LogVar>(
             Fortran::parser::InquireSpec::LogVar::EnumToString(logVarKind)
                 .c_str())));
   args.push_back(builder.createConvert(loc, specFuncTy.getInput(2), addr));
-  return builder.create<fir::CallOp>(loc, specFunc, args).getResult(0);
+  auto call = builder.create<fir::CallOp>(loc, specFunc, args);
+  boolRefToLogical(loc, builder, addr);
+  return call.getResult(0);
 }
 
 /// If there is an IdExpr in the list of inquire-specs, then lower it and return
