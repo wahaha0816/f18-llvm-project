@@ -49,6 +49,8 @@ namespace pft {
 struct Variable;
 }
 
+class LoweredExpr;
+
 using SomeExpr = Fortran::evaluate::Expr<Fortran::evaluate::SomeType>;
 using SymbolRef = Fortran::common::Reference<const Fortran::semantics::Symbol>;
 class StatementContext;
@@ -68,6 +70,9 @@ public:
 
   /// Get the mlir instance of a symbol.
   virtual mlir::Value getSymbolAddress(SymbolRef sym) = 0;
+
+  /// Get the fir::ExtendedValue instance of a symbol.
+  virtual fir::ExtendedValue getSymbolExtendedValue(SymbolRef sym) = 0;
 
   /// Get the binding of an implied do variable by name.
   virtual mlir::Value impliedDoBinding(llvm::StringRef name) = 0;
@@ -135,6 +140,8 @@ public:
   /// Get FoldingContext that is required for some expression
   /// analysis.
   virtual Fortran::evaluate::FoldingContext &getFoldingContext() = 0;
+
+  virtual LoweredExpr genExpr(const SomeExpr &, StatementContext&, mlir::Location) = 0;
 
   /// Host associated variables are grouped as a tuple. This returns that value,
   /// which is itself a reference. Use bindTuple() to set this value.

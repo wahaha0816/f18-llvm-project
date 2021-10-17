@@ -18,8 +18,10 @@
 #define FORTRAN_LOWER_CONVERTEXPR_H
 
 #include "flang/Evaluate/expression.h"
+#include "flang/Lower/VectorSubscripts.h"
 #include "flang/Optimizer/Builder/BoxValue.h"
 #include "flang/Optimizer/Builder/FIRBuilder.h"
+#include "flang/Common/indirection.h"
 
 namespace mlir {
 class Location;
@@ -209,6 +211,122 @@ inline mlir::NamedAttribute getAdaptToByRefAttr(fir::FirOpBuilder &builder) {
   return {mlir::Identifier::get("adapt.valuebyref", builder.getContext()),
           builder.getUnitAttr()};
 }
+
+class MaterializedExpr;
+
+struct ArrayExprAsAFunction {
+  using IterationSpace = llvm::ArrayRef<mlir::Value>;
+  using ElementalFunction = std::function<fir::ExtendedValue(fir::FirOpBuilder&, IterationSpace)>;
+
+  fir::ExtendedValue getElementAt(fir::FirOpBuilder& builder, mlir::Location, IterationSpace iters) const {
+    return func(builder, iters);
+  }
+
+  llvm::ArrayRef<mlir::Value> getExtents() const {return extents;}
+  llvm::ArrayRef<mlir::Value> getTypeParams() const {return typeParams;}
+
+  mlir::Type getElementType() const {
+    return fir::unwrapSequenceType(type);
+  }
+  mlir::Type getBaseType() const {
+    return type;
+  }
+  ElementalFunction func;
+  llvm::SmallVector<mlir::Value> extents;
+  llvm::SmallVector<mlir::Value> typeParams;
+  bool unordered = true;
+  mlir::Type type;
+};
+
+class LoweredExpr {
+ public:
+  using ElementalMask = std::function<void(fir::FirOpBuilder&, mlir::Location, llvm::ArrayRef<mlir::Value>)>;
+
+  LoweredExpr(Fortran::lower::MaterializedExpr&& var) : loweredExpr{std::move(var)} {};
+  LoweredExpr(Fortran::lower::ArrayExprAsAFunction&& arrayExpr): loweredExpr{std::move(arrayExpr)} {};
+  explicit LoweredExpr(fir::ExtendedValue&& exv): loweredExpr{Fortran::lower::MaterializedExpr{std::move(exv)}} {};
+  explicit LoweredExpr(const fir::ExtendedValue& exv): loweredExpr{Fortran::lower::MaterializedExpr{exv}} {};
+
+  llvm::SmallVector<mlir::Value> getExtents(fir::FirOpBuilder& builder, mlir::Location loc) const;
+
+  llvm::SmallVector<mlir::Value> getTypeParams(fir::FirOpBuilder& builder, mlir::Location loc) const;
+
+  llvm::SmallVector<mlir::Value> getLBounds(fir::FirOpBuilder& builder, mlir::Location loc) const;
+
+  mlir::Type getElementType() const;
+
+  mlir::Type getBaseType() const;
+
+  bool canLoopUnorderedOverElements() const;
+
+  void prepareForAddressing(fir::FirOpBuilder& builder, mlir::Location loc, bool loadArrays);
+
+  fir::ExtendedValue getElementValueAt(fir::FirOpBuilder& builder, mlir::Location loc, llvm::ArrayRef<mlir::Value> indices) const;
+
+  fir::ExtendedValue getElementAddrAt(fir::FirOpBuilder& builder, mlir::Location loc, llvm::ArrayRef<mlir::Value> indices) const;
+
+  mlir::Value assignElementAt(fir::FirOpBuilder& builder, mlir::Location loc, const fir::ExtendedValue& value, llvm::ArrayRef<mlir::Value> indices, mlir::Value previousArrayValue = {}) const;
+  
+  /// Return a value or an address depending on whether the expression in in materialized in memory or not. TODO: make private ?
+  fir::ExtendedValue getElementAt(fir::FirOpBuilder& builder, mlir::Location loc, llvm::ArrayRef<mlir::Value> indices) const;
+
+  /// Return evaluated expr, which may be a variable if expr was a variable
+  /// with no vector subscripts.
+  fir::ExtendedValue materializeExpr(fir::FirOpBuilder& builder, mlir::Location loc, const ElementalMask* filter, Fortran::lower::StatementContext& stmtCtx);
+
+  /// If the lowered expr is materialized in memory or register and is not an array load, return the base fir::ExtendedValue.
+  const fir::ExtendedValue* getBaseIfExtendedValue() const;
+
+  /// If the lowered expr is a whole pointer or allocatable not  /// yet prepared for addressing, return the related mutable box .
+  const fir::MutableBoxValue* getIfMutableBox() const; 
+
+ private:
+
+  const Fortran::lower::MaterializedExpr* getIfMaterializedExpr() const {
+      return std::get_if<Fortran::lower::MaterializedExpr>(&loweredExpr);
+  }
+
+      
+   std::variant<Fortran::lower::MaterializedExpr, ArrayExprAsAFunction> loweredExpr;
+};
+
+  /// Type of the callbacks that can be passed to loop through the coordinate space induced by a shape.
+using ElementalGenerator = std::function<void(fir::FirOpBuilder&, mlir::Location, llvm::ArrayRef<mlir::Value>)>;
+using ElementalMask =  ElementalGenerator;
+
+void loopOverElements(fir::FirOpBuilder& builder, mlir::Location loc, llvm::ArrayRef<mlir::Value> shape, const ElementalGenerator& doForEachElement, const ElementalMask* filter, bool unordered);
+
+using ElementalGeneratorWithBoolReturn = std::function<mlir::Value(fir::FirOpBuilder&, mlir::Location, llvm::ArrayRef<mlir::Value>)>;
+
+mlir::Value loopOverElementsWhile(
+      fir::FirOpBuilder &builder, mlir::Location loc,
+      llvm::ArrayRef<mlir::Value> shape,
+      const ElementalGeneratorWithBoolReturn &doForEachElementWhile,
+      mlir::Value initialCondition);
+
+/// Generate code to assign an expression to this variable.
+/// For arrays, if expr overlaps with the variable, expr should have been
+/// temporized before calling this.
+/// This does not perform any allocatable assignment semantics (if the variable is
+/// a whole allocatable, it should be reallocated if needed before).
+// TODO: add optional elemental user defined assignment using a lambda arguments.
+llvm::SmallVector<mlir::Value> genAssign(fir::FirOpBuilder& builder, mlir::Location loc, const Fortran::lower::LoweredExpr& lhs, const Fortran::lower::LoweredExpr& rhs, const Fortran::lower::ElementalMask* filter, llvm::ArrayRef<mlir::Value> arrayValues);
+
+/// Reallocate \p allocatable if it is not already currently allocated with the requested \p extents and \p typeParams.
+/// See Fortran 10.2.1.3 point 3 for more details.
+void genReallocIfNeeded(fir::FirOpBuilder& builder, mlir::Location loc, const LoweredExpr& allocatable, llvm::ArrayRef<mlir::Value> lbounds, llvm::ArrayRef<mlir::Value> extents, llvm::ArrayRef<mlir::Value> typeParams);
+
+/// Entry points to lower an Expr<T> to a LoweredExpr.
+template<typename T>
+struct ExprLower {
+  static LoweredExpr gen(AbstractConverter &converter, mlir::Location loc, const evaluate::Expr<T> &expr, StatementContext &stmtCtx, Fortran::lower::ExplicitIterSpace* explicitIterSpace, bool loadArrays);
+};
+
+template<typename T>
+LoweredExpr genExpr(AbstractConverter &converter, mlir::Location loc, const evaluate::Expr<T> &expr, StatementContext &stmtCtx, Fortran::lower::ExplicitIterSpace* explicitIterSpace, bool loadArrays) {
+  return ExprLower<T>::gen(converter, loc, expr, stmtCtx, explicitIterSpace, loadArrays);
+}
+
 
 } // namespace Fortran::lower
 

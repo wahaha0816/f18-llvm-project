@@ -385,6 +385,11 @@ mlir::Value getBase(const ExtendedValue &exv);
 /// property.
 mlir::Value getLen(const ExtendedValue &exv);
 
+/// Get the element type of an extended value.
+inline mlir::Type getElementType(const ExtendedValue &exv) {
+  return fir::unwrapSequenceType(fir::unwrapPassByRefType(fir::getBase(exv).getType()));
+}
+
 /// Pretty-print an extended value.
 llvm::raw_ostream &operator<<(llvm::raw_ostream &, const ExtendedValue &);
 

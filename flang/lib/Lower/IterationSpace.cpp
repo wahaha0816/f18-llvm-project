@@ -13,7 +13,10 @@
 #include "IterationSpace.h"
 #include "flang/Evaluate/expression.h"
 #include "flang/Lower/AbstractConverter.h"
+#include "flang/Lower/IntrinsicCall.h"
+#include "flang/Lower/ConvertExpr.h"
 #include "flang/Lower/Support/Utils.h"
+#include "flang/Lower/Todo.h"
 #include "llvm/Support/Debug.h"
 
 #define DEBUG_TYPE "flang-lower-iteration-space"
@@ -915,4 +918,180 @@ void Fortran::lower::ImplicitIterSpace::dump() const {
 
 void Fortran::lower::ExplicitIterSpace::dump() const {
   llvm::errs() << *this << '\n';
+}
+
+Fortran::lower::ForallTemp::ForallTemp(Fortran::lower::AbstractConverter& converter, mlir::Location loc, Fortran::lower::ExplicitIterSpace& iterSpace, const Fortran::lower::SomeExpr& rhs, Fortran::lower::StatementContext& stmtCtx) {
+  // Dumb forall temp size = max(i0) * ... * max(in) * max(rhs size).
+  // General case: evaluating the max requires running the loops.
+
+  /// TODO: improve for constant/partial or easy cases by removing the looping to deduce the shape temp.
+  auto& builder = converter.getFirOpBuilder();
+  auto idxTy = builder.getIndexType();
+
+  iterationTempType = converter.genType(rhs);
+  // Build the type for the forall temp.
+  mlir::Type tempType;
+  if (fir::hasDynamicSize(iterationTempType)) {
+    // The temp storage for each iteration of the forall will be created
+    // while evaluating the rhs. For now, create an array of fir.box to
+    // later keep track of these temps, as well as their type parameters
+    // and extents.
+    auto boxType = fir::BoxType::get(fir::HeapType::get(iterationTempType));
+    tempType = builder.getVarLenSeqTy(mlir::TupleType::get(builder.getContext(), boxType));
+  } else {
+    // The temp will be an fir.array of iterationTempType. If the right hand side
+    // if an array, an extra dimension is added
+    fir::SequenceType::Shape tempTypeShape;
+    if (auto seqTy = iterationTempType.dyn_cast<fir::SequenceType>()) {
+      auto rhsShape = seqTy.getShape();
+      tempTypeShape.append(rhsShape.begin(), rhsShape.end());
+    }
+    tempTypeShape.push_back(fir::SequenceType::getUnknownExtent());
+    auto eleTy = fir::unwrapSequenceType(iterationTempType);
+    tempType = fir::SequenceType::get(tempTypeShape, eleTy);
+
+    if (auto seqTy = iterationTempType.dyn_cast<fir::SequenceType>())
+      for (auto dim : seqTy.getShape())
+        invariantExtents.push_back(builder.createIntegerConstant(loc, idxTy, dim));
+
+    if (auto charTy = fir::unwrapSequenceType(iterationTempType).dyn_cast<fir::CharacterType>())
+      invariantTypeParams.push_back(builder.createIntegerConstant(loc, idxTy, charTy.getLen()));
+  }
+  // count the number of forall iteration by looping through them a first time
+  // (without executing any assignment statements).
+  // This is the most general way of finding the number of iteration given loop
+  // bounds may use pure functions preventing static analysis. For simple cases,
+  // this could be simplified by analyzing the bounds expression to find an
+  // expression computing the maximum.
+  auto one = builder.createIntegerConstant(loc, idxTy, 1);
+  auto zero = builder.createIntegerConstant(loc, idxTy, 0);
+
+  forallIterationCounter = builder.createTemporary(loc, idxTy);
+  builder.create<fir::StoreOp>(loc, zero, forallIterationCounter);
+
+  iterSpace.genLoopNest();
+  {
+    auto numIters = builder.create<fir::LoadOp>(loc, forallIterationCounter);
+    auto numItersInc = builder.create<mlir::arith::AddIOp>(loc, numIters, one);
+    builder.create<fir::StoreOp>(loc, numItersInc, forallIterationCounter);
+  }
+  Fortran::lower::createArrayMergeStores(converter, iterSpace);
+
+  auto size = builder.create<fir::LoadOp>(loc, forallIterationCounter);
+  // Reset counter for further usages
+  resetForallIterationCount(builder, loc);
+
+  mlir::Value tmp = builder.create<fir::AllocMemOp>(loc, tempType, ".forall.temp", llvm::None, mlir::ValueRange{size});
+  overallStorage = tmp;
+  auto *bldr = &converter.getFirOpBuilder();
+  stmtCtx.attachCleanup(
+      [bldr, loc, tmp]() { bldr->create<fir::FreeMemOp>(loc, tmp); });
+}
+
+/// Get the temp storage subsection of a forall temp that is meant for a given forall iteration.
+
+// TODO: this is repeated in many place. Share.
+static fir::ExtendedValue toExtendedValue(mlir::Value base, llvm::ArrayRef<mlir::Value> extents, llvm::ArrayRef<mlir::Value> typeParams) {
+  auto baseType = fir::unwrapPassByRefType(base.getType());
+  if (fir::isa_char(fir::unwrapSequenceType(baseType))) {
+    assert(typeParams.size() == 1 && "length must have been lowered");
+    if (baseType.isa<fir::SequenceType>())
+      return fir::CharArrayBoxValue{base, typeParams[0], extents};
+    return fir::CharBoxValue{base, typeParams[0]};
+  }
+  if (baseType.isa<fir::SequenceType>())
+    return fir::ArrayBoxValue{base, extents};
+  return base;
+}
+
+static fir::ExtendedValue getIterationTempInContiguousForallTemp(fir::FirOpBuilder& builder, mlir::Location loc, const Fortran::lower::ForallTemp& forallTemp, mlir::Value iteration) {
+  auto tempType = forallTemp.getOverallStorage().getType();
+  auto forallTempSequenceType = fir::unwrapPassByRefType(tempType).cast<fir::SequenceType>();
+  llvm::SmallVector<mlir::Value> coordinates;
+  if (forallTempSequenceType.getDimension() > 1) {
+    // We need the base of the temp storage for the current forall iteration,
+    // so use zeros indices for the dimensions of the temp that are part of the iteration
+    // temp dimensions (all but the last one).
+    auto zero = builder.createIntegerConstant(loc, builder.getIndexType(), 0);
+    coordinates.append(forallTempSequenceType.getDimension()-1, zero);
+  }
+  coordinates.push_back(iteration);
+
+  auto rhsType = forallTemp.getIterationTempType();
+  auto refTy = builder.getRefType(fir::unwrapSequenceType(rhsType));
+  mlir::Value memref = builder.create<fir::CoordinateOp>(loc, refTy, forallTemp.getOverallStorage(), coordinates);
+  memref = builder.createConvert(loc, builder.getRefType(rhsType), memref);
+  return toExtendedValue(memref, forallTemp.getExtents(), forallTemp.getTypeParams());
+}
+
+/// Get the fir.ref<fir.box<>> describing the temp for the current iteration.
+static fir::MutableBoxValue getRaggedForallTemp(fir::FirOpBuilder& builder, mlir::Location loc, const Fortran::lower::ForallTemp& forallTemp, mlir::Value iteration) {
+  auto storage = forallTemp.getOverallStorage();
+  auto tempType = storage.getType();
+  auto tupleType = fir::unwrapSequenceType(fir::unwrapPassByRefType(tempType));
+  auto boxType = tupleType.cast<mlir::TupleType>().getType(0);
+  auto boxRefType = builder.getRefType(boxType);
+  auto i32Type = builder.getIntegerType(32); 
+  auto zero = builder.createIntegerConstant(loc, i32Type, 0);
+  auto box = builder.create<fir::CoordinateOp>(loc, boxRefType, storage, mlir::ValueRange{iteration, zero});
+  return fir::MutableBoxValue(box.getResult(), llvm::None, {});
+}
+
+Fortran::lower::LoweredExpr Fortran::lower::ForallTemp::getOrCreateIterationTemp(fir::FirOpBuilder& builder, mlir::Location loc, mlir::Value iteration, llvm::ArrayRef<mlir::Value> extents, llvm::ArrayRef<mlir::Value> typeParams) const {
+  if (!isRagged()) {
+    // The iteration temp was already created when creating the forall temp.
+    auto temp = getIterationTempInContiguousForallTemp(builder, loc, *this, iteration);
+    return Fortran::lower::LoweredExpr(std::move(temp));
+  }
+  // Allocate a temp for the current iteration.
+  auto tempBox = getRaggedForallTemp(builder, loc, *this, iteration);
+  auto rhsType = getIterationTempType();
+  auto temp = builder.createHeapTemporary(loc, rhsType, ".forall.temp.ragged", extents, typeParams);
+  // Store temp, shape and parameters in the iteration fir.ref<fir.box> for later usage.
+  auto shapeTy = fir::ShapeType::get(builder.getContext(), extents.size());
+  auto shape =  builder.create<fir::ShapeOp>(loc, shapeTy, extents);
+  mlir::Value emptySlice;
+  const bool hasDynamicParams = fir::hasDynamicSize(fir::unwrapSequenceType(rhsType));
+  auto newBox = builder.create<fir::EmboxOp>(loc, tempBox.getBoxTy(), temp, shape, emptySlice, hasDynamicParams ? mlir::ValueRange{typeParams} : mlir::ValueRange{});
+  builder.create<fir::StoreOp>(loc, newBox, fir::getBase(tempBox));
+  auto exv = toExtendedValue(temp, extents, typeParams);
+  return Fortran::lower::LoweredExpr(std::move(exv));
+}
+
+Fortran::lower::LoweredExpr Fortran::lower::ForallTemp::getIterationTemp(fir::FirOpBuilder& builder, mlir::Location loc, mlir::Value iteration) const {
+  if (isRagged()) {
+    fir::ExtendedValue exv(getRaggedForallTemp(builder, loc, *this, iteration));
+    return Fortran::lower::LoweredExpr(std::move(exv));
+  }
+  auto temp = getIterationTempInContiguousForallTemp(builder, loc, *this, iteration);
+  return Fortran::lower::LoweredExpr(std::move(temp));
+}
+
+bool Fortran::lower::ForallTemp::isRagged() const {
+  auto tempType = fir::unwrapPassByRefType(getOverallStorage().getType());
+  return fir::unwrapSequenceType(tempType).isa<mlir::TupleType>();
+}
+
+void Fortran::lower::ForallTemp::freeIterationTemp(fir::FirOpBuilder& builder, mlir::Location loc, const Fortran::lower::LoweredExpr& iterationTemp) const {
+  if (!isRagged())
+    return;
+  if (const auto* exv = iterationTemp.getBaseIfExtendedValue()) {
+    auto temp = fir::getBase(*exv);
+    assert(!fir::unwrapRefType(temp.getType()).isa<fir::BoxType>() && "should not be box");
+    builder.create<fir::FreeMemOp>(loc, temp);
+  }
+  fir::emitFatalError(loc, "failed to retrieve temp address");
+}
+
+mlir::Value Fortran::lower::ForallTemp::getForallIterationId(fir::FirOpBuilder& builder, mlir::Location loc, const Fortran::lower::ExplicitIterSpace& explicitIterSpace) const {
+  auto one = builder.createIntegerConstant(loc, builder.getIndexType(), 1);
+  auto numIters = builder.create<fir::LoadOp>(loc, forallIterationCounter);
+  auto numItersInc = builder.create<mlir::arith::AddIOp>(loc, numIters, one);
+  builder.create<fir::StoreOp>(loc, numItersInc, forallIterationCounter);
+  return numIters;
+}
+
+void Fortran::lower::ForallTemp::resetForallIterationCount(fir::FirOpBuilder& builder, mlir::Location loc) const {
+  auto zero = builder.createIntegerConstant(loc, builder.getIndexType(), 0);
+  builder.create<fir::StoreOp>(loc, zero, forallIterationCounter);
 }

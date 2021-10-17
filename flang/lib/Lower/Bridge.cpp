@@ -27,6 +27,7 @@
 #include "flang/Lower/PFTBuilder.h"
 #include "flang/Lower/Runtime.h"
 #include "flang/Lower/Support/Utils.h"
+#include "flang/Lower/VectorSubscripts.h"
 #include "flang/Lower/Todo.h"
 #include "flang/Optimizer/Builder/BoxValue.h"
 #include "flang/Optimizer/Builder/Character.h"
@@ -229,6 +230,9 @@ public:
   mlir::Value getSymbolAddress(Fortran::lower::SymbolRef sym) override final {
     return lookupSymbol(sym).getAddr();
   }
+  fir::ExtendedValue getSymbolExtendedValue(Fortran::lower::SymbolRef sym) override final {
+    return lookupSymbol(sym).toExtendedValue();
+  }
 
   mlir::Value impliedDoBinding(llvm::StringRef name) override final {
     auto val = localSymbols.lookupImpliedDo(name);
@@ -295,6 +299,13 @@ public:
       return createSomeArrayBox(*this, expr, localSymbols, context);
     return fir::BoxValue(
         builder->createBox(loc, genExprAddr(expr, context, &loc)));
+  }
+
+  Fortran::lower::LoweredExpr genExpr(const Fortran::lower::SomeExpr &expr,
+                                Fortran::lower::StatementContext &stmtCtx,
+                                mlir::Location loc) override final {
+    Fortran::lower::ExplicitIterSpace *explicitSpace = explicitIterSpace.isActive() ? &explicitIterSpace : nullptr;
+    return Fortran::lower::genExpr(*this, loc, expr, stmtCtx, explicitSpace, /*loadArrays*/false);
   }
 
   Fortran::evaluate::FoldingContext &getFoldingContext() override final {
@@ -1869,8 +1880,98 @@ private:
     return sym && Fortran::semantics::IsAllocatable(*sym);
   }
 
+  void genTemporizedForallAssignment(const Fortran::evaluate::Assignment &assign) {
+    auto loc = toLocation();
+    Fortran::lower::StatementContext forallContext;
+    Fortran::lower::ForallTemp forallTemp(*this, loc, explicitIterSpace, assign.rhs, forallContext);
+    explicitIterSpace.genLoopNest();
+    {
+      Fortran::lower::StatementContext stmtCtx;
+      // TODO: where filter.
+      const Fortran::lower::ElementalMask* whereStmtFilter = nullptr;
+      auto rhs = Fortran::lower::genExpr(*this, loc, assign.rhs, stmtCtx, nullptr, /*loadArrays*/false);
+      rhs.prepareForAddressing(*builder, loc, /*loadArrays=*/false);
+      auto forallIterationId = forallTemp.getForallIterationId(*builder, loc, explicitIterSpace);
+      auto rhsExtents = rhs.getExtents(*builder, loc);
+      auto typeParams = rhs.getTypeParams(*builder, loc);
+      auto temp = forallTemp.getOrCreateIterationTemp(*builder, loc, forallIterationId, rhsExtents, typeParams);
+      Fortran::lower::genAssign(*builder, loc, temp, rhs, whereStmtFilter, /*arrayValues=*/llvm::None);
+    }
+    Fortran::lower::createArrayMergeStores(*this, explicitIterSpace);
+    forallTemp.resetForallIterationCount(*builder, loc);
+    explicitIterSpace.genLoopNest();
+    {
+      Fortran::lower::StatementContext stmtCtx;
+      // TODO: where filter.
+      const Fortran::lower::ElementalMask* whereStmtFilter = nullptr;
+      auto forallIterationId = forallTemp.getForallIterationId(*builder, loc, explicitIterSpace);
+      auto temp = forallTemp.getIterationTemp(*builder, loc, forallIterationId);
+      temp.prepareForAddressing(*builder, loc, /*loadArrays=*/false);
+      auto lhs = Fortran::lower::genExpr(*this, loc, assign.lhs, stmtCtx, nullptr, /*loadArrays=*/false);
+      if (isWholeAllocatable(assign.lhs)) {
+        auto rhsLbounds = temp.getLBounds(*builder, loc);
+        auto rhsExtents = temp.getExtents(*builder, loc);
+        auto rhsParams = temp.getTypeParams(*builder, loc);
+        Fortran::lower::genReallocIfNeeded(*builder, loc, lhs, rhsLbounds, rhsExtents, rhsParams);
+      }
+      lhs.prepareForAddressing(*builder, loc, /*loadArrays=*/false);
+      Fortran::lower::genAssign(*builder, loc, lhs, temp, whereStmtFilter, /*arrayValues=*/llvm::None);
+      forallTemp.freeIterationTemp(*builder, loc, temp);
+    }
+    Fortran::lower::createArrayMergeStores(*this, explicitIterSpace);
+  }
+
+  void genNewAssignment(const Fortran::evaluate::Assignment &assign) {
+    if (!implicitIterSpace.empty())
+      TODO(toLocation(), "Where revamp");
+    Fortran::lower::ExplicitIterSpace *explicitSpace = nullptr;
+    if (explicitIterationSpace()) {
+      bool lhsAndRhsMayOverlap = true;
+      // TODO: Set true for allocatable assignment/pointer assignment/array user defined assignments.
+      bool doNotRaiseForall = false;
+      if (lhsAndRhsMayOverlap && doNotRaiseForall) {
+        genTemporizedForallAssignment(assign);
+        return;
+      }
+      if (lhsAndRhsMayOverlap) {
+        explicitSpace = &explicitIterSpace;
+        Fortran::lower::createArrayLoads(*this, *explicitSpace, localSymbols);
+      }
+      explicitIterSpace.genLoopNest();
+    }
+    // TODO: generate lambda for elemental user defined assignment.
+    const bool loadArrays = true;
+    auto loc = toLocation();
+    Fortran::lower::StatementContext stmtCtx;
+    auto lhs = Fortran::lower::genExpr(*this, loc, assign.lhs, stmtCtx, explicitSpace, loadArrays);
+    auto rhs = Fortran::lower::genExpr(*this, loc, assign.rhs, stmtCtx, explicitSpace, loadArrays);
+    lhs.prepareForAddressing(*builder, loc, loadArrays);
+    rhs.prepareForAddressing(*builder, loc, loadArrays);
+    const Fortran::lower::ElementalMask* whereStmtFilter = nullptr;
+    llvm::SmallVector<mlir::Value> arrayValues;
+    if (explicitIterationSpace()) {
+      auto args = explicitIterSpace.getInnerArgs();
+      arrayValues.append(args.begin(), args.end());
+    } else if (loadArrays && assign.lhs.Rank() > 0) {
+      TODO(loc, "get lhs load");
+    }
+    auto newArrayValues = Fortran::lower::genAssign(*builder, loc, lhs, rhs, whereStmtFilter, arrayValues);
+    if (explicitIterationSpace()) {
+      explicitIterSpace.finalizeContext();
+      if (!newArrayValues.empty())
+        builder->create<fir::ResultOp>(loc, newArrayValues);
+    } else {
+      if (!newArrayValues.empty())
+        TODO(loc, "create array merge stores");
+    }
+    if (explicitIterationSpace())
+      Fortran::lower::createArrayMergeStores(*this, explicitIterSpace);
+  }
+
   /// Shared for both assignments and pointer assignments.
   void genAssignment(const Fortran::evaluate::Assignment &assign) {
+    genNewAssignment(assign);
+    return;
     Fortran::lower::StatementContext stmtCtx;
     auto loc = toLocation();
     if (explicitIterationSpace()) {
@@ -2413,8 +2514,10 @@ private:
       if (auto passedResult = callee.getPassedResult())
         addSymbol(altResult.getSymbol(), resultArg.getAddr());
       Fortran::lower::StatementContext stmtCtx;
+      auto altRefType = builder->getRefType(genType(altResult));
+      auto storage = builder->createConvert(toLocation(), altRefType, primaryFuncResultStorage);
       Fortran::lower::mapSymbolAttributes(*this, altResult, localSymbols,
-                                          stmtCtx, primaryFuncResultStorage);
+                                          stmtCtx, storage);
     }
 
     // Create most function blocks in advance.

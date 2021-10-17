@@ -141,6 +141,14 @@ public:
                               mlir::ValueRange lenParams = {},
                               llvm::ArrayRef<mlir::NamedAttribute> attrs = {});
 
+  /// Create a temporary on the heap. A temp is allocated using `fir.allocmem` and can be read and written using `fir.load` and `fir.store`, resp.  The temporary can be given a name via a front-end `Symbol` or a `StringRef`.
+  /// It is up to the caller to free the temporary with `fir.freemem` after the last usage of the temporary.
+  mlir::Value createHeapTemporary(mlir::Location loc, mlir::Type type,
+                              llvm::StringRef name = {},
+                              mlir::ValueRange shape = {},
+                              mlir::ValueRange lenParams = {},
+                              llvm::ArrayRef<mlir::NamedAttribute> attrs = {});
+
   /// Create an unnamed and untracked temporary on the stack.
   mlir::Value createTemporary(mlir::Location loc, mlir::Type type,
                               mlir::ValueRange shape) {
@@ -401,6 +409,13 @@ llvm::SmallVector<mlir::Value> getExtents(fir::FirOpBuilder &builder,
                                           mlir::Location loc,
                                           const fir::ExtendedValue &box);
 
+
+/// Get all type parameters from a fir::ExtendedValue. For fir::BoxValue  with length parameters, this will generate code to read the type parameters.
+llvm::SmallVector<mlir::Value> getTypeParams(fir::FirOpBuilder &builder,
+                                          mlir::Location loc,
+                                          const fir::ExtendedValue &box);
+
+
 /// Read a fir::BoxValue into an fir::UnboxValue, a fir::ArrayBoxValue or a
 /// fir::CharArrayBoxValue. This should only be called if the fir::BoxValue is
 /// known to be contiguous given the context (or if the resulting address will
@@ -408,6 +423,9 @@ llvm::SmallVector<mlir::Value> getExtents(fir::FirOpBuilder &builder,
 /// This must not be used on unlimited polymorphic and assumed rank entities.
 fir::ExtendedValue readBoxValue(fir::FirOpBuilder &builder, mlir::Location loc,
                                 const fir::BoxValue &box);
+
+/// Generate a fir::ExtendedValue with the address of \p array element given zero based indices.
+fir::ExtendedValue getElementAt(fir::FirOpBuilder& builder, mlir::Location loc, const fir::ExtendedValue& array, mlir::Value shape, mlir::Value slice, mlir::ValueRange zeroBasedIndices);
 
 //===--------------------------------------------------------------------===//
 // String literal helper helpers
@@ -471,6 +489,11 @@ fir::ExtendedValue arraySectionElementToExtendedValue(
 /// types. The assignment follows Fortran intrinsic assignment semantic for
 /// derived types (10.2.1.3 point 13).
 void genRecordAssignment(fir::FirOpBuilder &builder, mlir::Location loc,
+                         const fir::ExtendedValue &lhs,
+                         const fir::ExtendedValue &rhs);
+
+/// Generate scalar assignment of lhs into rhs. \p rhs must be a value.
+void assignScalars(fir::FirOpBuilder &builder, mlir::Location loc,
                          const fir::ExtendedValue &lhs,
                          const fir::ExtendedValue &rhs);
 

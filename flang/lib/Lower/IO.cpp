@@ -20,7 +20,6 @@
 #include "flang/Lower/Runtime.h"
 #include "flang/Lower/Support/Utils.h"
 #include "flang/Lower/Todo.h"
-#include "flang/Lower/VectorSubscripts.h"
 #include "flang/Optimizer/Builder/Character.h"
 #include "flang/Optimizer/Builder/Complex.h"
 #include "flang/Optimizer/Builder/FIRBuilder.h"
@@ -551,28 +550,31 @@ static void genInputItemList(Fortran::lower::AbstractConverter &converter,
     if (!expr)
       fir::emitFatalError(loc, "internal error: could not get evaluate::Expr");
     if (Fortran::evaluate::HasVectorSubscript(*expr)) {
-      auto vectorSubscriptBox =
-          Fortran::lower::genVectorSubscriptBox(loc, converter, stmtCtx, *expr);
+      auto vectorSubscriptBox = converter.genExpr(*expr, stmtCtx, loc);
+      vectorSubscriptBox.prepareForAddressing(builder, loc, /*loadArrays=*/false);
       auto inputFunc = getInputFunc(
           loc, builder, vectorSubscriptBox.getElementType(), isFormatted);
       const bool mustBox = inputFunc.getType().getInput(1).isa<fir::BoxType>();
+      auto shape = vectorSubscriptBox.getExtents(builder, loc);
       if (!checkResult) {
-        auto elementalGenerator = [&](const fir::ExtendedValue &element) {
-          createIoRuntimeCallForItem(loc, builder, inputFunc, cookie,
-                                     mustBox ? builder.createBox(loc, element)
+        auto elementalGenerator = [&](fir::FirOpBuilder& b, mlir::Location l, llvm::ArrayRef<mlir::Value> indices) {
+          auto element = vectorSubscriptBox.getElementAddrAt(b, l, indices);
+          createIoRuntimeCallForItem(l, b, inputFunc, cookie,
+                                     mustBox ? b.createBox(loc, element)
                                              : element);
         };
-        vectorSubscriptBox.loopOverElements(builder, loc, elementalGenerator);
+        Fortran::lower::loopOverElements(builder, loc, shape, elementalGenerator, /*filter=*/nullptr, /*canLoopUnordered=*/false);
       } else {
         auto elementalGenerator =
-            [&](const fir::ExtendedValue &element) -> mlir::Value {
+            [&](fir::FirOpBuilder& b, mlir::Location l, llvm::ArrayRef<mlir::Value> indices) -> mlir::Value {
+          auto element = vectorSubscriptBox.getElementAddrAt(b, l, indices);
           return createIoRuntimeCallForItem(
-              loc, builder, inputFunc, cookie,
-              mustBox ? builder.createBox(loc, element) : element);
+              l, b, inputFunc, cookie,
+              mustBox ? b.createBox(l, element) : element);
         };
         if (!ok)
           ok = builder.createBool(loc, true);
-        ok = vectorSubscriptBox.loopOverElementsWhile(builder, loc,
+        ok = Fortran::lower::loopOverElementsWhile(builder, loc, shape, 
                                                       elementalGenerator, ok);
       }
       continue;

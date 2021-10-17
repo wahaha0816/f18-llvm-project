@@ -11,6 +11,7 @@
 #include "flang/Optimizer/Builder/BoxValue.h"
 #include "flang/Optimizer/Builder/Character.h"
 #include "flang/Optimizer/Builder/Complex.h"
+#include "flang/Optimizer/Builder/Factory.h"
 #include "flang/Optimizer/Builder/MutableBox.h"
 #include "flang/Optimizer/Builder/Runtime/Assign.h"
 #include "flang/Optimizer/Dialect/FIRAttr.h"
@@ -226,6 +227,20 @@ fir::FirOpBuilder::createTemporary(mlir::Location loc, mlir::Type type,
     restoreInsertionPoint(insPt);
   return ae;
 }
+
+mlir::Value
+fir::FirOpBuilder::createHeapTemporary(mlir::Location loc, mlir::Type type,
+                                   llvm::StringRef name, mlir::ValueRange shape,
+                                   mlir::ValueRange lenParams,
+                                   llvm::ArrayRef<mlir::NamedAttribute> attrs) {
+  llvm::SmallVector<mlir::Value> dynamicShape =
+      elideExtentsAlreadyInType(type, shape);
+  llvm::SmallVector<mlir::Value> dynamicLength =
+      elideLengthsAlreadyInType(type, lenParams);
+  return create<fir::AllocMemOp>(loc, type, /*unique_name=*/llvm::StringRef{}, name
+                           , dynamicLength, dynamicShape, attrs);
+}
+
 
 /// Create a global variable in the (read-only) data section. A global variable
 /// must have a unique name to identify and reference it.
@@ -620,6 +635,30 @@ fir::factory::getExtents(fir::FirOpBuilder &builder, mlir::Location loc,
       [&](const auto &) -> llvm::SmallVector<mlir::Value> { return {}; });
 }
 
+llvm::SmallVector<mlir::Value>
+fir::factory::getTypeParams(fir::FirOpBuilder &builder, mlir::Location loc,
+                         const fir::ExtendedValue &box) {
+  return box.match(
+      [&](const fir::CharBoxValue &x) -> llvm::SmallVector<mlir::Value> {
+        return {x.getLen()};
+      },
+      [&](const fir::CharArrayBoxValue &x) -> llvm::SmallVector<mlir::Value> {
+        return {x.getLen()};
+      },
+      [&](const fir::BoxValue &x) -> llvm::SmallVector<mlir::Value> {
+        if (x.isCharacter())
+          return {fir::factory::readCharLen(builder, loc, box)};
+        if (x.isDerivedWithLengthParameters())
+          TODO(loc, "read derived type length parameters");
+        return {};
+      },
+      [&](const fir::MutableBoxValue &x) -> llvm::SmallVector<mlir::Value> {
+        auto load = fir::factory::genMutableBoxRead(builder, loc, x);
+        return fir::factory::getTypeParams(builder, loc, load);
+      },
+      [&](const auto &) -> llvm::SmallVector<mlir::Value> { return {}; });
+}
+
 fir::ExtendedValue fir::factory::readBoxValue(fir::FirOpBuilder &builder,
                                               mlir::Location loc,
                                               const fir::BoxValue &box) {
@@ -934,3 +973,39 @@ mlir::Value fir::factory::genLenOfCharacter(
   }
   TODO(loc, "LEN of character must be computed at runtime");
 }
+
+void fir::factory::assignScalars(fir::FirOpBuilder& builder, mlir::Location loc, const fir::ExtendedValue& lhs, const fir::ExtendedValue& rhs) {
+  auto toTy = fir::unwrapPassByRefType(fir::getBase(lhs).getType());
+  if (toTy.isa<fir::CharacterType>()) {
+    // Fortran 2018 10.2.1.3 p10 and p11
+    fir::factory::CharacterExprHelper{builder, loc}.createAssign(
+        lhs, rhs);
+    return;
+  }
+  if (toTy.isa<fir::RecordType>()) {
+    // Fortran 2018 10.2.1.3 p13 and p14
+    // Recursively gen an assignment on each element pair.
+    fir::factory::genRecordAssignment(builder, loc, lhs, rhs);
+    return;
+  }
+  // Fortran 2018 10.2.1.3 p8 and p9
+  auto addr = fir::getBase(lhs);
+  auto val = fir::getBase(rhs);
+  if (fir::isa_ref_type(val.getType()))
+    val = builder.create<fir::LoadOp>(loc, val);
+  // It is still possible that rhs type is different here (for instance for logicals).
+  auto cast = builder.convertWithSemantics(loc, toTy, val);
+  builder.create<fir::StoreOp>(loc, cast, addr);
+  return;
+}
+
+fir::ExtendedValue fir::factory::getElementAt(fir::FirOpBuilder& builder, mlir::Location loc, const fir::ExtendedValue& array, mlir::Value shape, mlir::Value slice, mlir::ValueRange zeroBasedIndices) {
+  auto toType = fir::getBase(array).getType();
+  auto originatedIndices = fir::factory::originateIndices(loc, builder, toType, shape, zeroBasedIndices);
+  auto eleTy = fir::unwrapSequenceType(fir::unwrapPassByRefType(toType));
+  auto eleRefTy = builder.getRefType(eleTy);
+  auto eltAddr = builder.create<fir::ArrayCoorOp>(
+  loc, eleRefTy, fir::getBase(array), shape, /*slice=*/mlir::Value{}, originatedIndices,
+  fir::getTypeParams(array));
+  return fir::factory::arrayElementToExtendedValue(builder, loc, array, eltAddr);
+} 
