@@ -375,7 +375,7 @@ struct AllocaOpConversion : public FIROpConversion<fir::AllocaOp> {
     }
     if (alloc.hasShapeOperands()) {
       auto allocEleTy = fir::unwrapRefType(alloc.getType());
-      // Scale the size by constants factors encoded in the array type.
+      // Scale the size by constant factors encoded in the array type.
       if (auto seqTy = allocEleTy.dyn_cast<fir::SequenceType>()) {
         fir::SequenceType::Extent constSize = 1;
         for (auto extent : seqTy.getShape())
