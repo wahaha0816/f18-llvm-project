@@ -3234,12 +3234,14 @@ public:
     determineShapeOfDest(lhs);
     semant = ConstituentSemantics::RefTransparent;
     auto exv = lowerArrayExpression(rhs);
-    if (explicitSpaceIsActive())
+    if (explicitSpaceIsActive()) {
+      explicitSpace->finalizeContext();
       builder.create<fir::ResultOp>(loc, fir::getBase(exv));
-    else
+    } else {
       builder.create<fir::ArrayMergeStoreOp>(
           loc, destination, fir::getBase(exv), destination.memref(),
           destination.slice(), destination.typeparams());
+    }
   }
 
   //===--------------------------------------------------------------------===//
@@ -3344,12 +3346,14 @@ public:
     // Finish lowering the loop nest.
     assert(destination && "destination must have been set");
     auto exv = lowerArrayExpression(rhsCC, resultTy);
-    if (explicitSpaceIsActive())
+    if (explicitSpaceIsActive()) {
+      explicitSpace->finalizeContext();
       builder.create<fir::ResultOp>(loc, fir::getBase(exv));
-    else
+    } else {
       builder.create<fir::ArrayMergeStoreOp>(
           loc, destination, fir::getBase(exv), destination.memref(),
           destination.slice(), destination.typeparams());
+    }
   }
 
   /// Entry point for when an array expression appears on the lhs of an
@@ -3729,12 +3733,14 @@ public:
     determineShapeOfDest(lhs);
     semant = ConstituentSemantics::RefTransparent;
     auto exv = lowerArrayExpression(rhs);
-    if (explicitSpaceIsActive())
+    if (explicitSpaceIsActive()) {
+      explicitSpace->finalizeContext();
       builder.create<fir::ResultOp>(loc, fir::getBase(exv));
-    else
+    } else {
       builder.create<fir::ArrayMergeStoreOp>(
           loc, destination, fir::getBase(exv), destination.memref(),
           destination.slice(), destination.typeparams());
+    }
   }
 
   /// Compute the shape of a slice.
