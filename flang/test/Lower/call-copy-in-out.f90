@@ -155,37 +155,66 @@ end subroutine
 
 ! Test characters are handled correctly
 ! CHECK-LABEL: func @_QPtest_char(
-! CHECK-SAME: %[[x:.*]]: !fir.box<!fir.array<?x!fir.char<1,10>>>) {
+! CHECK-SAME:    %[[VAL_0:.*]]: !fir.box<!fir.array<?x!fir.char<1,10>>>) {
 subroutine test_char(x)
+  ! CHECK: %[[VAL_1:.*]] = constant 10 : index
+  ! CHECK: %[[VAL_2:.*]] = constant 0 : index
+  ! CHECK: %[[VAL_3:.*]]:3 = fir.box_dims %[[VAL_0]], %[[VAL_2]] : (!fir.box<!fir.array<?x!fir.char<1,10>>>, index) -> (index, index, index)
+  ! CHECK: %[[VAL_4:.*]] = fir.allocmem !fir.array<?x!fir.char<1,10>>, %[[VAL_3]]#1 {uniq_name = ".copyinout"}
+  ! CHECK: %[[VAL_5:.*]] = fir.shape %[[VAL_3]]#1 : (index) -> !fir.shape<1>
+  ! CHECK: %[[VAL_6:.*]] = fir.array_load %[[VAL_4]](%[[VAL_5]]) : (!fir.heap<!fir.array<?x!fir.char<1,10>>>, !fir.shape<1>) -> !fir.array<?x!fir.char<1,10>>
+  ! CHECK: %[[VAL_7:.*]] = fir.array_load %[[VAL_0]] : (!fir.box<!fir.array<?x!fir.char<1,10>>>) -> !fir.array<?x!fir.char<1,10>>
+  ! CHECK: %[[VAL_8:.*]] = constant 1 : index
+  ! CHECK: %[[VAL_9:.*]] = constant 0 : index
+  ! CHECK: %[[VAL_10:.*]] = subi %[[VAL_3]]#1, %[[VAL_8]] : index
+  ! CHECK: %[[VAL_11:.*]] = fir.do_loop %[[VAL_12:.*]] = %[[VAL_9]] to %[[VAL_10]] step %[[VAL_8]] unordered iter_args(%[[VAL_13:.*]] = %[[VAL_6]]) -> (!fir.array<?x!fir.char<1,10>>) {
+  ! CHECK: %[[VAL_14:.*]] = fir.array_access %[[VAL_7]], %[[VAL_12]] : (!fir.array<?x!fir.char<1,10>>, index) -> !fir.ref<!fir.char<1,10>>
+  ! CHECK: %[[VAL_15:.*]] = fir.array_access %[[VAL_13]], %[[VAL_12]] : (!fir.array<?x!fir.char<1,10>>, index) -> !fir.ref<!fir.char<1,10>>
+  ! CHECK: %[[VAL_16:.*]] = constant 10 : index
+  ! CHECK: %[[VAL_17:.*]] = constant 1 : i64
+  ! CHECK: %[[VAL_18:.*]] = fir.convert %[[VAL_16]] : (index) -> i64
+  ! CHECK: %[[VAL_19:.*]] = muli %[[VAL_17]], %[[VAL_18]] : i64
+  ! CHECK: %[[VAL_20:.*]] = constant false
+  ! CHECK: %[[VAL_21:.*]] = fir.convert %[[VAL_15]] : (!fir.ref<!fir.char<1,10>>) -> !fir.ref<i8>
+  ! CHECK: %[[VAL_22:.*]] = fir.convert %[[VAL_14]] : (!fir.ref<!fir.char<1,10>>) -> !fir.ref<i8>
+  ! CHECK: fir.call @llvm.memmove.p0i8.p0i8.i64(%[[VAL_21]], %[[VAL_22]], %[[VAL_19]], %[[VAL_20]]) : (!fir.ref<i8>, !fir.ref<i8>, i64, i1) -> ()
+  ! CHECK: %[[VAL_23:.*]] = fir.array_amend %[[VAL_13]], %[[VAL_15]] : (!fir.array<?x!fir.char<1,10>>, !fir.ref<!fir.char<1,10>>) -> !fir.array<?x!fir.char<1,10>>
+  ! CHECK: fir.result %[[VAL_23]] : !fir.array<?x!fir.char<1,10>>
+  ! CHECK: }
+  ! CHECK: fir.array_merge_store %[[VAL_6]], %[[VAL_24:.*]] to %[[VAL_4]] : !fir.array<?x!fir.char<1,10>>, !fir.array<?x!fir.char<1,10>>, !fir.heap<!fir.array<?x!fir.char<1,10>>>
+  ! CHECK: %[[VAL_25:.*]] = fir.convert %[[VAL_4]] : (!fir.heap<!fir.array<?x!fir.char<1,10>>>) -> !fir.ref<!fir.char<1,?>>
+  ! CHECK: %[[VAL_26:.*]] = fir.emboxchar %[[VAL_25]], %[[VAL_1]] : (!fir.ref<!fir.char<1,?>>, index) -> !fir.boxchar<1>
+  ! CHECK: fir.call @_QPbar_char(%[[VAL_26]]) : (!fir.boxchar<1>) -> ()
+  ! CHECK: %[[VAL_27:.*]] = fir.array_load %[[VAL_0]] : (!fir.box<!fir.array<?x!fir.char<1,10>>>) -> !fir.array<?x!fir.char<1,10>>
+  ! CHECK: %[[VAL_28:.*]] = constant 0 : index
+  ! CHECK: %[[VAL_29:.*]]:3 = fir.box_dims %[[VAL_0]], %[[VAL_28]] : (!fir.box<!fir.array<?x!fir.char<1,10>>>, index) -> (index, index, index)
+  ! CHECK: %[[VAL_30:.*]] = fir.shape %[[VAL_3]]#1 : (index) -> !fir.shape<1>
+  ! CHECK: %[[VAL_31:.*]] = fir.array_load %[[VAL_4]](%[[VAL_30]]) : (!fir.heap<!fir.array<?x!fir.char<1,10>>>, !fir.shape<1>) -> !fir.array<?x!fir.char<1,10>>
+  ! CHECK: %[[VAL_32:.*]] = constant 1 : index
+  ! CHECK: %[[VAL_33:.*]] = constant 0 : index
+  ! CHECK: %[[VAL_34:.*]] = subi %[[VAL_29]]#1, %[[VAL_32]] : index
+  ! CHECK: %[[VAL_35:.*]] = fir.do_loop %[[VAL_36:.*]] = %[[VAL_33]] to %[[VAL_34]] step %[[VAL_32]] unordered iter_args(%[[VAL_37:.*]] = %[[VAL_27]]) -> (!fir.array<?x!fir.char<1,10>>) {
+  ! CHECK: %[[VAL_38:.*]] = fir.array_access %[[VAL_31]], %[[VAL_36]] : (!fir.array<?x!fir.char<1,10>>, index) -> !fir.ref<!fir.char<1,10>>
+  ! CHECK: %[[VAL_39:.*]] = fir.array_access %[[VAL_37]], %[[VAL_36]] : (!fir.array<?x!fir.char<1,10>>, index) -> !fir.ref<!fir.char<1,10>>
+  ! CHECK: %[[VAL_40:.*]] = constant 10 : index
+  ! CHECK: %[[VAL_41:.*]] = constant 1 : i64
+  ! CHECK: %[[VAL_42:.*]] = fir.convert %[[VAL_40]] : (index) -> i64
+  ! CHECK: %[[VAL_43:.*]] = muli %[[VAL_41]], %[[VAL_42]] : i64
+  ! CHECK: %[[VAL_44:.*]] = constant false
+  ! CHECK: %[[VAL_45:.*]] = fir.convert %[[VAL_39]] : (!fir.ref<!fir.char<1,10>>) -> !fir.ref<i8>
+  ! CHECK: %[[VAL_46:.*]] = fir.convert %[[VAL_38]] : (!fir.ref<!fir.char<1,10>>) -> !fir.ref<i8>
+  ! CHECK: fir.call @llvm.memmove.p0i8.p0i8.i64(%[[VAL_45]], %[[VAL_46]], %[[VAL_43]], %[[VAL_44]]) : (!fir.ref<i8>, !fir.ref<i8>, i64, i1) -> ()
+  ! CHECK: %[[VAL_47:.*]] = fir.array_amend %[[VAL_37]], %[[VAL_39]] : (!fir.array<?x!fir.char<1,10>>, !fir.ref<!fir.char<1,10>>) -> !fir.array<?x!fir.char<1,10>>
+  ! CHECK: fir.result %[[VAL_47]] : !fir.array<?x!fir.char<1,10>>
+  ! CHECK: }
+  ! CHECK: fir.array_merge_store %[[VAL_27]], %[[VAL_48:.*]] to %[[VAL_0]] : !fir.array<?x!fir.char<1,10>>, !fir.array<?x!fir.char<1,10>>, !fir.box<!fir.array<?x!fir.char<1,10>>>
+  ! CHECK: fir.freemem %[[VAL_4]] : !fir.heap<!fir.array<?x!fir.char<1,10>>>
+
   character(10) :: x(:)
-  ! CHECK: %[[dim:.*]]:3 = fir.box_dims %[[x]], %c0{{.*}} : (!fir.box<!fir.array<?x!fir.char<1,10>>>, index) -> (index, index, index)
-  ! CHECK: %[[temp:.*]] = fir.allocmem !fir.array<?x!fir.char<1,10>>, %[[dim]]#1 {uniq_name = ".copyinout"}
-  ! CHECK-DAG: %[[shape:.*]] = fir.shape %[[dim]]#1 : (index) -> !fir.shape<1>
-  ! CHECK-DAG: %[[temp_load:.*]] = fir.array_load %[[temp]](%[[shape]]) : (!fir.heap<!fir.array<?x!fir.char<1,10>>>, !fir.shape<1>) -> !fir.array<?x!fir.char<1,10>>
-  ! CHECK-DAG: %[[x_load:.*]] = fir.array_load %[[x]] : (!fir.box<!fir.array<?x!fir.char<1,10>>>) -> !fir.array<?x!fir.char<1,10>>
-  ! CHECK: %[[copy_in:.*]] = fir.do_loop %[[i:.*]] = %c0{{.*}} to %{{.*}} step %c1{{.*}} iter_args(%[[res:.*]] = %[[temp_load]]) -> (!fir.array<?x!fir.char<1,10>>) {
-  ! CHECK:   %[[fetch:.*]] = fir.array_fetch %[[x_load]], %[[i]] : (!fir.array<?x!fir.char<1,10>>, index) -> !fir.ref<!fir.char<1,10>>
-  ! CHECK:   %[[update:.*]] = fir.array_update %[[res]], %[[fetch]], %[[i]] : (!fir.array<?x!fir.char<1,10>>, !fir.ref<!fir.char<1,10>>, index) -> !fir.array<?x!fir.char<1,10>>
-  ! CHECK:   fir.result %[[update:.*]] : !fir.array<?x!fir.char<1,10>>
-  ! CHECK: }
-  ! CHECK: fir.array_merge_store %[[temp_load]], %[[copy_in]] to %[[temp]] : !fir.array<?x!fir.char<1,10>>, !fir.array<?x!fir.char<1,10>>, !fir.heap<!fir.array<?x!fir.char<1,10>>>
-
-  ! CHECK: %[[temp_cast:.*]] = fir.convert %[[temp]] : (!fir.heap<!fir.array<?x!fir.char<1,10>>>) -> !fir.ref<!fir.char<1,?>>
-  ! CHECK: %[[boxchar:.*]] = fir.emboxchar %[[temp_cast]], %c10{{.*}} : (!fir.ref<!fir.char<1,?>>, index) -> !fir.boxchar<1>
-  ! CHECK: fir.call @_QPbar_char(%[[boxchar]]) : (!fir.boxchar<1>) -> ()
   call bar_char(x)
-
-  ! CHECK-DAG: %[[x_load:.*]] = fir.array_load %[[x]] : (!fir.box<!fir.array<?x!fir.char<1,10>>>) -> !fir.array<?x!fir.char<1,10>>
-  ! CHECK-DAG: %[[shape:.*]] = fir.shape %[[dim]]#1 : (index) -> !fir.shape<1>
-  ! CHECK-DAG: %[[temp_load:.*]] = fir.array_load %[[temp]](%[[shape]]) : (!fir.heap<!fir.array<?x!fir.char<1,10>>>, !fir.shape<1>) -> !fir.array<?x!fir.char<1,10>>
-  ! CHECK: %[[copy_out:.*]] = fir.do_loop %[[i:.*]] = %c0{{.*}} to %{{.*}} step %c1{{.*}} iter_args(%[[res:.*]] = %[[x_load]]) -> (!fir.array<?x!fir.char<1,10>>) {
-  ! CHECK:   %[[fetch:.*]] = fir.array_fetch %[[temp_load]], %[[i]] : (!fir.array<?x!fir.char<1,10>>, index) -> !fir.ref<!fir.char<1,10>>
-  ! CHECK:   %[[update:.*]] = fir.array_update %[[res]], %[[fetch]], %[[i]] : (!fir.array<?x!fir.char<1,10>>, !fir.ref<!fir.char<1,10>>, index) -> !fir.array<?x!fir.char<1,10>>
-  ! CHECK:   fir.result %[[update:.*]] : !fir.array<?x!fir.char<1,10>>
-  ! CHECK: }
-  ! CHECK: fir.array_merge_store %[[x_load]], %[[copy_out]] to %[[x]] : !fir.array<?x!fir.char<1,10>>, !fir.array<?x!fir.char<1,10>>, !fir.box<!fir.array<?x!fir.char<1,10>>>
-  ! CHECK: fir.freemem %[[temp]] : !fir.heap<!fir.array<?x!fir.char<1,10>>>
-end subroutine
+  ! CHECK:         return
+  ! CHECK:       }
+end subroutine test_char
 
 ! CHECK-LABEL: func @_QPtest_scalar_substring_does_no_trigger_copy_inout
 ! CHECK-SAME: %[[arg0:.*]]: !fir.boxchar<1>
