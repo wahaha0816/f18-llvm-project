@@ -641,8 +641,8 @@ genOMP(Fortran::lower::AbstractConverter &converter,
         global = modBuilder.create<mlir::omp::CriticalDeclareOp>(
             currentLocation, name);
       return firOpBuilder.create<mlir::omp::CriticalOp>(
-          currentLocation, firOpBuilder.getSymbolRefAttr(global.sym_name()),
-          hint);
+          currentLocation, mlir::FlatSymbolRefAttr::get(
+                               firOpBuilder.getContext(), global.sym_name()));
     }
   }();
   createBodyOfOp<omp::CriticalOp>(criticalOp, converter, currentLocation);
