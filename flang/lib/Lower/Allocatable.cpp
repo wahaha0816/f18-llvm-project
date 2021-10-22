@@ -77,7 +77,7 @@ struct ErrorManager {
   void genStatCheck(fir::FirOpBuilder &builder, mlir::Location loc) {
     if (statValue) {
       auto zero = builder.createIntegerConstant(loc, statValue.getType(), 0);
-      auto cmp = builder.create<mlir::CmpIOp>(loc, mlir::CmpIPredicate::eq,
+      auto cmp = builder.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::eq,
                                               statValue, zero);
       auto ifOp = builder.create<fir::IfOp>(loc, cmp,
                                             /*withElseRegion=*/false);
@@ -349,8 +349,8 @@ private:
           Fortran::semantics::GetExpr(std::get<1>(shapeSpec.t)), stmtCtx, loc));
       ub = builder.createConvert(loc, idxTy, ub);
       if (lb) {
-        auto diff = builder.create<mlir::SubIOp>(loc, ub, lb);
-        extents.emplace_back(builder.create<mlir::AddIOp>(loc, diff, one));
+        auto diff = builder.create<mlir::arith::SubIOp>(loc, ub, lb);
+        extents.emplace_back(builder.create<mlir::arith::AddIOp>(loc, diff, one));
       } else {
         extents.emplace_back(ub);
       }

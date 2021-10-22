@@ -53,8 +53,8 @@ void genCharacterCopy(mlir::Value src, mlir::Value srcLen, mlir::Value dst,
     builder.template create<fir::StoreOp>(loc, load, dst);
     return;
   }
-  auto zero = builder.template create<mlir::ConstantIndexOp>(loc, 0);
-  auto one = builder.template create<mlir::ConstantIndexOp>(loc, 1);
+  auto zero = builder.template create<mlir::arith::ConstantIndexOp>(loc, 0);
+  auto one = builder.template create<mlir::arith::ConstantIndexOp>(loc, 1);
   auto toArrayTy = [&](fir::CharacterType ty) {
     return fir::ReferenceType::get(fir::SequenceType::get(
         fir::SequenceType::ShapeRef{fir::SequenceType::getUnknownExtent()},
@@ -69,7 +69,7 @@ void genCharacterCopy(mlir::Value src, mlir::Value srcLen, mlir::Value dst,
   };
   if (!srcLen && !dstLen && srcTy.getLen() >= dstTy.getLen()) {
     auto upper =
-        builder.template create<mlir::ConstantIndexOp>(loc, dstTy.getLen() - 1);
+        builder.template create<mlir::arith::ConstantIndexOp>(loc, dstTy.getLen() - 1);
     auto loop = builder.template create<fir::DoLoopOp>(loc, zero, upper, one);
     auto insPt = builder.saveInsertionPoint();
     builder.setInsertionPointToStart(loop.getBody());
@@ -93,7 +93,7 @@ void genCharacterCopy(mlir::Value src, mlir::Value srcLen, mlir::Value dst,
     return;
   }
   auto minusOne = [&](mlir::Value v) -> mlir::Value {
-    return builder.template create<mlir::SubIOp>(
+    return builder.template create<mlir::arith::SubIOp>(
         loc, builder.template create<fir::ConvertOp>(loc, one.getType(), v),
         one);
   };
@@ -101,7 +101,7 @@ void genCharacterCopy(mlir::Value src, mlir::Value srcLen, mlir::Value dst,
       dstLen
           ? minusOne(dstLen)
           : builder
-                .template create<mlir::ConstantIndexOp>(loc, dstTy.getLen() - 1)
+                .template create<mlir::arith::ConstantIndexOp>(loc, dstTy.getLen() - 1)
                 .getResult();
   auto loop = builder.template create<fir::DoLoopOp>(loc, zero, len, one);
   auto insPt = builder.saveInsertionPoint();
@@ -110,10 +110,10 @@ void genCharacterCopy(mlir::Value src, mlir::Value srcLen, mlir::Value dst,
       srcLen
           ? builder.template create<fir::ConvertOp>(loc, one.getType(), srcLen)
                 .getResult()
-          : builder.template create<mlir::ConstantIndexOp>(loc, srcTy.getLen())
+          : builder.template create<mlir::arith::ConstantIndexOp>(loc, srcTy.getLen())
                 .getResult();
-  auto cond = builder.template create<mlir::CmpIOp>(
-      loc, mlir::CmpIPredicate::slt, loop.getInductionVar(), slen);
+  auto cond = builder.template create<mlir::arith::CmpIOp>(
+      loc, mlir::arith::CmpIPredicate::slt, loop.getInductionVar(), slen);
   auto ifOp = builder.template create<fir::IfOp>(loc, cond, /*withElse=*/true);
   builder.setInsertionPointToStart(&ifOp.thenRegion().front());
   auto csrcTy = toArrayTy(srcTy);
@@ -183,7 +183,7 @@ originateIndices(mlir::Location loc, B &builder, mlir::Type memTy,
     auto ty = fir::dyn_cast_ptrOrBoxEleTy(memTy);
     assert(ty && ty.isa<fir::SequenceType>());
     auto seqTy = ty.cast<fir::SequenceType>();
-    auto one = builder.template create<mlir::ConstantIndexOp>(loc, 1);
+    auto one = builder.template create<mlir::arith::ConstantIndexOp>(loc, 1);
     const auto dimension = seqTy.getDimension();
     if (shapeVal) {
       assert(dimension == mlir::cast<fir::ShapeOp>(shapeVal.getDefiningOp())
@@ -194,7 +194,7 @@ originateIndices(mlir::Location loc, B &builder, mlir::Type memTy,
       if (i.index() < dimension) {
         assert(fir::isa_integer(i.value().getType()));
         result.push_back(
-            builder.template create<mlir::AddIOp>(loc, i.value(), one));
+            builder.template create<mlir::arith::AddIOp>(loc, i.value(), one));
       } else {
         result.push_back(i.value());
       }
@@ -205,7 +205,7 @@ originateIndices(mlir::Location loc, B &builder, mlir::Type memTy,
   unsigned origOff = 0;
   for (auto i : llvm::enumerate(indices)) {
     if (i.index() < dimension)
-      result.push_back(builder.template create<mlir::AddIOp>(
+      result.push_back(builder.template create<mlir::arith::AddIOp>(
           loc, i.value(), origins[origOff++]));
     else
       result.push_back(i.value());

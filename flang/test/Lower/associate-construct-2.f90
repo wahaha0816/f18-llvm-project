@@ -6,7 +6,7 @@
 ! CHECK-SAME: %[[j:[^:]+]]: !fir.ref<i32>,
 ! CHECK-SAME: %[[k:[^:]+]]: !fir.ref<i32>)
 subroutine test1(a,i,j,k)
-  ! CHECK-DAG: %[[c:.*]] = constant 100 : index
+  ! CHECK-DAG: %[[c:.*]] = arith.constant 100 : index
   ! CHECK-DAG: %[[ii:.*]] = fir.load %[[i]] : !fir.ref<i32>
   ! CHECK-DAG: %[[iv:.*]] = fir.convert %[[ii]] : (i32) -> i64
   ! CHECK-DAG: %[[jj:.*]] = fir.load %[[j]] : !fir.ref<i32>
@@ -38,7 +38,7 @@ subroutine test2(n)
   integer :: n
   integer, external :: foo
   ! CHECK: %[[n:.*]] = fir.load %[[nadd]] : !fir.ref<i32>
-  ! CHECK: %[[n10:.*]] = addi %[[n]], %c10{{.*}} : i32
+  ! CHECK: %[[n10:.*]] = arith.addi %[[n]], %c10{{.*}} : i32
   ! CHECK: fir.store %[[n10]] to %{{.*}} : !fir.ref<i32>
   ! CHECK: %[[foo:.*]] = fir.call @_QPfoo(%{{.*}}) : (!fir.ref<i32>) -> i32
   ! CHECK: fir.store %[[foo]] to %{{.*}} : !fir.ref<i32>

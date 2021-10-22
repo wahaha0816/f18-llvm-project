@@ -529,8 +529,8 @@ void fir::factory::associateMutableBoxWithRemap(
     for (auto [lb, ub] : llvm::zip(lbounds, ubounds)) {
       auto lbi = builder.createConvert(loc, idxTy, lb);
       auto ubi = builder.createConvert(loc, idxTy, ub);
-      auto diff = builder.create<mlir::SubIOp>(loc, idxTy, ubi, lbi);
-      extents.emplace_back(builder.create<mlir::AddIOp>(loc, idxTy, diff, one));
+      auto diff = builder.create<mlir::arith::SubIOp>(loc, idxTy, ubi, lbi);
+      extents.emplace_back(builder.create<mlir::arith::AddIOp>(loc, idxTy, diff, one));
     }
   } else {
     // lbounds are default. Upper bounds and extents are the same.
@@ -674,8 +674,8 @@ void fir::factory::genReallocIfNeeded(fir::FirOpBuilder &builder,
           auto castPrevious =
               builder.createConvert(loc, required.getType(), previous);
           // reallocate = reallocate || previous != required
-          auto cmp = builder.create<mlir::CmpIOp>(loc, mlir::CmpIPredicate::ne,
-                                                  castPrevious, required);
+          auto cmp = builder.create<mlir::arith::CmpIOp>(
+              loc, mlir::arith::CmpIPredicate::ne, castPrevious, required);
           mustReallocate =
               builder.create<mlir::SelectOp>(loc, cmp, cmp, mustReallocate);
         };

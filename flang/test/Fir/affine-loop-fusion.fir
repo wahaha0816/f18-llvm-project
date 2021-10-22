@@ -7,9 +7,9 @@
 
 // CHECK-LABEL: func @calc
 func @calc(%a1: !arr_d1, %a2: !arr_d1, %a3: !arr_d1) {
-  %c1 = constant 1 : index
-  %c0 = constant 0 : index
-  %len = constant 100 : index
+  %c1 = arith.constant 1 : index
+  %c0 = arith.constant 0 : index
+  %len = arith.constant 100 : index
   %dims = fir.shape %len : (index) -> !fir.shape<1>
   %siz = affine.apply #arr_len()[%c1,%len]
   %t1 = fir.alloca !fir.array<?xf32>, %siz
@@ -23,7 +23,7 @@ func @calc(%a1: !arr_d1, %a2: !arr_d1, %a3: !arr_d1) {
             : (!arr_d1, !fir.shape<1>, index) -> !fir.ref<f32>
     %a2_v = fir.load %a2_idx : !fir.ref<f32>
 
-    %v = addf %a1_v, %a2_v : f32
+    %v = arith.addf %a1_v, %a2_v : f32
     %t1_idx = fir.array_coor %t1(%dims) %i
             : (!arr_d1, !fir.shape<1>, index) -> !fir.ref<f32>
 
@@ -38,7 +38,7 @@ func @calc(%a1: !arr_d1, %a2: !arr_d1, %a3: !arr_d1) {
             : (!arr_d1, !fir.shape<1>, index) -> !fir.ref<f32>
     %a2_v = fir.load %a2_idx : !fir.ref<f32>
 
-    %v = mulf %t1_v, %a2_v : f32
+    %v = arith.mulf %t1_v, %a2_v : f32
     %a3_idx = fir.array_coor %a3(%dims) %i
             : (!arr_d1, !fir.shape<1>, index) -> !fir.ref<f32>
 

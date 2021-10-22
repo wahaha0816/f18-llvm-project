@@ -16,9 +16,9 @@ subroutine s(i,j,k,ii,jj,kk,a1,a2,a3,a4,a5,a6,a7)
 
   ! CHECK-LABEL: BeginExternalListOutput
   ! CHECK-DAG: fir.load %arg3 :
-  ! CHECK-DAG: %[[i1:.*]] = subi %{{.*}}, %[[one:c1.*]] :
+  ! CHECK-DAG: %[[i1:.*]] = arith.subi %{{.*}}, %[[one:c1.*]] :
   ! CHECK: fir.load %arg4 :
-  ! CHECK: %[[j1:.*]] = subi %{{.*}}, %[[one]] :
+  ! CHECK: %[[j1:.*]] = arith.subi %{{.*}}, %[[one]] :
   ! CHECK: fir.coordinate_of %arg6, %[[i1]], %[[j1]] :
   ! CHECK-LABEL: EndIoStatement
   print *, a1(ii,jj)
@@ -29,10 +29,10 @@ subroutine s(i,j,k,ii,jj,kk,a1,a2,a3,a4,a5,a6,a7)
   ! CHECK-LABEL: BeginExternalListOutput
   ! CHECK-DAG: fir.load %arg3 :
   ! CHECK-DAG: %[[cc2:.*]] = fir.convert %c2{{.*}} :
-  ! CHECK: %[[i2:.*]] = subi %{{.*}}, %[[cc2]] :
+  ! CHECK: %[[i2:.*]] = arith.subi %{{.*}}, %[[cc2]] :
   ! CHECK-DAG: fir.load %arg4 :
   ! CHECK-DAG: %[[cc3:.*]] = fir.convert %c3{{.*}} :
-  ! CHECK: %[[j2:.*]] = subi %{{.*}}, %[[cc3]] :
+  ! CHECK: %[[j2:.*]] = arith.subi %{{.*}}, %[[cc3]] :
   ! CHECK: fir.coordinate_of %arg8, %[[i2]], %[[j2]] :
   ! CHECK-LABEL: EndIoStatement
   print *, a3(ii,jj)
@@ -41,34 +41,34 @@ subroutine s(i,j,k,ii,jj,kk,a1,a2,a3,a4,a5,a6,a7)
   print *, a4(ii,jj)
   ! CHECK-LABEL: BeginExternalListOutput
   ! CHECK: fir.load %arg5 :
-  ! CHECK: %[[x5:.*]] = subi %{{.*}}, %{{.*}} :
+  ! CHECK: %[[x5:.*]] = arith.subi %{{.*}}, %{{.*}} :
   ! CHECK: fir.coordinate_of %arg10, %[[x5]] :
   ! CHECK-LABEL: EndIoStatement
   print *, a5(kk)
   ! CHECK-LABEL: BeginExternalListOutput
   ! CHECK: %[[a6:.*]] = fir.convert %arg11 : {{.*}} -> !fir.ref<!fir.array<?xi32>>
   ! CHECK: fir.load %arg3 :
-  ! CHECK-DAG: %[[x6:.*]] = subi %{{.*}}, %{{.*}} :
+  ! CHECK-DAG: %[[x6:.*]] = arith.subi %{{.*}}, %{{.*}} :
   ! CHECK-DAG: fir.load %arg4 :
-  ! CHECK: %[[y6:.*]] = subi %{{.*}}, %{{.*}} :
-  ! CHECK: %[[z6:.*]] = muli %{{.}}, %[[y6]] :
-  ! CHECK: %[[w6:.*]] = addi %[[z6]], %[[x6]] :
+  ! CHECK: %[[y6:.*]] = arith.subi %{{.*}}, %{{.*}} :
+  ! CHECK: %[[z6:.*]] = arith.muli %{{.}}, %[[y6]] :
+  ! CHECK: %[[w6:.*]] = arith.addi %[[z6]], %[[x6]] :
   ! CHECK: fir.coordinate_of %[[a6]], %[[w6]] :
   ! CHECK-LABEL: EndIoStatement
   print *, a6(ii, jj)
   ! CHECK-LABEL: BeginExternalListOutput
   ! CHECK: %[[a7:.*]] = fir.convert %arg12 : {{.*}} -> !fir.ref<!fir.array<?xf32>>
   ! CHECK: fir.load %arg5 :
-  ! CHECK-DAG: %[[x7:.*]] = subi %{{.*}}, %{{.*}} :
+  ! CHECK-DAG: %[[x7:.*]] = arith.subi %{{.*}}, %{{.*}} :
   ! CHECK-DAG: fir.load %arg4 :
-  ! CHECK: %[[y7:.*]] = subi %{{.*}}, %{{.*}} :
-  ! CHECK: %[[z7:.*]] = muli %[[u7:.*]], %[[y7]] :
-  ! CHECK: %[[w7:.*]] = addi %[[z7]], %[[x7]] :
-  ! CHECK-DAG: %[[v7:.*]] = muli %[[u7]], %{{.*}} :
+  ! CHECK: %[[y7:.*]] = arith.subi %{{.*}}, %{{.*}} :
+  ! CHECK: %[[z7:.*]] = arith.muli %[[u7:.*]], %[[y7]] :
+  ! CHECK: %[[w7:.*]] = arith.addi %[[z7]], %[[x7]] :
+  ! CHECK-DAG: %[[v7:.*]] = arith.muli %[[u7]], %{{.*}} :
   ! CHECK-DAG: fir.load %arg3 :
-  ! CHECK: %[[r7:.*]] = subi %{{.*}}, %{{.*}} :
-  ! CHECK: %[[s7:.*]] = muli %[[v7]], %[[r7]] :
-  ! CHECK: %[[t7:.*]] = addi %[[s7]], %[[w7]] :
+  ! CHECK: %[[r7:.*]] = arith.subi %{{.*}}, %{{.*}} :
+  ! CHECK: %[[s7:.*]] = arith.muli %[[v7]], %[[r7]] :
+  ! CHECK: %[[t7:.*]] = arith.addi %[[s7]], %[[w7]] :
   ! CHECK: fir.coordinate_of %[[a7]], %[[t7]] :
   ! CHECK-LABEL: EndIoStatement
   print *, a7(kk, jj, ii)
@@ -76,9 +76,9 @@ subroutine s(i,j,k,ii,jj,kk,a1,a2,a3,a4,a5,a6,a7)
 end subroutine s
 
 ! CHECK-LABEL: fir.global @_QBblock
-! CHECK: %[[VAL_1:.*]] = constant 1.000000e+00 : f32
-! CHECK: %[[VAL_2:.*]] = constant 2.400000e+00 : f32
-! CHECK: %[[VAL_3:.*]] = constant 0.000000e+00 : f32
+! CHECK: %[[VAL_1:.*]] = arith.constant 1.000000e+00 : f32
+! CHECK: %[[VAL_2:.*]] = arith.constant 2.400000e+00 : f32
+! CHECK: %[[VAL_3:.*]] = arith.constant 0.000000e+00 : f32
 ! CHECK: %[[VAL_4:.*]] = fir.undefined tuple<!fir.array<5x5xf32>>
 ! CHECK: %[[VAL_5:.*]] = fir.undefined !fir.array<5x5xf32>
 ! CHECK: %[[VAL_6:.*]] = fir.insert_on_range %[[VAL_5]], %[[VAL_1]], [0 : index, 1 : index, 0 : index, 0 : index] : (!fir.array<5x5xf32>, f32) -> !fir.array<5x5xf32>
@@ -110,25 +110,25 @@ end subroutine range
 
 ! a0 array constructor
 ! CHECK: fir.global internal @_QQro.10xi4.{{.*}} constant : !fir.array<10xi32> {
-  ! CHECK-DAG: %[[c1_i32:.*]] = constant 1 : i32
-  ! CHECK-DAG: %[[c2_i32:.*]] = constant 2 : i32
-  ! CHECK-DAG: %[[c3_i32:.*]] = constant 3 : i32
+  ! CHECK-DAG: %[[c1_i32:.*]] = arith.constant 1 : i32
+  ! CHECK-DAG: %[[c2_i32:.*]] = arith.constant 2 : i32
+  ! CHECK-DAG: %[[c3_i32:.*]] = arith.constant 3 : i32
   ! CHECK: %[[r1:.*]] = fir.insert_value %{{.*}}, %{{.*}}, [0 : index] :
   ! CHECK: %[[r2:.*]] = fir.insert_value %[[r1]], %{{.*}}, [1 : index] :
   ! CHECK: %[[r3:.*]] = fir.insert_on_range %[[r2]], %[[c3_i32]], [2 : index, 9 : index] :
 
 ! a1 array constructor
 ! CHECK: fir.global internal @_QQro.2x3xr4.{{.*}} constant : !fir.array<2x3xf32> {
-  ! CHECK-DAG: %cst = constant {{.*}} : f32
+  ! CHECK-DAG: %cst = arith.constant {{.*}} : f32
   ! CHECK: %{{.*}} = fir.insert_on_range %{{[0-9]+}}, %cst, [0 : index, 1 : index, 0 : index, 2 : index] :
 
 ! a2 array constructor
 ! CHECK: fir.global internal @_QQro.3x4xi4.{{.*}} constant : !fir.array<3x4xi32> {
-  ! CHECK-DAG: %[[c1_i32:.*]] = constant 1 : i32
-  ! CHECK-DAG: %[[c3_i32:.*]] = constant 3 : i32
-  ! CHECK-DAG: %[[c5_i32:.*]] = constant 5 : i32
-  ! CHECK-DAG: %[[c8_i32:.*]] = constant 8 : i32
-  ! CHECK-DAG: %[[c9_i32:.*]] = constant 9 : i32
+  ! CHECK-DAG: %[[c1_i32:.*]] = arith.constant 1 : i32
+  ! CHECK-DAG: %[[c3_i32:.*]] = arith.constant 3 : i32
+  ! CHECK-DAG: %[[c5_i32:.*]] = arith.constant 5 : i32
+  ! CHECK-DAG: %[[c8_i32:.*]] = arith.constant 8 : i32
+  ! CHECK-DAG: %[[c9_i32:.*]] = arith.constant 9 : i32
   ! CHECK: %[[r1:.*]] = fir.insert_value %{{.*}}, %{{.*}}, [0 : index, 0 : index] :
   ! CHECK: %[[r2:.*]] = fir.insert_on_range %[[r1]], %[[c3_i32]], [1 : index, 2 : index, 0 : index, 0 : index] :
   ! CHECK: %[[r3:.*]] = fir.insert_value %[[r2]], %{{.*}}, [0 : index, 1 : index] :
@@ -138,9 +138,9 @@ end subroutine range
 
 ! CHECK-LABEL rangeGlobal
 subroutine rangeGlobal()
-  ! CHECK-DAG: %[[c1_i32:.*]] = constant 1 : i32
-  ! CHECK-DAG: %[[c2_i32:.*]] = constant 2 : i32
-  ! CHECK-DAG: %[[c3_i32:.*]] = constant 3 : i32
+  ! CHECK-DAG: %[[c1_i32:.*]] = arith.constant 1 : i32
+  ! CHECK-DAG: %[[c2_i32:.*]] = arith.constant 2 : i32
+  ! CHECK-DAG: %[[c3_i32:.*]] = arith.constant 3 : i32
   ! CHECK: %{{.*}} = fir.insert_on_range %{{.*}}, %[[c1_i32]], [0 : index, 1 : index] :
   ! CHECK: %{{.*}} = fir.insert_on_range %{{.*}}, %[[c2_i32]], [2 : index, 3 : index] :
   ! CHECK: %{{.*}} = fir.insert_on_range %{{.*}}, %[[c3_i32]], [4 : index, 5 : index] :

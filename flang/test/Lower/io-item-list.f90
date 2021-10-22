@@ -17,8 +17,8 @@ subroutine pass_assumed_len_char_array(carray)
   character(*) :: carray(2, 3)
   ! CHECK-DAG: %[[unboxed:.*]]:2 = fir.unboxchar %arg0 : (!fir.boxchar<1>) -> (!fir.ref<!fir.char<1,?>>, index)
   ! CHECK-DAG: %[[buffer:.*]] = fir.convert %[[unboxed]]#0 : (!fir.ref<!fir.char<1,?>>) -> !fir.ref<!fir.array<2x3x!fir.char<1,?>>>
-  ! CHECK-DAG: %[[c2:.*]] = constant 2 : index
-  ! CHECK-DAG: %[[c3:.*]] = constant 3 : index
+  ! CHECK-DAG: %[[c2:.*]] = arith.constant 2 : index
+  ! CHECK-DAG: %[[c3:.*]] = arith.constant 3 : index
   ! CHECK-DAG: %[[shape:.*]] = fir.shape %[[c2]], %[[c3]] : (index, index) -> !fir.shape<2>
   ! CHECK: %[[box:.*]] = fir.embox %[[buffer]](%[[shape]]) typeparams %[[unboxed]]#1 : (!fir.ref<!fir.array<2x3x!fir.char<1,?>>>, !fir.shape<2>, index) -> !fir.box<!fir.array<2x3x!fir.char<1,?>>>
   ! CHECK: %[[descriptor:.*]] = fir.convert %[[box]] : (!fir.box<!fir.array<2x3x!fir.char<1,?>>>) -> !fir.box<none>
@@ -62,7 +62,7 @@ subroutine pass_vector_subscript_write(x, j)
   ! CHECK: %[[copy:.*]] = fir.do_loop
   ! CHECK:   %[[jfetch:.*]] = fir.array_fetch %[[jload]], %{{.*}} : (!fir.array<10xi32>, index) -> i32
   ! CHECK:   %[[jcast:.*]] = fir.convert %[[jfetch]] : (i32) -> index
-  ! CHECK:   %[[jindex:.*]] = subi %[[jcast]], %c1{{.*}} : index
+  ! CHECK:   %[[jindex:.*]] = arith.subi %[[jcast]], %c1{{.*}} : index
   ! CHECK:   %[[xfetch:.*]] = fir.array_fetch %[[xload]], %[[jindex]] : (!fir.array<100xf32>, index) -> f32
   ! CHECK:   %[[update:.*]] = fir.array_update %{{.*}}, %[[xfetch]], %{{.*}} : (!fir.array<10xf32>, f32, index) -> !fir.array<10xf32>
   ! CHECK:   fir.result %[[update]] : !fir.array<10xf32>

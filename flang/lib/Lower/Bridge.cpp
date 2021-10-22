@@ -646,7 +646,7 @@ private:
     stmtCtx.finalize();
     auto cond = builder->createConvert(loc, builder->getI1Type(), condExpr);
     if (negate)
-      cond = builder->create<mlir::XOrOp>(
+      cond = builder->create<mlir::arith::XOrIOp>(
           loc, cond, builder->createIntegerConstant(loc, cond.getType(), 1));
     return cond;
   }
@@ -743,18 +743,18 @@ private:
     // Arithmetic expression has Real type.  Generate
     //   sum = expr + expr  [ raise an exception if expr is a NaN ]
     //   if (sum < 0.0) goto L1 else if (sum > 0.0) goto L3 else goto L2
-    auto sum = builder->create<mlir::AddFOp>(loc, expr, expr);
-    auto zero = builder->create<mlir::ConstantOp>(
+    auto sum = builder->create<mlir::arith::AddFOp>(loc, expr, expr);
+    auto zero = builder->create<mlir::arith::ConstantOp>(
         loc, exprType, builder->getFloatAttr(exprType, 0.0));
     auto cond1 =
-        builder->create<mlir::CmpFOp>(loc, mlir::CmpFPredicate::OLT, sum, zero);
+        builder->create<mlir::arith::CmpFOp>(loc, mlir::arith::CmpFPredicate::OLT, sum, zero);
     auto *elseIfBlock =
         builder->getBlock()->splitBlock(builder->getInsertionPoint());
     genFIRConditionalBranch(cond1, blockOfLabel(eval, std::get<1>(stmt.t)),
                             elseIfBlock);
     startBlock(elseIfBlock);
     auto cond2 =
-        builder->create<mlir::CmpFOp>(loc, mlir::CmpFPredicate::OGT, sum, zero);
+        builder->create<mlir::arith::CmpFOp>(loc, mlir::arith::CmpFPredicate::OGT, sum, zero);
     genFIRConditionalBranch(cond2, blockOfLabel(eval, std::get<3>(stmt.t)),
                             blockOfLabel(eval, std::get<2>(stmt.t)));
   }
@@ -1005,20 +1005,20 @@ private:
       // Unstructured loop preheader - initialize tripVariable and loopVariable.
       mlir::Value tripCount;
       if (info.hasRealControl) {
-        auto diff1 = builder->create<mlir::SubFOp>(loc, upperValue, lowerValue);
-        auto diff2 = builder->create<mlir::AddFOp>(loc, diff1, info.stepValue);
-        tripCount = builder->create<mlir::DivFOp>(loc, diff2, info.stepValue);
+        auto diff1 = builder->create<mlir::arith::SubFOp>(loc, upperValue, lowerValue);
+        auto diff2 = builder->create<mlir::arith::AddFOp>(loc, diff1, info.stepValue);
+        tripCount = builder->create<mlir::arith::DivFOp>(loc, diff2, info.stepValue);
         controlType = builder->getIndexType();
         tripCount = builder->createConvert(loc, controlType, tripCount);
       } else {
-        auto diff1 = builder->create<mlir::SubIOp>(loc, upperValue, lowerValue);
-        auto diff2 = builder->create<mlir::AddIOp>(loc, diff1, info.stepValue);
+        auto diff1 = builder->create<mlir::arith::SubIOp>(loc, upperValue, lowerValue);
+        auto diff2 = builder->create<mlir::arith::AddIOp>(loc, diff1, info.stepValue);
         tripCount =
-            builder->create<mlir::SignedDivIOp>(loc, diff2, info.stepValue);
+            builder->create<mlir::arith::DivSIOp>(loc, diff2, info.stepValue);
       }
       if (forceLoopToExecuteOnce) { // minimum tripCount is 1
         auto one = builder->createIntegerConstant(loc, controlType, 1);
-        auto cond = builder->create<mlir::CmpIOp>(loc, CmpIPredicate::slt,
+        auto cond = builder->create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::slt,
                                                   tripCount, one);
         tripCount = builder->create<mlir::SelectOp>(loc, cond, one, tripCount);
       }
@@ -1031,7 +1031,7 @@ private:
       startBlock(info.headerBlock);
       tripCount = builder->create<fir::LoadOp>(loc, info.tripVariable);
       auto zero = builder->createIntegerConstant(loc, controlType, 0);
-      auto cond = builder->create<mlir::CmpIOp>(loc, mlir::CmpIPredicate::sgt,
+      auto cond = builder->create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::sgt,
                                                 tripCount, zero);
       if (info.maskExpr) {
         genFIRConditionalBranch(cond, info.maskBlock, info.exitBlock);
@@ -1068,7 +1068,7 @@ private:
         // End fir.do_loop.
         if (!info.isUnordered) {
           builder->setInsertionPointToEnd(info.doLoop.getBody());
-          mlir::Value result = builder->create<mlir::AddIOp>(
+          mlir::Value result = builder->create<mlir::arith::AddIOp>(
               loc, info.doLoop.getInductionVar(), info.doLoop.step());
           builder->create<fir::ResultOp>(loc, result);
         }
@@ -1088,13 +1088,13 @@ private:
       auto tripVarType = info.hasRealControl ? builder->getIndexType()
                                              : genType(info.loopVariableSym);
       auto one = builder->createIntegerConstant(loc, tripVarType, 1);
-      tripCount = builder->create<mlir::SubIOp>(loc, tripCount, one);
+      tripCount = builder->create<mlir::arith::SubIOp>(loc, tripCount, one);
       builder->create<fir::StoreOp>(loc, tripCount, info.tripVariable);
       mlir::Value value = builder->create<fir::LoadOp>(loc, info.loopVariable);
       if (info.hasRealControl)
-        value = builder->create<mlir::AddFOp>(loc, value, info.stepValue);
+        value = builder->create<mlir::arith::AddFOp>(loc, value, info.stepValue);
       else
-        value = builder->create<mlir::AddIOp>(loc, value, info.stepValue);
+        value = builder->create<mlir::arith::AddIOp>(loc, value, info.stepValue);
       builder->create<fir::StoreOp>(loc, value, info.loopVariable);
 
       genFIRBranch(info.headerBlock);
@@ -1527,9 +1527,9 @@ private:
         break;
       }
       auto genCond = [&](mlir::Value rhs,
-                         mlir::CmpIPredicate pred) -> mlir::Value {
+                         mlir::arith::CmpIPredicate pred) -> mlir::Value {
         if (!isCharSelector)
-          return builder->create<mlir::CmpIOp>(loc, pred, selector, rhs);
+          return builder->create<mlir::arith::CmpIOp>(loc, pred, selector, rhs);
         fir::factory::CharacterExprHelper charHelper{*builder, loc};
         auto [lhsAddr, lhsLen] = charHelper.createUnboxChar(selector);
         auto [rhsAddr, rhsLen] = charHelper.createUnboxChar(rhs);
@@ -1539,22 +1539,22 @@ private:
       auto *newBlock = insertBlock(*caseBlock);
       if (attr.isa<fir::ClosedIntervalAttr>()) {
         auto *newBlock2 = insertBlock(*caseBlock);
-        auto cond = genCond(*caseValue++, mlir::CmpIPredicate::sge);
+        auto cond = genCond(*caseValue++, mlir::arith::CmpIPredicate::sge);
         genFIRConditionalBranch(cond, newBlock, newBlock2);
         builder->setInsertionPointToEnd(newBlock);
-        auto cond2 = genCond(*caseValue++, mlir::CmpIPredicate::sle);
+        auto cond2 = genCond(*caseValue++, mlir::arith::CmpIPredicate::sle);
         genFIRConditionalBranch(cond2, *caseBlock++, newBlock2);
         builder->setInsertionPointToEnd(newBlock2);
         continue;
       }
-      mlir::CmpIPredicate pred;
+      mlir::arith::CmpIPredicate pred;
       if (attr.isa<fir::PointIntervalAttr>()) {
-        pred = mlir::CmpIPredicate::eq;
+        pred = mlir::arith::CmpIPredicate::eq;
       } else if (attr.isa<fir::LowerBoundAttr>()) {
-        pred = mlir::CmpIPredicate::sge;
+        pred = mlir::arith::CmpIPredicate::sge;
       } else {
         assert(attr.isa<fir::UpperBoundAttr>() && "unexpected predicate");
-        pred = mlir::CmpIPredicate::sle;
+        pred = mlir::arith::CmpIPredicate::sle;
       }
       auto cond = genCond(*caseValue++, pred);
       genFIRConditionalBranch(cond, *caseBlock++, newBlock);

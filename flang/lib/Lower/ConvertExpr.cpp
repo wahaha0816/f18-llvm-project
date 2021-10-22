@@ -147,21 +147,21 @@ enum class ConstituentSemantics {
 
 /// Convert parser's INTEGER relational operators to MLIR.  TODO: using
 /// unordered, but we may want to cons ordered in certain situation.
-static mlir::CmpIPredicate
+static mlir::arith::CmpIPredicate
 translateRelational(Fortran::common::RelationalOperator rop) {
   switch (rop) {
   case Fortran::common::RelationalOperator::LT:
-    return mlir::CmpIPredicate::slt;
+    return mlir::arith::CmpIPredicate::slt;
   case Fortran::common::RelationalOperator::LE:
-    return mlir::CmpIPredicate::sle;
+    return mlir::arith::CmpIPredicate::sle;
   case Fortran::common::RelationalOperator::EQ:
-    return mlir::CmpIPredicate::eq;
+    return mlir::arith::CmpIPredicate::eq;
   case Fortran::common::RelationalOperator::NE:
-    return mlir::CmpIPredicate::ne;
+    return mlir::arith::CmpIPredicate::ne;
   case Fortran::common::RelationalOperator::GT:
-    return mlir::CmpIPredicate::sgt;
+    return mlir::arith::CmpIPredicate::sgt;
   case Fortran::common::RelationalOperator::GE:
-    return mlir::CmpIPredicate::sge;
+    return mlir::arith::CmpIPredicate::sge;
   }
   llvm_unreachable("unhandled INTEGER relational operator");
 }
@@ -174,21 +174,21 @@ translateRelational(Fortran::common::RelationalOperator rop) {
 /// FIXME: The signaling/quiet aspect of the table 17.1 requirement is not
 /// fully enforced. FIR and LLVM `fcmp` instructions do not give any guarantee
 /// whether the comparison will signal or not in case of quiet NaN argument.
-static mlir::CmpFPredicate
+static mlir::arith::CmpFPredicate
 translateFloatRelational(Fortran::common::RelationalOperator rop) {
   switch (rop) {
   case Fortran::common::RelationalOperator::LT:
-    return mlir::CmpFPredicate::OLT;
+    return mlir::arith::CmpFPredicate::OLT;
   case Fortran::common::RelationalOperator::LE:
-    return mlir::CmpFPredicate::OLE;
+    return mlir::arith::CmpFPredicate::OLE;
   case Fortran::common::RelationalOperator::EQ:
-    return mlir::CmpFPredicate::OEQ;
+    return mlir::arith::CmpFPredicate::OEQ;
   case Fortran::common::RelationalOperator::NE:
-    return mlir::CmpFPredicate::UNE;
+    return mlir::arith::CmpFPredicate::UNE;
   case Fortran::common::RelationalOperator::GT:
-    return mlir::CmpFPredicate::OGT;
+    return mlir::arith::CmpFPredicate::OGT;
   case Fortran::common::RelationalOperator::GE:
-    return mlir::CmpFPredicate::OGE;
+    return mlir::arith::CmpFPredicate::OGE;
   }
   llvm_unreachable("unhandled REAL relational operator");
 }
@@ -424,7 +424,7 @@ public:
   }
 
   template <typename OpTy>
-  mlir::Value createCompareOp(mlir::CmpIPredicate pred, const ExtValue &left,
+  mlir::Value createCompareOp(mlir::arith::CmpIPredicate pred, const ExtValue &left,
                               const ExtValue &right) {
     if (auto *lhs = left.getUnboxed())
       if (auto *rhs = right.getUnboxed())
@@ -432,13 +432,13 @@ public:
     fir::emitFatalError(getLoc(), "array compare should be handled in genarr");
   }
   template <typename OpTy, typename A>
-  mlir::Value createCompareOp(const A &ex, mlir::CmpIPredicate pred) {
+  mlir::Value createCompareOp(const A &ex, mlir::arith::CmpIPredicate pred) {
     auto left = genval(ex.left());
     return createCompareOp<OpTy>(pred, left, genval(ex.right()));
   }
 
   template <typename OpTy>
-  mlir::Value createFltCmpOp(mlir::CmpFPredicate pred, const ExtValue &left,
+  mlir::Value createFltCmpOp(mlir::arith::CmpFPredicate pred, const ExtValue &left,
                              const ExtValue &right) {
     if (auto *lhs = left.getUnboxed())
       if (auto *rhs = right.getUnboxed())
@@ -446,20 +446,20 @@ public:
     fir::emitFatalError(getLoc(), "array compare should be handled in genarr");
   }
   template <typename OpTy, typename A>
-  mlir::Value createFltCmpOp(const A &ex, mlir::CmpFPredicate pred) {
+  mlir::Value createFltCmpOp(const A &ex, mlir::arith::CmpFPredicate pred) {
     auto left = genval(ex.left());
     return createFltCmpOp<OpTy>(pred, left, genval(ex.right()));
   }
 
   /// Create a call to the runtime to compare two CHARACTER values.
   /// Precondition: This assumes that the two values have `fir.boxchar` type.
-  mlir::Value createCharCompare(mlir::CmpIPredicate pred, const ExtValue &left,
+  mlir::Value createCharCompare(mlir::arith::CmpIPredicate pred, const ExtValue &left,
                                 const ExtValue &right) {
     return fir::runtime::genCharCompare(builder, getLoc(), pred, left, right);
   }
 
   template <typename A>
-  mlir::Value createCharCompare(const A &ex, mlir::CmpIPredicate pred) {
+  mlir::Value createCharCompare(const A &ex, mlir::arith::CmpIPredicate pred) {
     auto left = genval(ex.left());
     return createCharCompare(pred, left, genval(ex.right()));
   }
@@ -765,12 +765,12 @@ public:
     auto input = genunbox(op.left());
     // Like LLVM, integer negation is the binary op "0 - value"
     auto zero = genIntegerConstant<KIND>(builder.getContext(), 0);
-    return builder.create<mlir::SubIOp>(getLoc(), zero, input);
+    return builder.create<mlir::arith::SubIOp>(getLoc(), zero, input);
   }
   template <int KIND>
   ExtValue genval(const Fortran::evaluate::Negate<Fortran::evaluate::Type<
                       Fortran::common::TypeCategory::Real, KIND>> &op) {
-    return builder.create<mlir::NegFOp>(getLoc(), genunbox(op.left()));
+    return builder.create<mlir::arith::NegFOp>(getLoc(), genunbox(op.left()));
   }
   template <int KIND>
   ExtValue genval(const Fortran::evaluate::Negate<Fortran::evaluate::Type<
@@ -801,17 +801,17 @@ public:
     return createBinaryOp<GenBinFirOp>(x);                                     \
   }
 
-  GENBIN(Add, Integer, mlir::AddIOp)
-  GENBIN(Add, Real, mlir::AddFOp)
+  GENBIN(Add, Integer, mlir::arith::AddIOp)
+  GENBIN(Add, Real, mlir::arith::AddFOp)
   GENBIN(Add, Complex, fir::AddcOp)
-  GENBIN(Subtract, Integer, mlir::SubIOp)
-  GENBIN(Subtract, Real, mlir::SubFOp)
+  GENBIN(Subtract, Integer, mlir::arith::SubIOp)
+  GENBIN(Subtract, Real, mlir::arith::SubFOp)
   GENBIN(Subtract, Complex, fir::SubcOp)
-  GENBIN(Multiply, Integer, mlir::MulIOp)
-  GENBIN(Multiply, Real, mlir::MulFOp)
+  GENBIN(Multiply, Integer, mlir::arith::MulIOp)
+  GENBIN(Multiply, Real, mlir::arith::MulFOp)
   GENBIN(Multiply, Complex, fir::MulcOp)
-  GENBIN(Divide, Integer, mlir::SignedDivIOp)
-  GENBIN(Divide, Real, mlir::DivFOp)
+  GENBIN(Divide, Integer, mlir::arith::DivSIOp)
+  GENBIN(Divide, Real, mlir::arith::DivFOp)
   GENBIN(Divide, Complex, fir::DivcOp)
 
   template <Fortran::common::TypeCategory TC, int KIND>
@@ -879,12 +879,12 @@ public:
   template <int KIND>
   ExtValue genval(const Fortran::evaluate::Relational<Fortran::evaluate::Type<
                       Fortran::common::TypeCategory::Integer, KIND>> &op) {
-    return createCompareOp<mlir::CmpIOp>(op, translateRelational(op.opr));
+    return createCompareOp<mlir::arith::CmpIOp>(op, translateRelational(op.opr));
   }
   template <int KIND>
   ExtValue genval(const Fortran::evaluate::Relational<Fortran::evaluate::Type<
                       Fortran::common::TypeCategory::Real, KIND>> &op) {
-    return createFltCmpOp<mlir::CmpFOp>(op, translateFloatRelational(op.opr));
+    return createFltCmpOp<mlir::arith::CmpFOp>(op, translateFloatRelational(op.opr));
   }
   template <int KIND>
   ExtValue genval(const Fortran::evaluate::Relational<Fortran::evaluate::Type<
@@ -926,7 +926,7 @@ public:
     auto logical = genunbox(op.left());
     auto one = genBoolConstant(true);
     auto val = builder.createConvert(getLoc(), builder.getI1Type(), logical);
-    return builder.create<mlir::XOrOp>(getLoc(), val, one);
+    return builder.create<mlir::arith::XOrIOp>(getLoc(), val, one);
   }
 
   template <int KIND>
@@ -938,13 +938,13 @@ public:
     auto rhs = builder.createConvert(getLoc(), i1Type, srhs);
     switch (op.logicalOperator) {
     case Fortran::evaluate::LogicalOperator::And:
-      return createBinaryOp<mlir::AndOp>(lhs, rhs);
+      return createBinaryOp<mlir::arith::AndIOp>(lhs, rhs);
     case Fortran::evaluate::LogicalOperator::Or:
-      return createBinaryOp<mlir::OrOp>(lhs, rhs);
+      return createBinaryOp<mlir::arith::OrIOp>(lhs, rhs);
     case Fortran::evaluate::LogicalOperator::Eqv:
-      return createCompareOp<mlir::CmpIOp>(mlir::CmpIPredicate::eq, lhs, rhs);
+      return createCompareOp<mlir::arith::CmpIOp>(mlir::arith::CmpIPredicate::eq, lhs, rhs);
     case Fortran::evaluate::LogicalOperator::Neqv:
-      return createCompareOp<mlir::CmpIOp>(mlir::CmpIPredicate::ne, lhs, rhs);
+      return createCompareOp<mlir::arith::CmpIOp>(mlir::arith::CmpIPredicate::ne, lhs, rhs);
     case Fortran::evaluate::LogicalOperator::Not:
       // lib/evaluate expression for .NOT. is Fortran::evaluate::Not<KIND>.
       llvm_unreachable(".NOT. is not a binary operator");
@@ -1417,7 +1417,7 @@ public:
       auto val = fir::getBase(subVal);
       auto ty = val.getType();
       auto lb = getLBound(array, subsc.index(), ty);
-      args.push_back(builder.create<mlir::SubIOp>(loc, ty, val, lb));
+      args.push_back(builder.create<mlir::arith::SubIOp>(loc, ty, val, lb));
     }
 
     auto base = fir::getBase(array);
@@ -1461,11 +1461,11 @@ public:
         assert(fir::isUnboxedValue(subVal));
         auto val = builder.createConvert(loc, idxTy, fir::getBase(subVal));
         auto lb = builder.createConvert(loc, idxTy, getLB(arr, dim));
-        auto diff = builder.create<mlir::SubIOp>(loc, val, lb);
-        auto prod = builder.create<mlir::MulIOp>(loc, delta, diff);
-        total = builder.create<mlir::AddIOp>(loc, prod, total);
+        auto diff = builder.create<mlir::arith::SubIOp>(loc, val, lb);
+        auto prod = builder.create<mlir::arith::MulIOp>(loc, delta, diff);
+        total = builder.create<mlir::arith::AddIOp>(loc, prod, total);
         if (ext)
-          delta = builder.create<mlir::MulIOp>(loc, delta, ext);
+          delta = builder.create<mlir::arith::MulIOp>(loc, delta, ext);
         ++dim;
       }
       auto origRefTy = refTy;
@@ -2924,7 +2924,7 @@ private:
     auto exv = gen(x.left());
     auto ty = converter.genType(Fortran::common::TypeCategory::Integer, KIND);
     auto zero = builder.createIntegerConstant(loc, ty, 0);
-    return builder.create<mlir::SubIOp>(loc, zero, fir::getBase(exv));
+    return builder.create<mlir::arith::SubIOp>(loc, zero, fir::getBase(exv));
   }
   template <typename OP, typename A>
   ExtValue genNegate(const A &x) {
@@ -2935,7 +2935,7 @@ private:
   ExtValue
   gen(const Fortran::evaluate::Negate<
       Fortran::evaluate::Type<Fortran::common::TypeCategory::Real, KIND>> &x) {
-    return genNegate<mlir::NegFOp>(x);
+    return genNegate<mlir::arith::NegFOp>(x);
   }
   template <int KIND>
   ExtValue gen(const Fortran::evaluate::Negate<Fortran::evaluate::Type<
@@ -2957,17 +2957,17 @@ private:
                    Fortran::common::TypeCategory::GenBinTyCat, KIND>> &x) {    \
     return createBinaryOp<GenBinFirOp>(x);                                     \
   }
-  GENBIN(Add, Integer, mlir::AddIOp)
-  GENBIN(Add, Real, mlir::AddFOp)
+  GENBIN(Add, Integer, mlir::arith::AddIOp)
+  GENBIN(Add, Real, mlir::arith::AddFOp)
   GENBIN(Add, Complex, fir::AddcOp)
-  GENBIN(Subtract, Integer, mlir::SubIOp)
-  GENBIN(Subtract, Real, mlir::SubFOp)
+  GENBIN(Subtract, Integer, mlir::arith::SubIOp)
+  GENBIN(Subtract, Real, mlir::arith::SubFOp)
   GENBIN(Subtract, Complex, fir::SubcOp)
-  GENBIN(Multiply, Integer, mlir::MulIOp)
-  GENBIN(Multiply, Real, mlir::MulFOp)
+  GENBIN(Multiply, Integer, mlir::arith::MulIOp)
+  GENBIN(Multiply, Real, mlir::arith::MulFOp)
   GENBIN(Multiply, Complex, fir::MulcOp)
-  GENBIN(Divide, Integer, mlir::SignedDivIOp)
-  GENBIN(Divide, Real, mlir::DivFOp)
+  GENBIN(Divide, Integer, mlir::arith::DivSIOp)
+  GENBIN(Divide, Real, mlir::arith::DivFOp)
   GENBIN(Divide, Complex, fir::DivcOp)
 
   template <Fortran::common::TypeCategory TC, int KIND>
@@ -3089,7 +3089,7 @@ private:
     auto logical = gen(x.left());
     auto truth = builder.createBool(loc, true);
     auto val = builder.createConvert(loc, i1Ty, fir::getBase(logical));
-    return builder.create<mlir::XOrOp>(loc, val, truth);
+    return builder.create<mlir::arith::XOrIOp>(loc, val, truth);
   }
 
   template <typename OP, typename A>
@@ -3103,7 +3103,7 @@ private:
     return builder.create<OP>(loc, lhs, rhs);
   }
   template <typename OP, typename A>
-  ExtValue createCompareBoolOp(mlir::CmpIPredicate pred, const A &x) {
+  ExtValue createCompareBoolOp(mlir::arith::CmpIPredicate pred, const A &x) {
     auto loc = getLoc();
     auto i1Ty = builder.getI1Type();
     auto left = gen(x.left());
@@ -3116,13 +3116,13 @@ private:
   ExtValue gen(const Fortran::evaluate::LogicalOperation<KIND> &x) {
     switch (x.logicalOperator) {
     case Fortran::evaluate::LogicalOperator::And:
-      return createBinaryBoolOp<mlir::AndOp>(x);
+      return createBinaryBoolOp<mlir::arith::AndIOp>(x);
     case Fortran::evaluate::LogicalOperator::Or:
-      return createBinaryBoolOp<mlir::OrOp>(x);
+      return createBinaryBoolOp<mlir::arith::OrIOp>(x);
     case Fortran::evaluate::LogicalOperator::Eqv:
-      return createCompareBoolOp<mlir::CmpIOp>(mlir::CmpIPredicate::eq, x);
+      return createCompareBoolOp<mlir::arith::CmpIOp>(mlir::arith::CmpIPredicate::eq, x);
     case Fortran::evaluate::LogicalOperator::Neqv:
-      return createCompareBoolOp<mlir::CmpIOp>(mlir::CmpIPredicate::ne, x);
+      return createCompareBoolOp<mlir::arith::CmpIOp>(mlir::arith::CmpIPredicate::ne, x);
     case Fortran::evaluate::LogicalOperator::Not:
       llvm_unreachable(".NOT. handled elsewhere");
     }
@@ -3137,7 +3137,7 @@ private:
     return builder.create<OP>(loc, pred, fir::getBase(lhs), fir::getBase(rhs));
   }
   template <typename A>
-  ExtValue createCompareCharOp(mlir::CmpIPredicate pred, const A &x) {
+  ExtValue createCompareCharOp(mlir::arith::CmpIPredicate pred, const A &x) {
     auto loc = getLoc();
     auto lhs = gen(x.left());
     auto rhs = gen(x.right());
@@ -3146,7 +3146,7 @@ private:
   template <int KIND>
   ExtValue gen(const Fortran::evaluate::Relational<Fortran::evaluate::Type<
                    Fortran::common::TypeCategory::Integer, KIND>> &x) {
-    return createCompareOp<mlir::CmpIOp>(translateRelational(x.opr), x);
+    return createCompareOp<mlir::arith::CmpIOp>(translateRelational(x.opr), x);
   }
   template <int KIND>
   ExtValue gen(const Fortran::evaluate::Relational<Fortran::evaluate::Type<
@@ -3157,7 +3157,7 @@ private:
   ExtValue
   gen(const Fortran::evaluate::Relational<
       Fortran::evaluate::Type<Fortran::common::TypeCategory::Real, KIND>> &x) {
-    return createCompareOp<mlir::CmpFOp>(translateFloatRelational(x.opr), x);
+    return createCompareOp<mlir::arith::CmpFOp>(translateFloatRelational(x.opr), x);
   }
   template <int KIND>
   ExtValue gen(const Fortran::evaluate::Relational<Fortran::evaluate::Type<
@@ -4044,11 +4044,11 @@ public:
       // Compute the dynamic position into the header.
       llvm::SmallVector<mlir::Value> offsets;
       for (auto doLoop : loopStack[i]) {
-        auto m = builder.create<mlir::SubIOp>(loc, doLoop.getInductionVar(),
+        auto m = builder.create<mlir::arith::SubIOp>(loc, doLoop.getInductionVar(),
                                               doLoop.lowerBound());
-        auto n = builder.create<mlir::SignedDivIOp>(loc, m, doLoop.step());
+        auto n = builder.create<mlir::arith::DivSIOp>(loc, m, doLoop.step());
         auto one = builder.createIntegerConstant(loc, n.getType(), 1);
-        offsets.push_back(builder.create<mlir::AddIOp>(loc, n, one));
+        offsets.push_back(builder.create<mlir::arith::AddIOp>(loc, n, one));
       }
       auto i32Ty = builder.getIntegerType(32);
       auto uno = builder.createIntegerConstant(loc, i32Ty, 1);
@@ -4163,7 +4163,7 @@ public:
     // Convert any implied shape to closed interval form. The fir.do_loop will
     // run from 0 to `extent - 1` inclusive.
     for (auto extent : shape)
-      loopUppers.push_back(builder.create<mlir::SubIOp>(loc, extent, one));
+      loopUppers.push_back(builder.create<mlir::arith::SubIOp>(loc, extent, one));
 
     // Iteration space is created with outermost columns, innermost rows
     llvm::SmallVector<fir::DoLoopOp> loops;
@@ -4744,7 +4744,7 @@ public:
       auto val = fir::getBase(f(iters));
       auto ty = converter.genType(Fortran::common::TypeCategory::Integer, KIND);
       auto zero = builder.createIntegerConstant(loc, ty, 0);
-      return builder.create<mlir::SubIOp>(loc, zero, val);
+      return builder.create<mlir::arith::SubIOp>(loc, zero, val);
     };
   }
   template <int KIND>
@@ -4753,7 +4753,7 @@ public:
     auto loc = getLoc();
     auto f = genarr(x.left());
     return [=](IterSpace iters) -> ExtValue {
-      return builder.create<mlir::NegFOp>(loc, fir::getBase(f(iters)));
+      return builder.create<mlir::arith::NegFOp>(loc, fir::getBase(f(iters)));
     };
   }
   template <int KIND>
@@ -4790,17 +4790,17 @@ public:
     return createBinaryOp<GenBinFirOp>(x);                                     \
   }
 
-  GENBIN(Add, Integer, mlir::AddIOp)
-  GENBIN(Add, Real, mlir::AddFOp)
+  GENBIN(Add, Integer, mlir::arith::AddIOp)
+  GENBIN(Add, Real, mlir::arith::AddFOp)
   GENBIN(Add, Complex, fir::AddcOp)
-  GENBIN(Subtract, Integer, mlir::SubIOp)
-  GENBIN(Subtract, Real, mlir::SubFOp)
+  GENBIN(Subtract, Integer, mlir::arith::SubIOp)
+  GENBIN(Subtract, Real, mlir::arith::SubFOp)
   GENBIN(Subtract, Complex, fir::SubcOp)
-  GENBIN(Multiply, Integer, mlir::MulIOp)
-  GENBIN(Multiply, Real, mlir::MulFOp)
+  GENBIN(Multiply, Integer, mlir::arith::MulIOp)
+  GENBIN(Multiply, Real, mlir::arith::MulFOp)
   GENBIN(Multiply, Complex, fir::MulcOp)
-  GENBIN(Divide, Integer, mlir::SignedDivIOp)
-  GENBIN(Divide, Real, mlir::DivFOp)
+  GENBIN(Divide, Integer, mlir::arith::DivSIOp)
+  GENBIN(Divide, Real, mlir::arith::DivFOp)
   GENBIN(Divide, Complex, fir::DivcOp)
 
   template <Fortran::common::TypeCategory TC, int KIND>
@@ -4992,8 +4992,8 @@ public:
     auto loc = getLoc();
     auto lb = getLBound(x, dim, one);
     auto extent = fir::factory::readExtent(builder, loc, x, dim);
-    auto add = builder.create<mlir::AddIOp>(loc, lb, extent);
-    return builder.create<mlir::SubIOp>(loc, add, one);
+    auto add = builder.create<mlir::arith::AddIOp>(loc, lb, extent);
+    return builder.create<mlir::arith::SubIOp>(loc, add, one);
   }
 
   /// Return the extent of the boxed array `x` in dimesion `dim`.
@@ -5130,7 +5130,7 @@ public:
                         arrLdTypeParams);
                     auto cast = builder.createConvert(loc, idxTy, fetch);
                     auto val =
-                        builder.create<mlir::SubIOp>(loc, idxTy, cast, lb);
+                        builder.create<mlir::arith::SubIOp>(loc, idxTy, cast, lb);
                     newIters.setIndexValue(dim, val);
                     return newIters;
                   };
@@ -5165,7 +5165,7 @@ public:
                       fir::factory::readLowerBound(builder, loc, exv, dim, one);
                   // Normalize `e` by subtracting the declared lbound.
                   mlir::Value ivAdj =
-                      builder.create<mlir::SubIOp>(loc, idxTy, iv, lb);
+                      builder.create<mlir::arith::SubIOp>(loc, idxTy, iv, lb);
                   // Add lbound adjusted value of `e` to the iteration vector
                   // (except when creating a box because the iteration vector is
                   // empty).
@@ -5315,12 +5315,12 @@ public:
         auto one =
             builder.createIntegerConstant(loc, substringBounds[0].getType(), 1);
         substringBounds[0] =
-            builder.create<mlir::SubIOp>(loc, substringBounds[0], one);
+            builder.create<mlir::arith::SubIOp>(loc, substringBounds[0], one);
         // Convert the upper bound to a length.
         auto cast = builder.createConvert(loc, iTy, substringBounds[1]);
         auto zero = builder.createIntegerConstant(loc, iTy, 0);
-        auto size = builder.create<mlir::SubIOp>(loc, cast, substringBounds[0]);
-        auto cmp = builder.create<mlir::CmpIOp>(loc, mlir::CmpIPredicate::sgt,
+        auto size = builder.create<mlir::arith::SubIOp>(loc, cast, substringBounds[0]);
+        auto cmp = builder.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::sgt,
                                                 size, zero);
         // size = MAX(upper - (lower - 1), 0)
         substringBounds[1] =
@@ -5672,7 +5672,7 @@ public:
                          mlir::Value eleSz) {
     auto loc = getLoc();
     auto reallocFunc = fir::factory::getRealloc(builder);
-    auto cond = builder.create<mlir::CmpIOp>(loc, mlir::CmpIPredicate::sle,
+    auto cond = builder.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::sle,
                                              bufferSize, needed);
     auto ifOp = builder.create<fir::IfOp>(loc, mem.getType(), cond,
                                           /*withElseRegion=*/true);
@@ -5681,9 +5681,9 @@ public:
     // Not enough space, resize the buffer.
     auto idxTy = builder.getIndexType();
     auto two = builder.createIntegerConstant(loc, idxTy, 2);
-    auto newSz = builder.create<mlir::MulIOp>(loc, needed, two);
+    auto newSz = builder.create<mlir::arith::MulIOp>(loc, needed, two);
     builder.create<fir::StoreOp>(loc, newSz, buffSize);
-    mlir::Value byteSz = builder.create<mlir::MulIOp>(loc, newSz, eleSz);
+    mlir::Value byteSz = builder.create<mlir::arith::MulIOp>(loc, newSz, eleSz);
     auto funcSymAttr = builder.getSymbolRefAttr(reallocFunc.getName());
     auto funcTy = reallocFunc.getType();
     auto newMem = builder.create<fir::CallOp>(
@@ -5726,7 +5726,7 @@ public:
         auto length = fir::getLen(exv);
         if (!length)
           fir::emitFatalError(loc, "result is not boxed character");
-        eleSz = builder.create<mlir::MulIOp>(loc, bytes, length);
+        eleSz = builder.create<mlir::arith::MulIOp>(loc, bytes, length);
       } else {
         TODO(loc, "PDT size");
         // Will call the PDT's size function with the type parameters.
@@ -5745,7 +5745,7 @@ public:
           refTy = builder.getRefType(chTy);
           auto toTy = builder.getRefType(builder.getVarLenSeqTy(chTy));
           buff = builder.createConvert(loc, toTy, buff);
-          off = builder.create<mlir::MulIOp>(loc, off, eleSz);
+          off = builder.create<mlir::arith::MulIOp>(loc, off, eleSz);
         } else {
           TODO(loc, "PDT offset");
         }
@@ -5760,14 +5760,14 @@ public:
       // Compute the array size.
       auto arrSz = one;
       for (auto ext : v.getExtents())
-        arrSz = builder.create<mlir::MulIOp>(loc, arrSz, ext);
+        arrSz = builder.create<mlir::arith::MulIOp>(loc, arrSz, ext);
 
       // Grow the buffer as needed.
-      auto endOff = builder.create<mlir::AddIOp>(loc, off, arrSz);
+      auto endOff = builder.create<mlir::arith::AddIOp>(loc, off, arrSz);
       mem = growBuffer(mem, endOff, limit, buffSize, eleSz);
 
       // Copy the elements to the buffer.
-      mlir::Value byteSz = builder.create<mlir::MulIOp>(loc, arrSz, eleSz);
+      mlir::Value byteSz = builder.create<mlir::arith::MulIOp>(loc, arrSz, eleSz);
       auto buff = builder.createConvert(loc, fir::HeapType::get(resTy), mem);
       auto buffi = computeCoordinate(buff, off);
       auto args = fir::runtime::createArguments(
@@ -5783,7 +5783,7 @@ public:
     exv.match(
         [&](const mlir::Value &v) {
           // Increment the buffer position.
-          auto plusOne = builder.create<mlir::AddIOp>(loc, off, one);
+          auto plusOne = builder.create<mlir::arith::AddIOp>(loc, off, one);
 
           // Grow the buffer as needed.
           mem = growBuffer(mem, plusOne, limit, buffSize, eleSz);
@@ -5800,7 +5800,7 @@ public:
         },
         [&](const fir::CharBoxValue &v) {
           // Increment the buffer position.
-          auto plusOne = builder.create<mlir::AddIOp>(loc, off, one);
+          auto plusOne = builder.create<mlir::arith::AddIOp>(loc, off, one);
 
           // Grow the buffer as needed.
           mem = growBuffer(mem, plusOne, limit, buffSize, eleSz);
@@ -5993,7 +5993,7 @@ public:
     return [=](IterSpace iters) -> ExtValue {
       auto logical = fir::getBase(lambda(iters));
       auto val = builder.createConvert(loc, i1Ty, logical);
-      return builder.create<mlir::XOrOp>(loc, val, truth);
+      return builder.create<mlir::arith::XOrIOp>(loc, val, truth);
     };
   }
   template <typename OP, typename A>
@@ -6011,7 +6011,7 @@ public:
     };
   }
   template <typename OP, typename A>
-  CC createCompareBoolOp(mlir::CmpIPredicate pred, const A &x) {
+  CC createCompareBoolOp(mlir::arith::CmpIPredicate pred, const A &x) {
     auto loc = getLoc();
     auto i1Ty = builder.getI1Type();
     auto lf = genarr(x.left());
@@ -6028,13 +6028,13 @@ public:
   CC genarr(const Fortran::evaluate::LogicalOperation<KIND> &x) {
     switch (x.logicalOperator) {
     case Fortran::evaluate::LogicalOperator::And:
-      return createBinaryBoolOp<mlir::AndOp>(x);
+      return createBinaryBoolOp<mlir::arith::AndIOp>(x);
     case Fortran::evaluate::LogicalOperator::Or:
-      return createBinaryBoolOp<mlir::OrOp>(x);
+      return createBinaryBoolOp<mlir::arith::OrIOp>(x);
     case Fortran::evaluate::LogicalOperator::Eqv:
-      return createCompareBoolOp<mlir::CmpIOp>(mlir::CmpIPredicate::eq, x);
+      return createCompareBoolOp<mlir::arith::CmpIOp>(mlir::arith::CmpIPredicate::eq, x);
     case Fortran::evaluate::LogicalOperator::Neqv:
-      return createCompareBoolOp<mlir::CmpIOp>(mlir::CmpIPredicate::ne, x);
+      return createCompareBoolOp<mlir::arith::CmpIOp>(mlir::arith::CmpIPredicate::ne, x);
     case Fortran::evaluate::LogicalOperator::Not:
       llvm_unreachable(".NOT. handled elsewhere");
     }
@@ -6057,7 +6057,7 @@ public:
     };
   }
   template <typename A>
-  CC createCompareCharOp(mlir::CmpIPredicate pred, const A &x) {
+  CC createCompareCharOp(mlir::arith::CmpIPredicate pred, const A &x) {
     auto loc = getLoc();
     auto lf = genarr(x.left());
     auto rf = genarr(x.right());
@@ -6070,7 +6070,7 @@ public:
   template <int KIND>
   CC genarr(const Fortran::evaluate::Relational<Fortran::evaluate::Type<
                 Fortran::common::TypeCategory::Integer, KIND>> &x) {
-    return createCompareOp<mlir::CmpIOp>(translateRelational(x.opr), x);
+    return createCompareOp<mlir::arith::CmpIOp>(translateRelational(x.opr), x);
   }
   template <int KIND>
   CC genarr(const Fortran::evaluate::Relational<Fortran::evaluate::Type<
@@ -6080,7 +6080,7 @@ public:
   template <int KIND>
   CC genarr(const Fortran::evaluate::Relational<Fortran::evaluate::Type<
                 Fortran::common::TypeCategory::Real, KIND>> &x) {
-    return createCompareOp<mlir::CmpFOp>(translateFloatRelational(x.opr), x);
+    return createCompareOp<mlir::arith::CmpFOp>(translateFloatRelational(x.opr), x);
   }
   template <int KIND>
   CC genarr(const Fortran::evaluate::Relational<Fortran::evaluate::Type<
@@ -6146,8 +6146,8 @@ public:
                 auto stride = fir::getBase(asScalarArray(t.stride()));
                 auto step = builder.createConvert(loc, idxTy, stride);
                 auto prod =
-                    builder.create<mlir::MulIOp>(loc, impliedIter, step);
-                auto trip = builder.create<mlir::AddIOp>(loc, initial, prod);
+                    builder.create<mlir::arith::MulIOp>(loc, impliedIter, step);
+                auto trip = builder.create<mlir::arith::AddIOp>(loc, initial, prod);
                 return trip;
               }},
           sub.u);
@@ -6161,7 +6161,7 @@ public:
                          "implied iterations already used");
       for (auto v : iters.iterVec()) {
         auto vi = builder.createConvert(loc, idxTy, v);
-        result.push_back(builder.create<mlir::AddIOp>(loc, vi, one));
+        result.push_back(builder.create<mlir::arith::AddIOp>(loc, vi, one));
       }
       dim += iters.iterVec().size();
     };

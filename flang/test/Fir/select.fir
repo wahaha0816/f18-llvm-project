@@ -4,29 +4,29 @@
 
 // CHECK-LABEL: @f
 func @f(%a : i32) -> i32 {
-   %1 = constant 1 : i32
-   %2 = constant 42 : i32
+   %1 = arith.constant 1 : i32
+   %2 = arith.constant 42 : i32
    // CHECK: icmp eq i32 %{{.*}}, 1
    fir.select %a : i32 [1, ^bb2(%1:i32), unit, ^bb3(%2:i32)]
 ^bb2(%3 : i32) :
    return %3 : i32
 ^bb3(%4 : i32) :
-   %5 = addi %4, %4 : i32
+   %5 = arith.addi %4, %4 : i32
    // CHECK: ret i32
    return %5 : i32 
 }
 
 // CHECK-LABEL: @g
 func @g(%a : i32) -> i32 {
-   %1 = constant 1 : i32
-   %2 = constant 42 : i32
+   %1 = arith.constant 1 : i32
+   %2 = arith.constant 42 : i32
    // CHECK-DAG: icmp eq i32 %{{.*}}, 1
    // CHECK-DAG: icmp eq i32 %{{.*}}, -1
    fir.select_rank %a : i32 [1, ^bb2(%1:i32), -1, ^bb4, unit, ^bb3(%2:i32)]
 ^bb2(%3 : i32) :
    return %3 : i32
 ^bb3(%4 : i32) :
-   %5 = addi %4, %4 : i32
+   %5 = arith.addi %4, %4 : i32
    return %5 : i32 
 ^bb4:
    // CHECK: ret i32
@@ -35,12 +35,12 @@ func @g(%a : i32) -> i32 {
 
 // CHECK-LABEL: @h
 func @h(%a : i32) -> i32 {
-   %1 = constant 1 : i32
-   %2 = constant 42 : i32
-   %b1 = constant 4 : i32
-   %b2 = constant 14 : i32
-   %b3 = constant 82 : i32
-   %b4 = constant 96 : i32
+   %1 = arith.constant 1 : i32
+   %2 = arith.constant 42 : i32
+   %b1 = arith.constant 4 : i32
+   %b2 = arith.constant 14 : i32
+   %b3 = arith.constant 82 : i32
+   %b4 = arith.constant 96 : i32
    // CHECK-DAG: icmp eq i32 %{{.*}}, 1
    // CHECK-DAG: icmp sle i32 4, %{{.*}}
    // CHECK-DAG: icmp sle i32 %{{.*}}, 14
@@ -50,14 +50,14 @@ func @h(%a : i32) -> i32 {
 ^bb2(%3 : i32) :
    return %3 : i32
 ^bb3(%4 : i32) :
-   %5 = addi %4, %4 : i32
+   %5 = arith.addi %4, %4 : i32
    br ^bb2(%5 : i32) 
 ^bb4:
    return %a : i32
 ^bb5:
    return %1 : i32
 ^bb6:
-   %x = addi %b4, %b3 : i32
+   %x = arith.addi %b4, %b3 : i32
    // CHECK: ret i32
    return %x : i32
 }

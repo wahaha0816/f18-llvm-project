@@ -9,8 +9,8 @@ real function test_stmt_0(x)
   func(arg) = arg + 0.123456
 
   ! CHECK-DAG: %[[x:.*]] = fir.load %arg0
-  ! CHECK-DAG: %[[cst:.*]] = constant 1.234560e-01
-  ! CHECK: %[[eval:.*]] = addf %[[x]], %[[cst]]
+  ! CHECK-DAG: %[[cst:.*]] = arith.constant 1.234560e-01
+  ! CHECK: %[[eval:.*]] = arith.addf %[[x]], %[[cst]]
   ! CHECK: fir.store %[[eval]] to %[[resmem:.*]] : !fir.ref<f32>
   test_stmt_0 = func(x)
 
@@ -47,25 +47,25 @@ real function test_stmt_1(x, a)
 
   b = 5
 
-  ! CHECK-DAG: %[[cst_8:.*]] = constant 8.000000e+00
+  ! CHECK-DAG: %[[cst_8:.*]] = arith.constant 8.000000e+00
   ! CHECK-DAG: fir.store %[[cst_8]] to %[[tmp1:.*]] : !fir.ref<f32>
   ! CHECK-DAG: %[[foocall1:.*]] = fir.call @_QPfoo(%[[tmp1]])
   ! CHECK-DAG: %[[aload1:.*]] = fir.load %arg1
-  ! CHECK: %[[add1:.*]] = addf %[[aload1]], %[[foocall1]]
+  ! CHECK: %[[add1:.*]] = arith.addf %[[aload1]], %[[foocall1]]
   ! CHECK: fir.store %[[add1]] to %[[res1]]
   res1 =  func1(8.)
 
   ! CHECK-DAG: %[[a2:.*]] = fir.load %arg1
   ! CHECK-DAG: %[[foocall2:.*]] = fir.call @_QPfoo(%arg0)
-  ! CHECK-DAG: %[[add2:.*]] = addf %[[a2]], %[[foocall2]]
+  ! CHECK-DAG: %[[add2:.*]] = arith.addf %[[a2]], %[[foocall2]]
   ! CHECK-DAG: %[[b:.*]] = fir.load %[[bmem]]
-  ! CHECK: %[[add3:.*]] = addf %[[add2]], %[[b]]
+  ! CHECK: %[[add3:.*]] = arith.addf %[[add2]], %[[b]]
   ! CHECK: fir.store %[[add3]] to %[[res2]]
   res2 = func2(x)
 
   ! CHECK-DAG: %[[res12:.*]] = fir.load %[[res1]]
   ! CHECK-DAG: %[[res22:.*]] = fir.load %[[res2]]
-  ! CHECK: = addf %[[res12]], %[[res22]] : f32
+  ! CHECK: = arith.addf %[[res12]], %[[res22]] : f32
   test_stmt_1 = res1 + res2
   ! CHECK: return %{{.*}} : f32
 end function
@@ -91,7 +91,7 @@ integer function test_stmt_character(c, j)
    integer :: i, j, func, argj
    character(10) :: c, argc
    ! CHECK-DAG: %[[unboxed:.*]]:2 = fir.unboxchar %arg0 :
-   ! CHECK-DAG: %[[c10:.*]] = constant 10 :
+   ! CHECK-DAG: %[[c10:.*]] = arith.constant 10 :
    ! CHECK: %[[c:.*]] = fir.emboxchar %[[unboxed]]#0, %[[c10]] 
 
    func(argc, argj) = len_trim(argc, 4) + argj

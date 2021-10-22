@@ -3,7 +3,7 @@
 // CHECK-LINE: define void @f1
 // CHECK: (float* %[[A:[^,]*]], {{.*}}, float %[[F:.*]])
 func @f1(%a : !fir.ref<!fir.array<?x?xf32>>, %n : index, %m : index, %o : index, %p : index, %f : f32) {
-  %c1 = constant 1 : index
+  %c1 = arith.constant 1 : index
   %s = fir.shape_shift %o, %n, %p, %m : (index, index, index, index) -> !fir.shapeshift<2>
   %vIn = fir.array_load %a(%s) : (!fir.ref<!fir.array<?x?xf32>>, !fir.shapeshift<2>) -> !fir.array<?x?xf32>
   // CHECK: = icmp sgt
@@ -25,7 +25,7 @@ func @f1(%a : !fir.ref<!fir.array<?x?xf32>>, %n : index, %m : index, %o : index,
 // CHECK-LINE: define void @f2
 // CHECK: (float* %[[A:[^,]*]], {{.*}}, float %[[F:.*]])
 func @f2(%a : !fir.ref<!fir.array<?x?xf32>>, %b : !fir.ref<!fir.array<?x?xf32>>, %n : index, %m : index, %o : index, %p : index, %f : f32) {
-  %c1 = constant 1 : index
+  %c1 = arith.constant 1 : index
   %s = fir.shape_shift %o, %n, %p, %m : (index, index, index, index) -> !fir.shapeshift<2>
   %vIn = fir.array_load %a(%s) : (!fir.ref<!fir.array<?x?xf32>>, !fir.shapeshift<2>) -> !fir.array<?x?xf32>
   %wIn = fir.array_load %b(%s) : (!fir.ref<!fir.array<?x?xf32>>, !fir.shapeshift<2>) -> !fir.array<?x?xf32>
@@ -34,7 +34,7 @@ func @f2(%a : !fir.ref<!fir.array<?x?xf32>>, %b : !fir.ref<!fir.array<?x?xf32>>,
     // CHECK: = icmp sgt
     %r = fir.do_loop %i = %o to %n step %c1 iter_args(%v = %v1) -> !fir.array<?x?xf32> {
       %x = fir.array_fetch %wIn, %i, %j : (!fir.array<?x?xf32>, index, index) -> f32
-      %y = addf %x, %f : f32
+      %y = arith.addf %x, %f : f32
       // CHECK: %[[AOFF:.*]] = getelementptr float, float* %[[A]], i64
       %r = fir.array_update %v, %y, %i, %j : (!fir.array<?x?xf32>, f32, index, index) -> !fir.array<?x?xf32>
       fir.result %r : !fir.array<?x?xf32>
@@ -49,7 +49,7 @@ func @f2(%a : !fir.ref<!fir.array<?x?xf32>>, %b : !fir.ref<!fir.array<?x?xf32>>,
 // CHECK-LINE: define void @f3
 // CHECK: (float* %[[A:[^,]*]], {{.*}}, float %[[F:.*]])
 func @f3(%a : !fir.ref<!fir.array<?x?xf32>>, %b : !fir.ref<!fir.array<?x?xf32>>, %n : index, %m : index, %o : index, %p : index, %f : f32) {
-  %c1 = constant 1 : index
+  %c1 = arith.constant 1 : index
   %s = fir.shape_shift %o, %n, %p, %m : (index, index, index, index) -> !fir.shapeshift<2>
   %vIn = fir.array_load %a(%s) : (!fir.ref<!fir.array<?x?xf32>>, !fir.shapeshift<2>) -> !fir.array<?x?xf32>
   %wIn = fir.array_load %b(%s) : (!fir.ref<!fir.array<?x?xf32>>, !fir.shapeshift<2>) -> !fir.array<?x?xf32>
@@ -58,9 +58,9 @@ func @f3(%a : !fir.ref<!fir.array<?x?xf32>>, %b : !fir.ref<!fir.array<?x?xf32>>,
     // CHECK: = icmp sgt
     %r = fir.do_loop %i = %o to %n step %c1 iter_args(%v = %v1) -> !fir.array<?x?xf32> {
       %x = fir.array_fetch %wIn, %i, %j : (!fir.array<?x?xf32>, index, index) -> f32
-      %y = addf %x, %f : f32
+      %y = arith.addf %x, %f : f32
       // CHECK: %[[AOFF:.*]] = getelementptr float, float* %[[A]], i64
-      %i2 = addi %i, %c1 : index
+      %i2 = arith.addi %i, %c1 : index
       %r = fir.array_update %v, %y, %i2, %j : (!fir.array<?x?xf32>, f32, index, index) -> !fir.array<?x?xf32>
       fir.result %r : !fir.array<?x?xf32>
     }
@@ -74,7 +74,7 @@ func @f3(%a : !fir.ref<!fir.array<?x?xf32>>, %b : !fir.ref<!fir.array<?x?xf32>>,
 // CHECK-LINE: define void @f4
 // CHECK: (float* %[[A:[^,]*]], {{.*}}, float %[[F:.*]])
 func @f4(%a : !fir.ref<!fir.array<?x?xf32>>, %b : !fir.ref<!fir.array<?x?xf32>>, %n : index, %m : index, %o : index, %p : index, %f : f32) {
-  %c1 = constant 1 : index
+  %c1 = arith.constant 1 : index
   %s = fir.shape_shift %o, %n, %p, %m : (index, index, index, index) -> !fir.shapeshift<2>
   %vIn = fir.array_load %a(%s) : (!fir.ref<!fir.array<?x?xf32>>, !fir.shapeshift<2>) -> !fir.array<?x?xf32>
   %wIn = fir.array_load %b(%s) : (!fir.ref<!fir.array<?x?xf32>>, !fir.shapeshift<2>) -> !fir.array<?x?xf32>
@@ -84,10 +84,10 @@ func @f4(%a : !fir.ref<!fir.array<?x?xf32>>, %b : !fir.ref<!fir.array<?x?xf32>>,
     %r = fir.do_loop %i = %o to %n step %c1 iter_args(%v = %v1) -> !fir.array<?x?xf32> {
       %x2 = fir.array_fetch %vIn, %i, %j : (!fir.array<?x?xf32>, index, index) -> f32
       %x = fir.array_fetch %wIn, %i, %j : (!fir.array<?x?xf32>, index, index) -> f32
-      %y = addf %x, %f : f32
-      %y2 = addf %y, %x2 : f32
+      %y = arith.addf %x, %f : f32
+      %y2 = arith.addf %y, %x2 : f32
       // CHECK: %[[AOFF:.*]] = getelementptr float, float* %[[A]], i64
-      %i2 = addi %i, %c1 : index
+      %i2 = arith.addi %i, %c1 : index
       %r = fir.array_update %v, %y2, %i2, %j : (!fir.array<?x?xf32>, f32, index, index) -> !fir.array<?x?xf32>
       fir.result %r : !fir.array<?x?xf32>
     }
@@ -104,10 +104,10 @@ func @f4(%a : !fir.ref<!fir.array<?x?xf32>>, %b : !fir.ref<!fir.array<?x?xf32>>,
 // CHECK-LINE: define void @f6
 // CHECK: ({ float*, i64, i32, i8, i8, i8, i8, [1 x [3 x i64]] }* %[[A:[^,]*]], { float*, i64, i32, i8, i8, i8, i8, [1 x [3 x i64]] }* %[[B:[^,]*]], float %[[F:.*]])
 func @f5(%arg0: !fir.box<!fir.array<?xf32>>, %arg1: !fir.box<!fir.array<?xf32>>, %arg2: f32) {
-  %c0 = constant 0 : index
-  %c1 = constant 1 : index
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
   %0:3 = fir.box_dims %arg0, %c0 : (!fir.box<!fir.array<?xf32>>, index) -> (index, index, index)
-  %1 = subi %0#1, %c1 : index
+  %1 = arith.subi %0#1, %c1 : index
   %2 = fir.array_load %arg0 : (!fir.box<!fir.array<?xf32>>) -> !fir.array<?xf32>
   %3 = fir.array_load %arg1 : (!fir.box<!fir.array<?xf32>>) -> !fir.array<?xf32>
   // CHECK: icmp sgt
@@ -124,7 +124,7 @@ func @f5(%arg0: !fir.box<!fir.array<?xf32>>, %arg1: !fir.box<!fir.array<?xf32>>,
     // CHECK: %[[B_VAL:.*]] = load float, float* %[[B_ADDR]]
     // CHECK: fadd float %[[B_VAL]], %[[F]]
     %5 = fir.array_fetch %3, %arg3 : (!fir.array<?xf32>, index) -> f32
-    %6 = addf %5, %arg2 : f32
+    %6 = arith.addf %5, %arg2 : f32
     %7 = fir.array_update %arg4, %6, %arg3 : (!fir.array<?xf32>, f32, index) -> !fir.array<?xf32>
     fir.result %7 : !fir.array<?xf32>
   }
@@ -140,11 +140,11 @@ func @f5(%arg0: !fir.box<!fir.array<?xf32>>, %arg1: !fir.box<!fir.array<?xf32>>,
 // CHECK-LINE: define void @f6
 // CHECK: ({ float*, i64, i32, i8, i8, i8, i8, [1 x [3 x i64]] }* %[[A:[^,]*]], float %[[F:.*]])
 func @f6(%arg0: !fir.box<!fir.array<?xf32>>, %arg1: f32) {
-  %c0 = constant 0 : index
-  %c1 = constant 1 : index
-  %c2 = constant 2 : index
-  %c9 = constant 9 : index
-  %c10 = constant 10 : index
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+  %c9 = arith.constant 9 : index
+  %c10 = arith.constant 10 : index
 
   // CHECK: %[[EXT_GEP:.*]] = getelementptr {{.*}} %[[A]], i32 0, i32 7, i64 0, i32 1
   // CHECK: %[[EXTENT:.*]] = load i64, i64* %[[EXT_GEP]]
@@ -158,7 +158,7 @@ func @f6(%arg0: !fir.box<!fir.array<?xf32>>, %arg1: f32) {
   %4 = fir.array_load %arg0 [%3] : (!fir.box<!fir.array<?xf32>>, !fir.slice<1>) -> !fir.array<?xf32>
   %5 = fir.do_loop %arg2 = %c0 to %c9 step %c1 iter_args(%arg3 = %2) -> (!fir.array<?xf32>) {
     %6 = fir.array_fetch %4, %arg2 : (!fir.array<?xf32>, index) -> f32
-    %7 = addf %6, %arg1 : f32
+    %7 = arith.addf %6, %arg1 : f32
     %8 = fir.array_update %arg3, %7, %arg2 : (!fir.array<?xf32>, f32, index) -> !fir.array<?xf32>
     fir.result %8 : !fir.array<?xf32>
   }
@@ -172,8 +172,8 @@ func @f6(%arg0: !fir.box<!fir.array<?xf32>>, %arg1: f32) {
 // CHECK-LABEL:  define void @f7(
 // CHECK: float* %[[X:[^,]*]], { float*, i64, i32, i8, i8, i8, i8, [1 x [3 x i64]] }* %[[Y:.*]])
 func @f7(%arg0: !fir.ref<f32>, %arg1: !fir.box<!fir.array<?xf32>>) {
-  %c4 = constant 4 : index
-  %c100 = constant 100 : index
+  %c4 = arith.constant 4 : index
+  %c100 = arith.constant 100 : index
   %0 = fir.shift %c4 : (index) -> !fir.shift<1>
   // CHECK: %[[STRIDE_GEP:.*]] = getelementptr {{.*}}* %[[Y]], i32 0, i32 7, i64 0, i32 2
   // CHECK: %[[STRIDE:.*]] = load i64, i64* %[[STRIDE_GEP]]
@@ -188,9 +188,9 @@ func @f7(%arg0: !fir.ref<f32>, %arg1: !fir.box<!fir.array<?xf32>>) {
 // CHECK-LABEL:  define void @f8(
 // CHECK-SAME: [2 x [2 x %t]]* %[[A:.*]], i32 %[[I:.*]])
 func @f8(%a : !fir.ref<!fir.array<2x2x!fir.type<t{i:i32}>>>, %i : i32) {
-  %c0 = constant 0 : index
-  %c1 = constant 1 : index
-  %c2 = constant 2 : index
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
   %1 = fir.field_index i, !fir.type<t{i:i32}>
   %2 = fir.shape %c2, %c2 : (index, index) -> !fir.shape<2>
   %3 = fir.slice %c1, %c2, %c1, %c1, %c2, %c1 path %1 : (index, index, index, index, index, index, !fir.field) -> !fir.slice<2>

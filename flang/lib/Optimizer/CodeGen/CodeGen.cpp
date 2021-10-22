@@ -24,6 +24,7 @@
 #include "flang/Optimizer/Support/InternalNames.h"
 #include "flang/Optimizer/Support/KindMapping.h"
 #include "flang/Optimizer/Support/TypeCode.h"
+#include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"
 #include "mlir/Conversion/OpenMPToLLVM/ConvertOpenMPToLLVM.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
@@ -66,7 +67,7 @@ namespace fir {
 bool allConstants(OperandTy operands) {
   for (auto opnd : operands) {
     if (auto *defop = opnd.getDefiningOp())
-      if (isa<mlir::LLVM::ConstantOp>(defop) || isa<mlir::ConstantOp>(defop))
+      if (isa<mlir::LLVM::ConstantOp>(defop) || isa<mlir::arith::ConstantOp>(defop))
         continue;
     return false;
   }
@@ -767,10 +768,10 @@ struct CmpcOpConversion : public FIROpConversion<fir::CmpcOp> {
         rewriter.create<mlir::LLVM::FCmpOp>(loc, resTy, ip, cmp->getAttrs());
     SmallVector<mlir::Value, 2> cp{rcp, icp};
     switch (cmp.getPredicate()) {
-    case mlir::CmpFPredicate::OEQ: // .EQ.
+    case mlir::arith::CmpFPredicate::OEQ: // .EQ.
       rewriter.replaceOpWithNewOp<mlir::LLVM::AndOp>(cmp, resTy, cp);
       break;
-    case mlir::CmpFPredicate::UNE: // .NE.
+    case mlir::arith::CmpFPredicate::UNE: // .NE.
       rewriter.replaceOpWithNewOp<mlir::LLVM::OrOp>(cmp, resTy, cp);
       break;
     default:
@@ -1685,7 +1686,7 @@ struct ValueOpCommon {
     auto *defOp = value.getDefiningOp();
     if (auto v = dyn_cast<mlir::LLVM::ConstantOp>(defOp))
       return v.value();
-    if (auto v = dyn_cast<mlir::ConstantOp>(defOp))
+    if (auto v = dyn_cast<mlir::arith::ConstantOp>(defOp))
       return v.value();
     llvm_unreachable("must be a constant op");
     return {};
@@ -2289,8 +2290,8 @@ struct CoordinateOpConversion
   int64_t getIntValue(mlir::Value val) const {
     if (val) {
       if (auto *defop = val.getDefiningOp()) {
-        if (auto constOp = dyn_cast<mlir::ConstantIntOp>(defop))
-          return constOp.getValue();
+        if (auto constOp = dyn_cast<mlir::arith::ConstantIntOp>(defop))
+          return constOp.value();
         if (auto llConstOp = dyn_cast<mlir::LLVM::ConstantOp>(defop))
           if (auto attr = llConstOp.value().dyn_cast<mlir::IntegerAttr>())
             return attr.getValue().getSExtValue();
@@ -2460,20 +2461,20 @@ struct GlobalOpConversion : public FIROpConversion<fir::GlobalOp> {
         if (isFullRange(insertOp.coor(), insertOp.getType())) {
           auto seqTyAttr = convertType(insertOp.getType());
           auto *op = insertOp.val().getDefiningOp();
-          auto constant = mlir::dyn_cast<mlir::ConstantOp>(op);
+          auto constant = mlir::dyn_cast<mlir::arith::ConstantOp>(op);
           if (!constant) {
               auto convertOp = mlir::dyn_cast<fir::ConvertOp>(op);
               if (!convertOp)
                 continue;
               constant = 
-                  cast<mlir::ConstantOp>(convertOp.value().getDefiningOp());
+                  cast<mlir::arith::ConstantOp>(convertOp.value().getDefiningOp());
           }
           mlir::Type vecType = mlir::VectorType::get(
               insertOp.getType().getShape(), constant.getType());
           auto denseAttr = mlir::DenseElementsAttr::get(
-              vecType.cast<ShapedType>(), constant.getValue());
+              vecType.cast<ShapedType>(), constant.value());
           rewriter.setInsertionPointAfter(insertOp);
-          rewriter.replaceOpWithNewOp<mlir::ConstantOp>(insertOp, seqTyAttr,
+          rewriter.replaceOpWithNewOp<mlir::arith::ConstantOp>(insertOp, seqTyAttr,
                                                         denseAttr);
         }
       }
@@ -3160,6 +3161,8 @@ public:
         ZeroOpConversion>(context, typeConverter);
     mlir::populateStdToLLVMConversionPatterns(typeConverter, pattern);
     mlir::populateOpenMPToLLVMConversionPatterns(typeConverter, pattern);
+    mlir::arith::populateArithmeticToLLVMConversionPatterns(typeConverter,
+                                                              pattern);
     mlir::ConversionTarget target{*context};
     target.addLegalDialect<mlir::LLVM::LLVMDialect>();
     // The OpenMP dialect is legal for Operations without regions, for those

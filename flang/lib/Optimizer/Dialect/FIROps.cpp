@@ -686,12 +686,12 @@ static mlir::LogicalResult verify(fir::CharConvertOp op) {
 template <typename OPTY>
 static void printCmpOp(OpAsmPrinter &p, OPTY op) {
   p << op.getOperationName() << ' ';
-  auto predSym = mlir::symbolizeCmpFPredicate(
+  auto predSym = mlir::arith::symbolizeCmpFPredicate(
       op->template getAttrOfType<mlir::IntegerAttr>(
             OPTY::getPredicateAttrName())
           .getInt());
   assert(predSym.hasValue() && "invalid symbol value for predicate");
-  p << '"' << mlir::stringifyCmpFPredicate(predSym.getValue()) << '"' << ", ";
+  p << '"' << mlir::arith::stringifyCmpFPredicate(predSym.getValue()) << '"' << ", ";
   p.printOperand(op.lhs());
   p << ", ";
   p.printOperand(op.rhs());
@@ -732,7 +732,7 @@ static mlir::ParseResult parseCmpOp(mlir::OpAsmParser &parser,
 }
 
 void fir::buildCmpCOp(OpBuilder &builder, OperationState &result,
-                      CmpFPredicate predicate, Value lhs, Value rhs) {
+                      arith::CmpFPredicate predicate, Value lhs, Value rhs) {
   result.addOperands({lhs, rhs});
   result.types.push_back(builder.getI1Type());
   result.addAttribute(
@@ -747,8 +747,8 @@ mlir::ParseResult fir::parseCmpcOp(mlir::OpAsmParser &parser,
   return parseCmpOp<fir::CmpcOp>(parser, result);
 }
 
-mlir::CmpFPredicate fir::CmpcOp::getPredicateByName(llvm::StringRef name) {
-  auto pred = mlir::symbolizeCmpFPredicate(name);
+mlir::arith::CmpFPredicate fir::CmpcOp::getPredicateByName(llvm::StringRef name) {
+  auto pred = mlir::arith::symbolizeCmpFPredicate(name);
   assert(pred.hasValue() && "invalid predicate name");
   return pred.getValue();
 }
@@ -1345,9 +1345,9 @@ template <bool AllowFields>
 static void appendAsAttribute(llvm::SmallVectorImpl<mlir::Attribute> &attrs,
                               mlir::Value val) {
   if (auto *op = val.getDefiningOp()) {
-    if (auto cop = mlir::dyn_cast<mlir::ConstantOp>(op)) {
+    if (auto cop = mlir::dyn_cast<mlir::arith::ConstantOp>(op)) {
       // append the integer constant value
-      if (auto iattr = cop.getValue().dyn_cast<mlir::IntegerAttr>()) {
+      if (auto iattr = cop.value().dyn_cast<mlir::IntegerAttr>()) {
         attrs.push_back(iattr);
         return;
       }
@@ -1541,8 +1541,8 @@ struct UndoComplexPattern : public mlir::RewritePattern {
 
 void fir::InsertValueOp::getCanonicalizationPatterns(
     mlir::OwningRewritePatternList &results, mlir::MLIRContext *context) {
-  results.insert<UndoComplexPattern<mlir::AddFOp, fir::AddcOp>,
-                 UndoComplexPattern<mlir::SubFOp, fir::SubcOp>>(context);
+  results.insert<UndoComplexPattern<mlir::arith::AddFOp, fir::AddcOp>,
+                 UndoComplexPattern<mlir::arith::SubFOp, fir::SubcOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3283,7 +3283,7 @@ mlir::Type fir::applyPathToType(mlir::Type eleTy, mlir::ValueRange path) {
                   if (auto *op = (*i++).getDefiningOp()) {
                     if (auto off = mlir::dyn_cast<fir::FieldIndexOp>(op))
                       return ty.getType(off.getFieldName());
-                    if (auto off = mlir::dyn_cast<mlir::ConstantOp>(op))
+                    if (auto off = mlir::dyn_cast<mlir::arith::ConstantOp>(op))
                       return ty.getType(fir::toInt(off));
                   }
                   return mlir::Type{};
@@ -3298,7 +3298,7 @@ mlir::Type fir::applyPathToType(mlir::Type eleTy, mlir::ValueRange path) {
                 })
                 .Case<mlir::TupleType>([&](mlir::TupleType ty) {
                   if (auto *op = (*i++).getDefiningOp())
-                    if (auto off = mlir::dyn_cast<mlir::ConstantOp>(op))
+                    if (auto off = mlir::dyn_cast<mlir::arith::ConstantOp>(op))
                       return ty.getType(fir::toInt(off));
                   return mlir::Type{};
                 })
