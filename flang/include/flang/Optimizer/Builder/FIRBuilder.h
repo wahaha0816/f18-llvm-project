@@ -316,6 +316,8 @@ public:
       return ifOp.getResults();
     }
 
+    fir::IfOp &getIfOp() { return ifOp; };
+
   private:
     fir::IfOp ifOp;
     FirOpBuilder &builder;
