@@ -278,7 +278,7 @@ parseScheduleClause(OpAsmParser &parser, SmallString<8> &schedule,
   }
 
   // If there is a comma, we have one or more modifiers..
-  if (succeeded(parser.parseOptionalComma())) {
+  while (succeeded(parser.parseOptionalComma())) {
     StringRef mod;
     if (parser.parseKeyword(&mod))
       return failure();
@@ -294,6 +294,7 @@ parseScheduleClause(OpAsmParser &parser, SmallString<8> &schedule,
 /// Print schedule clause
 static void printScheduleClause(OpAsmPrinter &p, StringRef &sched,
                                 llvm::Optional<StringRef> modifier,
+                                llvm::Optional<StringRef> simd,
                                 Value scheduleChunkVar) {
   std::string schedLower = sched.lower();
   p << "(" << schedLower;
@@ -301,7 +302,10 @@ static void printScheduleClause(OpAsmPrinter &p, StringRef &sched,
     p << " = " << scheduleChunkVar;
   if (modifier && modifier.getValue() != "none")
     p << ", " << modifier;
-  p << ") ";
+  if (simd && simd.getValue() != "none") {
+    p << ", " << simd;
+  }
+  p << ")";
 }
 
 //===----------------------------------------------------------------------===//
@@ -812,7 +816,11 @@ static ParseResult parseClauses(OpAsmParser &parser, OperationState &result,
     result.addAttribute("schedule_val", attr);
     if (modifiers.size() > 0) {
       auto mod = parser.getBuilder().getStringAttr(modifiers[0]);
-      result.addAttribute("schedule_modifier", mod);
+      result.addAttribute("schedule_modifiers", mod);
+      if (modifiers.size() > 1) {
+        mod = parser.getBuilder().getStringAttr(modifiers[1]);
+        result.addAttribute("simd_modifier", mod);
+      }
     }
     if (scheduleChunkSize) {
       auto chunkSizeType = parser.getBuilder().getI32Type();
@@ -933,8 +941,9 @@ static void printWsLoopOp(OpAsmPrinter &p, WsLoopOp op) {
 
   if (auto sched = op.schedule_val()) {
     p << "schedule";
-    printScheduleClause(p, sched.getValue(), op.schedule_modifier(),
-                        op.schedule_chunk_var());
+    printScheduleClause(p, sched.getValue(), op.schedule_modifiers(),
+                        op.simd_modifier(), op.schedule_chunk_var());
+    p << " ";
   }
 
   if (auto collapse = op.collapse_val())
