@@ -1,4 +1,4 @@
-//===-- Lower/EvExprDumper.cpp --------------------------------------------===//
+//===-- Lower/DumpEvaluateExpr.cpp ----------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "flang/Lower/EvExprDumper.h"
+#include "flang/Lower/DumpEvaluateExpr.h"
 #include <iostream>
 
 static constexpr char whiteSpacePadding[] =
