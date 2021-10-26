@@ -451,6 +451,10 @@ mlir::Value fir::FirOpBuilder::createBox(mlir::Location loc,
       });
 }
 
+void fir::FirOpBuilder::dumpFunc() {
+   getFunction().dump();
+}
+
 static mlir::Value genNullPointerComparison(fir::FirOpBuilder &builder,
                                             mlir::Location loc,
                                             mlir::Value addr,
