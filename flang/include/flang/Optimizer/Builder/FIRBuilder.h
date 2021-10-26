@@ -353,6 +353,9 @@ public:
                                    mlir::Value ub, mlir::Value step,
                                    mlir::Type type);
 
+  /// Dump the current function. (debug)
+  LLVM_DUMP_METHOD void dumpFunc();
+
 private:
   const KindMapping &kindMap;
 };
