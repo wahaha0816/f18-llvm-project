@@ -3475,32 +3475,6 @@ public:
     }
   }
 
-  /// Entry point for when an array expression appears on the lhs of an
-  /// assignment. In the default case, the rhs is fully evaluated prior to any
-  /// of the results being written back to the lhs. (CopyInCopyOut semantics.)
-  static fir::ArrayLoadOp lowerArraySubspace(
-      Fortran::lower::AbstractConverter &converter,
-      Fortran::lower::SymMap &symMap, Fortran::lower::StatementContext &stmtCtx,
-      const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &expr) {
-    ArrayExprLowering ael{converter, stmtCtx, symMap,
-                          ConstituentSemantics::CopyInCopyOut};
-    return ael.lowerArraySubspace(expr);
-  }
-
-  fir::ArrayLoadOp lowerArraySubspace(
-      const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &exp) {
-    return std::visit(
-        [&](const auto &e) {
-          auto f = genarr(e);
-          auto exv = f(IterationSpace{});
-          if (auto *defOp = fir::getBase(exv).getDefiningOp())
-            if (auto arrLd = mlir::dyn_cast<fir::ArrayLoadOp>(defOp))
-              return arrLd;
-          fir::emitFatalError(getLoc(), "array must be loaded");
-        },
-        exp.u);
-  }
-
   /// Entry point for when an array expression appears in a context where the
   /// result must be boxed. (BoxValue semantics.)
   static ExtValue lowerBoxedArrayExpression(
@@ -5096,30 +5070,22 @@ public:
                   // vector subscript with replicated values.
                   assert(!isBoxValue() &&
                          "fir.box cannot be created with vector subscripts");
-                  if (Fortran::evaluate::HasVectorSubscript(toEvExpr(e)))
-                    TODO(loc, "vector subscript of vector subscript");
                   auto base = x.base();
                   auto exv = genArrayBase(base);
                   auto arrExpr = ignoreEvConvert(e);
-                  auto arrLoad =
-                      lowerArraySubspace(converter, symMap, stmtCtx, arrExpr);
-                  auto arrLd = arrLoad.getResult();
-                  auto eleTy =
-                      arrLd.getType().cast<fir::SequenceType>().getEleTy();
+                  auto saveSemant = semant;
+                  semant = ConstituentSemantics::RefTransparent;
+                  auto genArrFetch = genarr(arrExpr);
+                  semant = saveSemant;
                   auto currentPC = pc;
                   auto dim = sub.index();
                   auto lb =
                       fir::factory::readLowerBound(builder, loc, exv, dim, one);
-                  auto arrLdTypeParams = arrLoad.typeparams();
                   pc = [=](IterSpace iters) {
                     IterationSpace newIters = currentPC(iters);
-                    auto iter = newIters.iterVec()[dim];
-                    // TODO: Next line, delete?
-                    auto resTy = adjustedArrayElementType(eleTy);
-                    auto fetch = builder.create<fir::ArrayFetchOp>(
-                        loc, resTy, arrLd, mlir::ValueRange{iter},
-                        arrLdTypeParams);
-                    auto cast = builder.createConvert(loc, idxTy, fetch);
+                    auto fetch = genArrFetch(newIters);
+                    auto cast =
+                        builder.createConvert(loc, idxTy, fir::getBase(fetch));
                     auto val =
                         builder.create<mlir::SubIOp>(loc, idxTy, cast, lb);
                     newIters.setIndexValue(dim, val);
@@ -5128,7 +5094,7 @@ public:
                   // Create a slice with the vector size so that the shape
                   // of array reference is correctly computed in later phase,
                   // even though this is not a triplet.
-                  auto vectorSubscriptShape = getShape(arrLoad);
+                  auto vectorSubscriptShape = getShape(arrayOperands.back());
                   assert(vectorSubscriptShape.size() == 1);
                   trips.push_back(one);
                   trips.push_back(vectorSubscriptShape[0]);
