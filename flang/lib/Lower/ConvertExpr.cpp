@@ -5091,7 +5091,10 @@ public:
                       fir::factory::readLowerBound(builder, loc, exv, dim, one);
                   pc = [=](IterSpace iters) {
                     IterationSpace newIters = currentPC(iters);
-                    auto fetch = genArrFetch(newIters);
+                    IterationSpace vecIters(
+                        newIters,
+                        llvm::ArrayRef<mlir::Value>{newIters.iterValue(dim)});
+                    auto fetch = genArrFetch(vecIters);
                     auto cast =
                         builder.createConvert(loc, idxTy, fir::getBase(fetch));
                     auto val = builder.create<mlir::arith::SubIOp>(loc, idxTy,
