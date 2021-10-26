@@ -96,9 +96,112 @@ subroutine test1b(a,b,c)
   b(c(1:20:2)) = a
 end subroutine test1b
 
+! CHECK-LABEL: func @_QPtest1c(
+! CHECK-SAME: %[[VAL_0:.*]]: !fir.ref<!fir.array<10xi32>>, %[[VAL_1:.*]]: !fir.ref<!fir.array<10xi32>>, %[[VAL_2:.*]]: !fir.ref<!fir.array<20xi32>>, %[[VAL_3:.*]]: !fir.ref<!fir.array<10xi32>>) {
+! CHECK:         return
+! CHECK:       }
 subroutine test1c(a,b,c,d)
   integer :: a(10), b(10), d(10), c(20)
 
   ! flang: parser FAIL (final position)
   !a = b(d(c(1:20:2))
 end subroutine test1c
+
+
+! CHECK-LABEL: func @_QPtest2a(
+! CHECK-SAME:  %[[VAL_0:.*]]: !fir.ref<!fir.array<10xi32>>, %[[VAL_1:.*]]: !fir.ref<!fir.array<10xi32>>, %[[VAL_2:.*]]: !fir.ref<!fir.array<10xi32>>, %[[VAL_3:.*]]: !fir.ref<!fir.array<10xi32>>) {
+! CHECK:         %[[VAL_4:.*]] = arith.constant 10 : index
+! CHECK:         %[[VAL_5:.*]] = arith.constant 10 : index
+! CHECK:         %[[VAL_6:.*]] = arith.constant 10 : index
+! CHECK:         %[[VAL_7:.*]] = arith.constant 10 : index
+! CHECK:         %[[VAL_8:.*]] = fir.shape %[[VAL_4]] : (index) -> !fir.shape<1>
+! CHECK:         %[[VAL_9:.*]] = fir.array_load %[[VAL_0]](%[[VAL_8]]) : (!fir.ref<!fir.array<10xi32>>, !fir.shape<1>) -> !fir.array<10xi32>
+! CHECK:         %[[VAL_10:.*]] = arith.constant 10 : i64
+! CHECK:         %[[VAL_11:.*]] = fir.convert %[[VAL_10]] : (i64) -> index
+! CHECK:         %[[VAL_12:.*]] = arith.constant 1 : index
+! CHECK:         %[[VAL_13:.*]] = arith.constant 1 : index
+! CHECK:         %[[VAL_14:.*]] = fir.shape %[[VAL_7]] : (index) -> !fir.shape<1>
+! CHECK:         %[[VAL_15:.*]] = fir.array_load %[[VAL_3]](%[[VAL_14]]) : (!fir.ref<!fir.array<10xi32>>, !fir.shape<1>) -> !fir.array<10xi32>
+! CHECK:         %[[VAL_16:.*]] = fir.shape %[[VAL_6]] : (index) -> !fir.shape<1>
+! CHECK:         %[[VAL_17:.*]] = fir.slice %[[VAL_13]], %[[VAL_7]], %[[VAL_13]] : (index, index, index) -> !fir.slice<1>
+! CHECK:         %[[VAL_18:.*]] = fir.array_load %[[VAL_2]](%[[VAL_16]]) {{\[}}%[[VAL_17]]] : (!fir.ref<!fir.array<10xi32>>, !fir.shape<1>, !fir.slice<1>) -> !fir.array<10xi32>
+! CHECK:         %[[VAL_19:.*]] = arith.constant 0 : index
+! CHECK:         %[[VAL_20:.*]] = arith.subi %[[VAL_7]], %[[VAL_13]] : index
+! CHECK:         %[[VAL_21:.*]] = arith.addi %[[VAL_20]], %[[VAL_13]] : index
+! CHECK:         %[[VAL_22:.*]] = arith.divsi %[[VAL_21]], %[[VAL_13]] : index
+! CHECK:         %[[VAL_23:.*]] = arith.cmpi sgt, %[[VAL_22]], %[[VAL_19]] : index
+! CHECK:         %[[VAL_24:.*]] = select %[[VAL_23]], %[[VAL_22]], %[[VAL_19]] : index
+! CHECK:         %[[VAL_25:.*]] = fir.shape %[[VAL_5]] : (index) -> !fir.shape<1>
+! CHECK:         %[[VAL_26:.*]] = fir.slice %[[VAL_12]], %[[VAL_24]], %[[VAL_12]] : (index, index, index) -> !fir.slice<1>
+! CHECK:         %[[VAL_27:.*]] = fir.array_load %[[VAL_1]](%[[VAL_25]]) {{\[}}%[[VAL_26]]] : (!fir.ref<!fir.array<10xi32>>, !fir.shape<1>, !fir.slice<1>) -> !fir.array<10xi32>
+! CHECK:         %[[VAL_28:.*]] = arith.constant 1 : index
+! CHECK:         %[[VAL_29:.*]] = arith.constant 0 : index
+! CHECK:         %[[VAL_30:.*]] = arith.subi %[[VAL_11]], %[[VAL_28]] : index
+! CHECK:         %[[VAL_31:.*]] = fir.do_loop %[[VAL_32:.*]] = %[[VAL_29]] to %[[VAL_30]] step %[[VAL_28]] unordered iter_args(%[[VAL_33:.*]] = %[[VAL_9]]) -> (!fir.array<10xi32>) {
+! CHECK:           %[[VAL_34:.*]] = fir.array_fetch %[[VAL_15]], %[[VAL_32]] : (!fir.array<10xi32>, index) -> i32
+! CHECK:           %[[VAL_35:.*]] = fir.convert %[[VAL_34]] : (i32) -> index
+! CHECK:           %[[VAL_36:.*]] = arith.subi %[[VAL_35]], %[[VAL_13]] : index
+! CHECK:           %[[VAL_37:.*]] = fir.array_fetch %[[VAL_18]], %[[VAL_36]] : (!fir.array<10xi32>, index) -> i32
+! CHECK:           %[[VAL_38:.*]] = fir.convert %[[VAL_37]] : (i32) -> index
+! CHECK:           %[[VAL_39:.*]] = arith.subi %[[VAL_38]], %[[VAL_12]] : index
+! CHECK:           %[[VAL_40:.*]] = fir.array_fetch %[[VAL_27]], %[[VAL_39]] : (!fir.array<10xi32>, index) -> i32
+! CHECK:           %[[VAL_41:.*]] = fir.array_update %[[VAL_33]], %[[VAL_40]], %[[VAL_32]] : (!fir.array<10xi32>, i32, index) -> !fir.array<10xi32>
+! CHECK:           fir.result %[[VAL_41]] : !fir.array<10xi32>
+! CHECK:         }
+! CHECK:         fir.array_merge_store %[[VAL_9]], %[[VAL_42:.*]] to %[[VAL_0]] : !fir.array<10xi32>, !fir.array<10xi32>, !fir.ref<!fir.array<10xi32>>
+! CHECK:         return
+! CHECK:       }
+subroutine test2a(a,b,c,d)
+  integer :: a(10), b(10), c(10), d(10)
+
+  a = b(c(d))
+end subroutine test2a
+
+! CHECK-LABEL: func @_QPtest2b(
+! CHECK-SAME:  %[[VAL_0:.*]]: !fir.ref<!fir.array<10xi32>>, %[[VAL_1:.*]]: !fir.ref<!fir.array<10xi32>>, %[[VAL_2:.*]]: !fir.ref<!fir.array<10xi32>>, %[[VAL_3:.*]]: !fir.ref<!fir.array<10xi32>>) {
+! CHECK:         %[[VAL_4:.*]] = arith.constant 10 : index
+! CHECK:         %[[VAL_5:.*]] = arith.constant 10 : index
+! CHECK:         %[[VAL_6:.*]] = arith.constant 10 : index
+! CHECK:         %[[VAL_7:.*]] = arith.constant 10 : index
+! CHECK:         %[[VAL_8:.*]] = arith.constant 1 : index
+! CHECK:         %[[VAL_9:.*]] = arith.constant 1 : index
+! CHECK:         %[[VAL_10:.*]] = fir.shape %[[VAL_7]] : (index) -> !fir.shape<1>
+! CHECK:         %[[VAL_11:.*]] = fir.array_load %[[VAL_3]](%[[VAL_10]]) : (!fir.ref<!fir.array<10xi32>>, !fir.shape<1>) -> !fir.array<10xi32>
+! CHECK:         %[[VAL_12:.*]] = fir.shape %[[VAL_6]] : (index) -> !fir.shape<1>
+! CHECK:         %[[VAL_13:.*]] = fir.slice %[[VAL_9]], %[[VAL_7]], %[[VAL_9]] : (index, index, index) -> !fir.slice<1>
+! CHECK:         %[[VAL_14:.*]] = fir.array_load %[[VAL_2]](%[[VAL_12]]) {{\[}}%[[VAL_13]]] : (!fir.ref<!fir.array<10xi32>>, !fir.shape<1>, !fir.slice<1>) -> !fir.array<10xi32>
+! CHECK:         %[[VAL_15:.*]] = arith.constant 0 : index
+! CHECK:         %[[VAL_16:.*]] = arith.subi %[[VAL_7]], %[[VAL_9]] : index
+! CHECK:         %[[VAL_17:.*]] = arith.addi %[[VAL_16]], %[[VAL_9]] : index
+! CHECK:         %[[VAL_18:.*]] = arith.divsi %[[VAL_17]], %[[VAL_9]] : index
+! CHECK:         %[[VAL_19:.*]] = arith.cmpi sgt, %[[VAL_18]], %[[VAL_15]] : index
+! CHECK:         %[[VAL_20:.*]] = select %[[VAL_19]], %[[VAL_18]], %[[VAL_15]] : index
+! CHECK:         %[[VAL_21:.*]] = fir.shape %[[VAL_5]] : (index) -> !fir.shape<1>
+! CHECK:         %[[VAL_22:.*]] = fir.slice %[[VAL_8]], %[[VAL_20]], %[[VAL_8]] : (index, index, index) -> !fir.slice<1>
+! CHECK:         %[[VAL_23:.*]] = fir.array_load %[[VAL_1]](%[[VAL_21]]) {{\[}}%[[VAL_22]]] : (!fir.ref<!fir.array<10xi32>>, !fir.shape<1>, !fir.slice<1>) -> !fir.array<10xi32>
+! CHECK:         %[[VAL_24:.*]] = arith.constant 10 : i64
+! CHECK:         %[[VAL_25:.*]] = fir.convert %[[VAL_24]] : (i64) -> index
+! CHECK:         %[[VAL_26:.*]] = fir.shape %[[VAL_4]] : (index) -> !fir.shape<1>
+! CHECK:         %[[VAL_27:.*]] = fir.array_load %[[VAL_0]](%[[VAL_26]]) : (!fir.ref<!fir.array<10xi32>>, !fir.shape<1>) -> !fir.array<10xi32>
+! CHECK:         %[[VAL_28:.*]] = arith.constant 1 : index
+! CHECK:         %[[VAL_29:.*]] = arith.constant 0 : index
+! CHECK:         %[[VAL_30:.*]] = arith.subi %[[VAL_25]], %[[VAL_28]] : index
+! CHECK:         %[[VAL_31:.*]] = fir.do_loop %[[VAL_32:.*]] = %[[VAL_29]] to %[[VAL_30]] step %[[VAL_28]] unordered iter_args(%[[VAL_33:.*]] = %[[VAL_23]]) -> (!fir.array<10xi32>) {
+! CHECK:           %[[VAL_34:.*]] = fir.array_fetch %[[VAL_27]], %[[VAL_32]] : (!fir.array<10xi32>, index) -> i32
+! CHECK:           %[[VAL_35:.*]] = fir.array_fetch %[[VAL_11]], %[[VAL_32]] : (!fir.array<10xi32>, index) -> i32
+! CHECK:           %[[VAL_36:.*]] = fir.convert %[[VAL_35]] : (i32) -> index
+! CHECK:           %[[VAL_37:.*]] = arith.subi %[[VAL_36]], %[[VAL_9]] : index
+! CHECK:           %[[VAL_38:.*]] = fir.array_fetch %[[VAL_14]], %[[VAL_37]] : (!fir.array<10xi32>, index) -> i32
+! CHECK:           %[[VAL_39:.*]] = fir.convert %[[VAL_38]] : (i32) -> index
+! CHECK:           %[[VAL_40:.*]] = arith.subi %[[VAL_39]], %[[VAL_8]] : index
+! CHECK:           %[[VAL_41:.*]] = fir.array_update %[[VAL_33]], %[[VAL_34]], %[[VAL_40]] : (!fir.array<10xi32>, i32, index) -> !fir.array<10xi32>
+! CHECK:           fir.result %[[VAL_41]] : !fir.array<10xi32>
+! CHECK:         }
+! CHECK:         fir.array_merge_store %[[VAL_23]], %[[VAL_42:.*]] to %[[VAL_1]]{{\[}}%[[VAL_22]]] : !fir.array<10xi32>, !fir.array<10xi32>, !fir.ref<!fir.array<10xi32>>, !fir.slice<1>
+! CHECK:         return
+! CHECK:       }
+subroutine test2b(a,b,c,d)
+  integer :: a(10), b(10), c(10), d(10)
+
+  b(c(d)) = a
+end subroutine test2b
