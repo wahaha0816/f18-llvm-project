@@ -1,4 +1,4 @@
-//===-- Lower/EvExprDumper.h ------------------------------------*- C++ -*-===//
+//===-- Lower/DumpEvaluateExpr.h --------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef FORTRAN_LOWER_EVEXPRDUMPER_H
-#define FORTRAN_LOWER_EVEXPRDUMPER_H
+#ifndef FORTRAN_LOWER_DUMPEVALUATEEXPR_H
+#define FORTRAN_LOWER_DUMPEVALUATEEXPR_H
 
 #include "flang/Evaluate/tools.h"
 #include "flang/Lower/Support/Utils.h"
@@ -209,4 +209,4 @@ LLVM_DUMP_METHOD void dumpEvExpr(
 
 } // namespace Fortran::lower
 
-#endif // FORTRAN_LOWER_EVEXPRDUMPER_H
+#endif // FORTRAN_LOWER_DUMPEVALUATEEXPR_H
