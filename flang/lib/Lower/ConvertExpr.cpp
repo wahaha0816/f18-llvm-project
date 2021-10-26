@@ -5098,8 +5098,6 @@ public:
                          "fir.box cannot be created with vector subscripts");
                   if (Fortran::evaluate::HasVectorSubscript(toEvExpr(e)))
                     TODO(loc, "vector subscript of vector subscript");
-                  if (hasEvArrayRef(e))
-                    TODO(loc, "vector subscript with slice subscript");
                   auto base = x.base();
                   auto exv = genArrayBase(base);
                   auto arrExpr = ignoreEvConvert(e);
