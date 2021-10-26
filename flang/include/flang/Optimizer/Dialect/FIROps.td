@@ -601,7 +601,7 @@ class fir_IntegralSwitchTerminatorOp<string mnemonic,
     p.printOperand(getSelector());
     p << " : " << getSelector().getType() << " [";
     auto cases =
-      (*this)->getAttrOfType<mlir::ArrayAttr>(getCasesAttr()).getValue();
+        (*this)->getAttrOfType<mlir::ArrayAttr>(getCasesAttr()).getValue();
     auto count = getNumConditions();
     for (decltype(count) i = 0; i != count; ++i) {
       if (i)
@@ -625,7 +625,8 @@ class fir_IntegralSwitchTerminatorOp<string mnemonic,
           getSelector().getType().isa<mlir::IndexType>() ||
           getSelector().getType().isa<fir::IntegerType>()))
       return emitOpError("must be an integer");
-    auto cases = (*this)->getAttrOfType<mlir::ArrayAttr>(getCasesAttr()).getValue();
+    auto cases =
+        (*this)->getAttrOfType<mlir::ArrayAttr>(getCasesAttr()).getValue();
     auto count = getNumDest();
     if (count == 0)
       return emitOpError("must have at least one successor");
@@ -888,7 +889,7 @@ def fir_EmboxOp : fir_Op<"embox", [NoSideEffect, AttrSizedOperandSegments]> {
 
 def fir_ReboxOp : fir_Op<"rebox", [NoSideEffect, AttrSizedOperandSegments]> {
   let summary =
-    "create a box given another box and (optional) dimension information";
+      "create a box given another box and (optional) dimension information";
 
   let description = [{
     Create a new boxed reference value from another box. This is meant to be
@@ -1513,13 +1514,16 @@ def fir_ArrayModifyOp : fir_Op<"array_modify", [AttrSizedOperandSegments,
     ```mlir
       %s = fir.shape %n : (index) -> !fir.shape<1>
       // Load the entire array 'a'.
-      %v = fir.array_load %a(%s) : (!fir.ref<!fir.array<?xf32>>, !fir.shape<1>) -> !fir.array<?xf32>
+      %v = fir.array_load %a(%s) : (!fir.ref<!fir.array<?xf32>>, !fir.shape<1>)
+          -> !fir.array<?xf32>
       // Update the value of one of the array value's elements with a user
       // defined assignment from %rhs.
       %new = fir.do_loop %i = ... (%inner = %v) {
         %rhs = ...
-        %addr, %r = fir.array_modify %inner, %i, %j : (!fir.array<?xf32>,  index) -> fir.ref<f32>, !fir.array<?xf32>
-        fir.call @user_def_assign(%addr, %rhs) (fir.ref<f32>, fir.ref<!fir.type<SomeType>>) -> ()
+        %addr, %r = fir.array_modify %inner, %i, %j : (!fir.array<?xf32>,
+            index) -> fir.ref<f32>, !fir.array<?xf32>
+        fir.call @user_def_assign(%addr, %rhs) (fir.ref<f32>,
+            fir.ref<!fir.type<SomeType>>) -> ()
         fir.result %r : !fir.ref<!fir.array<?xf32>>
       }
       fir.array_merge_store %v, %new to %a : !fir.ref<!fir.array<?xf32>>
@@ -1544,7 +1548,7 @@ def fir_ArrayModifyOp : fir_Op<"array_modify", [AttrSizedOperandSegments,
       `:` functional-type(operands, results)
   }];
 
-  let verifier = [{ return ::verify(*this); }];
+  let verifier = "return ::verify(*this);";
 }
 
 def fir_ArrayAccessOp : fir_Op<"array_access", [AttrSizedOperandSegments,
