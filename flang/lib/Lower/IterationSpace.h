@@ -182,7 +182,38 @@ void createArrayLoads(AbstractConverter &converter, ExplicitIterSpace &esp,
 /// is conmpleted.
 void createArrayMergeStores(AbstractConverter &converter,
                             ExplicitIterSpace &esp);
+using ExplicitSpaceArrayBases =
+    std::variant<FrontEndSymbol, const evaluate::Component *,
+                 const evaluate::ArrayRef *>;
 
+unsigned getHashValue(const ExplicitSpaceArrayBases &x);
+bool isEqual(const ExplicitSpaceArrayBases &x,
+             const ExplicitSpaceArrayBases &y);
+
+} // namespace lower
+} // namespace Fortran
+
+namespace llvm {
+template <>
+struct DenseMapInfo<Fortran::lower::ExplicitSpaceArrayBases> {
+  static inline Fortran::lower::ExplicitSpaceArrayBases getEmptyKey() {
+    return reinterpret_cast<Fortran::lower::FrontEndSymbol>(~0);
+  }
+  static inline Fortran::lower::ExplicitSpaceArrayBases getTombstoneKey() {
+    return reinterpret_cast<Fortran::lower::FrontEndSymbol>(~0 - 1);
+  }
+  static unsigned
+  getHashValue(const Fortran::lower::ExplicitSpaceArrayBases &v) {
+    return Fortran::lower::getHashValue(v);
+  }
+  static bool isEqual(const Fortran::lower::ExplicitSpaceArrayBases &lhs,
+                      const Fortran::lower::ExplicitSpaceArrayBases &rhs) {
+    return Fortran::lower::isEqual(lhs, rhs);
+  }
+};
+} // namespace llvm
+
+namespace Fortran::lower {
 /// Fortran also allows arrays to be evaluated under constructs which allow the
 /// user to explicitly specify the iteration space using concurrent-control
 /// expressions. These constructs allow the user to define both an iteration
@@ -200,8 +231,7 @@ public:
       std::tuple<FrontEndSymbol, FrontEndExpr, FrontEndExpr, FrontEndExpr>;
   using ConcurrentSpec =
       std::pair<llvm::SmallVector<IterSpaceDim>, FrontEndExpr>;
-  using ArrayBases = std::variant<FrontEndSymbol, const evaluate::Component *,
-                                  const evaluate::ArrayRef *>;
+  using ArrayBases = ExplicitSpaceArrayBases;
 
   friend void createArrayLoads(AbstractConverter &converter,
                                ExplicitIterSpace &esp, SymMap &symMap);
@@ -287,15 +317,12 @@ public:
 
   /// Create a binding between an Ev::Expr node pointer and a fir::array_load
   /// op. This bindings will be used when generating the IR.
-  void bindLoad(const ArrayBases &base, fir::ArrayLoadOp load);
-
-  template <typename A>
-  fir::ArrayLoadOp findBinding(const A *base) {
-    using T = std::remove_cv_t<std::remove_pointer_t<decltype(base)>>;
-    return loadBindings.lookup(static_cast<void *>(const_cast<T *>(base)));
+  void bindLoad(ArrayBases base, fir::ArrayLoadOp load) {
+    loadBindings.try_emplace(std::move(base), load);
   }
+
   fir::ArrayLoadOp findBinding(const ArrayBases &base) {
-    return std::visit([&](const auto *p) { return findBinding(p); }, base);
+    return loadBindings.lookup(base);
   }
 
   /// `load` must be a LHS array_load. Returns `llvm::None` on error.
@@ -399,7 +426,7 @@ private:
   llvm::SmallVector<llvm::SmallVector<FrontEndSymbol>> symbolStack;
   llvm::SmallVector<llvm::Optional<ArrayBases>> lhsBases;
   llvm::SmallVector<llvm::SmallVector<ArrayBases>> rhsBases;
-  llvm::DenseMap<void *, fir::ArrayLoadOp> loadBindings;
+  llvm::DenseMap<ArrayBases, fir::ArrayLoadOp> loadBindings;
 
   // Stack of lambdas to create the loop nest.
   llvm::SmallVector<std::function<void()>> ccLoopNest;
@@ -440,7 +467,6 @@ bool symbolsIntersectSubscripts(llvm::ArrayRef<FrontEndSymbol> ctrlSet,
   return false;
 }
 
-} // namespace lower
-} // namespace Fortran
+} // namespace Fortran::lower
 
 #endif // FORTRAN_LOWER_ITERATIONSPACE_H

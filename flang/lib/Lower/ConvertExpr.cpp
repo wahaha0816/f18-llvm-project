@@ -2693,7 +2693,6 @@ private:
               [&](const Fortran::evaluate::Subscript *x) { addSub(*x); },
               [&](const Fortran::evaluate::ArrayRef *x) {
                 assert(!x->base().IsSymbol());
-                ty = addField(x->base().GetComponent());
                 for (const auto &sub : x->subscript())
                   addSub(sub);
                 ty = fir::unwrapSequenceType(ty);
@@ -5659,7 +5658,7 @@ public:
                                   "array constructor element has unknown size");
             });
         auto newEleTy = fir::CharacterType::getSingleton(eleTy.getContext(),
-                                                 charTy.getFKind());
+                                                         charTy.getFKind());
         if (auto seqTy = resTy.dyn_cast<fir::SequenceType>()) {
           assert(eleTy == seqTy.getEleTy());
           resTy = fir::SequenceType::get(seqTy.getShape(), newEleTy);

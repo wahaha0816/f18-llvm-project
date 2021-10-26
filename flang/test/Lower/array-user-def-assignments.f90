@@ -256,15 +256,13 @@ subroutine test_in_forall_2(x, y)
 ! CHECK:         %[[VAL_9:.*]] = arith.constant 1 : index
 ! CHECK:         %[[VAL_10:.*]] = fir.shape %[[VAL_4]] : (index) -> !fir.shape<1>
 ! CHECK:         %[[VAL_11:.*]] = fir.array_load %[[VAL_1]](%[[VAL_10]]) : (!fir.ref<!fir.array<10xf32>>, !fir.shape<1>) -> !fir.array<10xf32>
-! CHECK:         %[[VAL_12:.*]] = fir.shape %[[VAL_4]] : (index) -> !fir.shape<1>
-! CHECK:         %[[VAL_13:.*]] = fir.array_load %[[VAL_1]](%[[VAL_12]]) : (!fir.ref<!fir.array<10xf32>>, !fir.shape<1>) -> !fir.array<10xf32>
 ! CHECK:         %[[VAL_14:.*]] = fir.do_loop %[[VAL_15:.*]] = %[[VAL_6]] to %[[VAL_8]] step %[[VAL_9]] unordered iter_args(%[[VAL_16:.*]] = %[[VAL_11]]) -> (!fir.array<10xf32>) {
 ! CHECK:           %[[VAL_17:.*]] = fir.convert %[[VAL_15]] : (index) -> i32
 ! CHECK:           fir.store %[[VAL_17]] to %[[VAL_3]] : !fir.ref<i32>
 ! CHECK:           %[[VAL_18:.*]] = fir.load %[[VAL_3]] : !fir.ref<i32>
 ! CHECK:           %[[VAL_19:.*]] = fir.convert %[[VAL_18]] : (i32) -> i64
 ! CHECK:           %[[VAL_20:.*]] = fir.convert %[[VAL_19]] : (i64) -> index
-! CHECK:           %[[VAL_21:.*]] = fir.array_fetch %[[VAL_13]], %[[VAL_20]] {Fortran.offsets} : (!fir.array<10xf32>, index) -> f32
+! CHECK:           %[[VAL_21:.*]] = fir.array_fetch %[[VAL_11]], %[[VAL_20]] {Fortran.offsets} : (!fir.array<10xf32>, index) -> f32
 ! CHECK:           %[[VAL_22:.*]] = arith.constant 0.000000e+00 : f32
 ! CHECK:           %[[VAL_23:.*]] = arith.cmpf olt, %[[VAL_21]], %[[VAL_22]] : f32
 ! CHECK:           %[[VAL_24:.*]] = fir.load %[[VAL_3]] : !fir.ref<i32>
