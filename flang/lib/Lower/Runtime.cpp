@@ -340,7 +340,15 @@ void Fortran::lower::genSystemClock(fir::FirOpBuilder &builder,
                                     mlir::Location loc, mlir::Value count,
                                     mlir::Value rate, mlir::Value max) {
   auto makeCall = [&](mlir::FuncOp func, mlir::Value arg) {
-    mlir::Value res = builder.create<fir::CallOp>(loc, func).getResult(0);
+    auto kindTy = func.getType().getInput(0);
+    int integerKind = 8;
+    if (auto intType =
+            fir::unwrapRefType(arg.getType()).dyn_cast<mlir::IntegerType>())
+      integerKind = intType.getWidth() / 8;
+    auto kind = builder.createIntegerConstant(loc, kindTy, integerKind);
+    mlir::Value res =
+        builder.create<fir::CallOp>(loc, func, mlir::ValueRange{kind})
+            .getResult(0);
     mlir::Value castRes =
         builder.createConvert(loc, fir::dyn_cast_ptrEleTy(arg.getType()), res);
     builder.create<fir::StoreOp>(loc, castRes, arg);
