@@ -464,7 +464,7 @@ public:
         return isEqual(*xs, *ys);
       return false;
     }
-    if (const auto *ys = y.GetAssumedTypeDummy())
+    if ([[maybe_unused]] const auto *ys = y.GetAssumedTypeDummy())
       return false;
     return isEqual(*x.UnwrapExpr(), *y.UnwrapExpr());
   }
