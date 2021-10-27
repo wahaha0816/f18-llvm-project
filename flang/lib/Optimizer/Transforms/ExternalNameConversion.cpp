@@ -48,8 +48,8 @@ public:
     rewriter.startRootUpdate(op);
     auto callee = op.callee();
     if (callee.hasValue()) {
-      auto result =
-          fir::NameUniquer::deconstruct(callee.getValue().getRootReference().getValue());
+      auto result = fir::NameUniquer::deconstruct(
+          callee.getValue().getRootReference().getValue());
       if (fir::NameUniquer::isExternalFacingUniquedName(result))
         op.calleeAttr(
             SymbolRefAttr::get(op.getContext(), mangleExternalName(result)));
@@ -86,7 +86,8 @@ public:
   matchAndRewrite(fir::GlobalOp op,
                   mlir::PatternRewriter &rewriter) const override {
     rewriter.startRootUpdate(op);
-    auto result = fir::NameUniquer::deconstruct(op.symref().getRootReference().getValue());
+    auto result = fir::NameUniquer::deconstruct(
+        op.symref().getRootReference().getValue());
     if (fir::NameUniquer::isExternalFacingUniquedName(result)) {
       auto newName = mangleExternalName(result);
       op.symrefAttr(mlir::SymbolRefAttr::get(op.getContext(), newName));
@@ -104,7 +105,8 @@ public:
   mlir::LogicalResult
   matchAndRewrite(fir::AddrOfOp op,
                   mlir::PatternRewriter &rewriter) const override {
-    auto result = fir::NameUniquer::deconstruct(op.symbol().getRootReference().getValue());
+    auto result = fir::NameUniquer::deconstruct(
+        op.symbol().getRootReference().getValue());
     if (fir::NameUniquer::isExternalFacingUniquedName(result)) {
       auto newName =
           SymbolRefAttr::get(op.getContext(), mangleExternalName(result));
@@ -124,8 +126,8 @@ public:
   matchAndRewrite(fir::EmboxProcOp op,
                   mlir::PatternRewriter &rewriter) const override {
     rewriter.startRootUpdate(op);
-    auto result =
-        fir::NameUniquer::deconstruct(op.funcname().getRootReference().getValue());
+    auto result = fir::NameUniquer::deconstruct(
+        op.funcname().getRootReference().getValue());
     if (fir::NameUniquer::isExternalFacingUniquedName(result))
       op.funcnameAttr(
           SymbolRefAttr::get(op.getContext(), mangleExternalName(result)));

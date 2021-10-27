@@ -68,8 +68,8 @@ void genCharacterCopy(mlir::Value src, mlir::Value srcLen, mlir::Value dst,
     return fir::ReferenceType::get(toEleTy(ty));
   };
   if (!srcLen && !dstLen && srcTy.getLen() >= dstTy.getLen()) {
-    auto upper =
-        builder.template create<mlir::arith::ConstantIndexOp>(loc, dstTy.getLen() - 1);
+    auto upper = builder.template create<mlir::arith::ConstantIndexOp>(
+        loc, dstTy.getLen() - 1);
     auto loop = builder.template create<fir::DoLoopOp>(loc, zero, upper, one);
     auto insPt = builder.saveInsertionPoint();
     builder.setInsertionPointToStart(loop.getBody());
@@ -97,12 +97,11 @@ void genCharacterCopy(mlir::Value src, mlir::Value srcLen, mlir::Value dst,
         loc, builder.template create<fir::ConvertOp>(loc, one.getType(), v),
         one);
   };
-  mlir::Value len =
-      dstLen
-          ? minusOne(dstLen)
-          : builder
-                .template create<mlir::arith::ConstantIndexOp>(loc, dstTy.getLen() - 1)
-                .getResult();
+  mlir::Value len = dstLen ? minusOne(dstLen)
+                           : builder
+                                 .template create<mlir::arith::ConstantIndexOp>(
+                                     loc, dstTy.getLen() - 1)
+                                 .getResult();
   auto loop = builder.template create<fir::DoLoopOp>(loc, zero, len, one);
   auto insPt = builder.saveInsertionPoint();
   builder.setInsertionPointToStart(loop.getBody());
@@ -110,7 +109,9 @@ void genCharacterCopy(mlir::Value src, mlir::Value srcLen, mlir::Value dst,
       srcLen
           ? builder.template create<fir::ConvertOp>(loc, one.getType(), srcLen)
                 .getResult()
-          : builder.template create<mlir::arith::ConstantIndexOp>(loc, srcTy.getLen())
+          : builder
+                .template create<mlir::arith::ConstantIndexOp>(loc,
+                                                               srcTy.getLen())
                 .getResult();
   auto cond = builder.template create<mlir::arith::CmpIOp>(
       loc, mlir::arith::CmpIPredicate::slt, loop.getInductionVar(), slen);

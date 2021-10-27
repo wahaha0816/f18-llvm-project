@@ -31,10 +31,10 @@
 #include "flang/Optimizer/Builder/Runtime/Reduction.h"
 #include "flang/Optimizer/Builder/Runtime/Transformational.h"
 #include "flang/Optimizer/Support/FatalError.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include <algorithm>
 #include <string_view>
 #include <utility>
@@ -217,7 +217,6 @@ genDotProd(FN func, mlir::Type resultType, fir::FirOpBuilder &builder,
   // Handle required vector arguments
   mlir::Value vectorA = fir::getBase(args[0]);
   mlir::Value vectorB = fir::getBase(args[1]);
-
 
   auto eleTy = fir::dyn_cast_ptrOrBoxEleTy(vectorA.getType())
                    .cast<fir::SequenceType>()
@@ -1468,7 +1467,8 @@ mlir::FuncOp IntrinsicLibrary::getWrapper(GeneratorType generator,
     function = builder.createFunction(loc, wrapperName, funcType);
     function->setAttr("fir.intrinsic", builder.getUnitAttr());
     auto internalLinkage = mlir::LLVM::linkage::Linkage::Internal;
-    auto linkage = mlir::LLVM::LinkageAttr::get(builder.getContext(), internalLinkage);
+    auto linkage =
+        mlir::LLVM::LinkageAttr::get(builder.getContext(), internalLinkage);
     function->setAttr("llvm.linkage", linkage);
     function.addEntryBlock();
 
@@ -2102,15 +2102,15 @@ mlir::Value IntrinsicLibrary::genDim(mlir::Type resultType,
   if (resultType.isa<mlir::IntegerType>()) {
     auto zero = builder.createIntegerConstant(loc, resultType, 0);
     auto diff = builder.create<mlir::arith::SubIOp>(loc, args[0], args[1]);
-    auto cmp =
-        builder.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::sgt, diff, zero);
+    auto cmp = builder.create<mlir::arith::CmpIOp>(
+        loc, mlir::arith::CmpIPredicate::sgt, diff, zero);
     return builder.create<mlir::SelectOp>(loc, cmp, diff, zero);
   }
   assert(fir::isa_real(resultType) && "Only expects real and integer in DIM");
   auto zero = builder.createRealZeroConstant(loc, resultType);
   auto diff = builder.create<mlir::arith::SubFOp>(loc, args[0], args[1]);
-  auto cmp =
-      builder.create<mlir::arith::CmpFOp>(loc, mlir::arith::CmpFPredicate::OGT, diff, zero);
+  auto cmp = builder.create<mlir::arith::CmpFOp>(
+      loc, mlir::arith::CmpFPredicate::OGT, diff, zero);
   return builder.create<mlir::SelectOp>(loc, cmp, diff, zero);
 }
 
@@ -2259,8 +2259,8 @@ mlir::Value IntrinsicLibrary::genIbits(mlir::Type resultType,
   auto mask = builder.create<mlir::arith::ShRUIOp>(loc, ones, shiftCount);
   auto res1 = builder.create<mlir::arith::ShRSIOp>(loc, args[0], pos);
   auto res2 = builder.create<mlir::arith::AndIOp>(loc, res1, mask);
-  auto lenIsZero =
-      builder.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::eq, len, zero);
+  auto lenIsZero = builder.create<mlir::arith::CmpIOp>(
+      loc, mlir::arith::CmpIPredicate::eq, len, zero);
   return builder.create<mlir::SelectOp>(loc, lenIsZero, zero, res2);
 }
 
@@ -2397,12 +2397,11 @@ mlir::Value IntrinsicLibrary::genIshft(mlir::Type resultType,
   auto shift = builder.createConvert(loc, resultType, args[1]);
   auto absShift = genAbs(resultType, {shift});
   auto left = builder.create<mlir::arith::ShLIOp>(loc, args[0], absShift);
-  auto right =
-      builder.create<mlir::arith::ShRUIOp>(loc, args[0], absShift);
+  auto right = builder.create<mlir::arith::ShRUIOp>(loc, args[0], absShift);
   auto shiftIsLarge = builder.create<mlir::arith::CmpIOp>(
       loc, mlir::arith::CmpIPredicate::sge, absShift, bitSize);
-  auto shiftIsNegative =
-      builder.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::slt, shift, zero);
+  auto shiftIsNegative = builder.create<mlir::arith::CmpIOp>(
+      loc, mlir::arith::CmpIPredicate::slt, shift, zero);
   auto sel = builder.create<mlir::SelectOp>(loc, shiftIsNegative, right, left);
   return builder.create<mlir::SelectOp>(loc, shiftIsLarge, zero, sel);
 }
@@ -2437,31 +2436,33 @@ mlir::Value IntrinsicLibrary::genIshftc(mlir::Type resultType,
   auto ones = builder.createIntegerConstant(loc, resultType, -1);
   auto absShift = genAbs(resultType, {shift});
   auto elseSize = builder.create<mlir::arith::SubIOp>(loc, size, absShift);
-  auto shiftIsZero =
-      builder.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::eq, shift, zero);
+  auto shiftIsZero = builder.create<mlir::arith::CmpIOp>(
+      loc, mlir::arith::CmpIPredicate::eq, shift, zero);
   auto shiftEqualsSize = builder.create<mlir::arith::CmpIOp>(
       loc, mlir::arith::CmpIPredicate::eq, absShift, size);
   auto shiftIsNop =
       builder.create<mlir::arith::OrIOp>(loc, shiftIsZero, shiftEqualsSize);
-  auto shiftIsPositive =
-      builder.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::sgt, shift, zero);
+  auto shiftIsPositive = builder.create<mlir::arith::CmpIOp>(
+      loc, mlir::arith::CmpIPredicate::sgt, shift, zero);
   auto leftSize =
       builder.create<mlir::SelectOp>(loc, shiftIsPositive, absShift, elseSize);
   auto rightSize =
       builder.create<mlir::SelectOp>(loc, shiftIsPositive, elseSize, absShift);
-  auto hasUnchanged =
-      builder.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::ne, size, bitSize);
+  auto hasUnchanged = builder.create<mlir::arith::CmpIOp>(
+      loc, mlir::arith::CmpIPredicate::ne, size, bitSize);
   auto unchangedTmp1 = builder.create<mlir::arith::ShRUIOp>(loc, I, size);
   auto unchangedTmp2 =
       builder.create<mlir::arith::ShLIOp>(loc, unchangedTmp1, size);
   auto unchanged =
       builder.create<mlir::SelectOp>(loc, hasUnchanged, unchangedTmp2, zero);
-  auto leftMaskShift = builder.create<mlir::arith::SubIOp>(loc, bitSize, leftSize);
+  auto leftMaskShift =
+      builder.create<mlir::arith::SubIOp>(loc, bitSize, leftSize);
   auto leftMask =
       builder.create<mlir::arith::ShRUIOp>(loc, ones, leftMaskShift);
   auto leftTmp = builder.create<mlir::arith::ShRUIOp>(loc, I, rightSize);
   auto left = builder.create<mlir::arith::AndIOp>(loc, leftTmp, leftMask);
-  auto rightMaskShift = builder.create<mlir::arith::SubIOp>(loc, bitSize, rightSize);
+  auto rightMaskShift =
+      builder.create<mlir::arith::SubIOp>(loc, bitSize, rightSize);
   auto rightMask =
       builder.create<mlir::arith::ShRUIOp>(loc, ones, rightMaskShift);
   auto rightTmp = builder.create<mlir::arith::AndIOp>(loc, I, rightMask);
@@ -2562,8 +2563,8 @@ mlir::Value IntrinsicLibrary::genMod(mlir::Type resultType,
 
   // Use runtime. Note that mlir::arith::RemFOp implements floating point
   // remainder, but it does not work with fir::Real type.
-  // TODO: consider using mlir::arith::RemFOp when possible, that may help folding
-  // and  optimizations.
+  // TODO: consider using mlir::arith::RemFOp when possible, that may help
+  // folding and  optimizations.
   return genRuntimeCall("mod", resultType, args);
 }
 
@@ -2580,16 +2581,18 @@ mlir::Value IntrinsicLibrary::genModulo(mlir::Type resultType,
   //    A-FLOOR(A/P)*P = A-(INT(A/P)-1)*P = A-INT(A/P)*P+P = MOD(A,P)+P
   // Note that A/P < 0 if and only if A and P signs are different.
   if (resultType.isa<mlir::IntegerType>()) {
-    auto remainder = builder.create<mlir::arith::RemSIOp>(loc, args[0], args[1]);
+    auto remainder =
+        builder.create<mlir::arith::RemSIOp>(loc, args[0], args[1]);
     auto argXor = builder.create<mlir::arith::XOrIOp>(loc, args[0], args[1]);
     auto zero = builder.createIntegerConstant(loc, argXor.getType(), 0);
     auto argSignDifferent = builder.create<mlir::arith::CmpIOp>(
         loc, mlir::arith::CmpIPredicate::slt, argXor, zero);
     auto remainderIsNotZero = builder.create<mlir::arith::CmpIOp>(
         loc, mlir::arith::CmpIPredicate::ne, remainder, zero);
-    auto mustAddP =
-        builder.create<mlir::arith::AndIOp>(loc, remainderIsNotZero, argSignDifferent);
-    auto remPlusP = builder.create<mlir::arith::AddIOp>(loc, remainder, args[1]);
+    auto mustAddP = builder.create<mlir::arith::AndIOp>(loc, remainderIsNotZero,
+                                                        argSignDifferent);
+    auto remPlusP =
+        builder.create<mlir::arith::AddIOp>(loc, remainder, args[1]);
     return builder.create<mlir::SelectOp>(loc, mustAddP, remPlusP, remainder);
   }
   // Real case
@@ -2603,8 +2606,8 @@ mlir::Value IntrinsicLibrary::genModulo(mlir::Type resultType,
       loc, mlir::arith::CmpFPredicate::OLT, args[1], zero);
   auto argSignDifferent =
       builder.create<mlir::arith::XOrIOp>(loc, aLessThanZero, pLessThanZero);
-  auto mustAddP =
-      builder.create<mlir::arith::AndIOp>(loc, remainderIsNotZero, argSignDifferent);
+  auto mustAddP = builder.create<mlir::arith::AndIOp>(loc, remainderIsNotZero,
+                                                      argSignDifferent);
   auto remPlusP = builder.create<mlir::arith::AddFOp>(loc, remainder, args[1]);
   return builder.create<mlir::SelectOp>(loc, mustAddP, remPlusP, remainder);
 }
@@ -2642,15 +2645,16 @@ void IntrinsicLibrary::genMvbits(llvm::ArrayRef<fir::ExtendedValue> args) {
   auto shiftCount = builder.create<mlir::arith::SubIOp>(loc, bitSize, len);
   auto mask = builder.create<mlir::arith::ShRUIOp>(loc, ones, shiftCount);
   auto unchangedTmp1 = builder.create<mlir::arith::ShLIOp>(loc, mask, topos);
-  auto unchangedTmp2 = builder.create<mlir::arith::XOrIOp>(loc, unchangedTmp1, ones);
+  auto unchangedTmp2 =
+      builder.create<mlir::arith::XOrIOp>(loc, unchangedTmp1, ones);
   auto unchanged = builder.create<mlir::arith::AndIOp>(loc, unchangedTmp2, to);
-  auto frombitsTmp1 =
-      builder.create<mlir::arith::ShRUIOp>(loc, from, frompos);
-  auto frombitsTmp2 = builder.create<mlir::arith::AndIOp>(loc, frombitsTmp1, mask);
+  auto frombitsTmp1 = builder.create<mlir::arith::ShRUIOp>(loc, from, frompos);
+  auto frombitsTmp2 =
+      builder.create<mlir::arith::AndIOp>(loc, frombitsTmp1, mask);
   auto frombits = builder.create<mlir::arith::ShLIOp>(loc, frombitsTmp2, topos);
   auto resTmp = builder.create<mlir::arith::OrIOp>(loc, unchanged, frombits);
-  auto lenIsZero =
-      builder.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::eq, len, zero);
+  auto lenIsZero = builder.create<mlir::arith::CmpIOp>(
+      loc, mlir::arith::CmpIPredicate::eq, len, zero);
   auto res = builder.create<mlir::SelectOp>(loc, lenIsZero, to, resTmp);
   builder.create<fir::StoreOp>(loc, res, toAddr);
 }
@@ -2960,15 +2964,15 @@ mlir::Value IntrinsicLibrary::genSign(mlir::Type resultType,
   if (resultType.isa<mlir::IntegerType>()) {
     auto zero = builder.createIntegerConstant(loc, resultType, 0);
     auto neg = builder.create<mlir::arith::SubIOp>(loc, zero, abs);
-    auto cmp = builder.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::slt,
-                                            args[1], zero);
+    auto cmp = builder.create<mlir::arith::CmpIOp>(
+        loc, mlir::arith::CmpIPredicate::slt, args[1], zero);
     return builder.create<mlir::SelectOp>(loc, cmp, neg, abs);
   }
   // TODO: Requirements when second argument is +0./0.
   auto zero = builder.createRealZeroConstant(loc, resultType);
   auto neg = builder.create<mlir::arith::NegFOp>(loc, abs);
-  auto cmp = builder.create<mlir::arith::CmpFOp>(loc, mlir::arith::CmpFPredicate::OLT,
-                                          args[1], zero);
+  auto cmp = builder.create<mlir::arith::CmpFOp>(
+      loc, mlir::arith::CmpFPredicate::OLT, args[1], zero);
   return builder.create<mlir::SelectOp>(loc, cmp, neg, abs);
 }
 
@@ -2998,7 +3002,8 @@ IntrinsicLibrary::genSize(mlir::Type resultType,
   auto oneBasedDim =
       builder.createConvert(loc, indexType, fir::getBase(args[1]));
   auto one = builder.createIntegerConstant(loc, indexType, 1);
-  auto zeroBasedDim = builder.create<mlir::arith::SubIOp>(loc, oneBasedDim, one);
+  auto zeroBasedDim =
+      builder.create<mlir::arith::SubIOp>(loc, oneBasedDim, one);
 
   // The value of the KIND argument is already reflected in the resultType
 
@@ -3159,9 +3164,9 @@ template <Extremum extremum, ExtremumBehavior behavior>
 static mlir::Value createExtremumCompare(mlir::Location loc,
                                          fir::FirOpBuilder &builder,
                                          mlir::Value left, mlir::Value right) {
-  static constexpr auto integerPredicate = extremum == Extremum::Max
-                                               ? mlir::arith::CmpIPredicate::sgt
-                                               : mlir::arith::CmpIPredicate::slt;
+  static constexpr auto integerPredicate =
+      extremum == Extremum::Max ? mlir::arith::CmpIPredicate::sgt
+                                : mlir::arith::CmpIPredicate::slt;
   static constexpr auto orderedCmp = extremum == Extremum::Max
                                          ? mlir::arith::CmpFPredicate::OGT
                                          : mlir::arith::CmpFPredicate::OLT;
@@ -3177,7 +3182,8 @@ static mlir::Value createExtremumCompare(mlir::Location loc,
           builder.create<mlir::arith::CmpFOp>(loc, orderedCmp, left, right);
       auto rightIsNan = builder.create<mlir::arith::CmpFOp>(
           loc, mlir::arith::CmpFPredicate::UNE, right, right);
-      result = builder.create<mlir::arith::OrIOp>(loc, leftIsResult, rightIsNan);
+      result =
+          builder.create<mlir::arith::OrIOp>(loc, leftIsResult, rightIsNan);
     } else if constexpr (behavior == ExtremumBehavior::IeeeMinMaximum) {
       // Always return NaNs if one the input is NaNs
       auto leftIsResult =
@@ -3187,20 +3193,23 @@ static mlir::Value createExtremumCompare(mlir::Location loc,
       result = builder.create<mlir::arith::OrIOp>(loc, leftIsResult, leftIsNan);
     } else if constexpr (behavior == ExtremumBehavior::MinMaxss) {
       // If the left is a NaN, return the right whatever it is.
-      result = builder.create<mlir::arith::CmpFOp>(loc, orderedCmp, left, right);
+      result =
+          builder.create<mlir::arith::CmpFOp>(loc, orderedCmp, left, right);
     } else if constexpr (behavior == ExtremumBehavior::PgfortranLlvm) {
       // If one of the operand is a NaN, return left whatever it is.
-      static constexpr auto unorderedCmp = extremum == Extremum::Max
-                                               ? mlir::arith::CmpFPredicate::UGT
-                                               : mlir::arith::CmpFPredicate::ULT;
-      result = builder.create<mlir::arith::CmpFOp>(loc, unorderedCmp, left, right);
+      static constexpr auto unorderedCmp =
+          extremum == Extremum::Max ? mlir::arith::CmpFPredicate::UGT
+                                    : mlir::arith::CmpFPredicate::ULT;
+      result =
+          builder.create<mlir::arith::CmpFOp>(loc, unorderedCmp, left, right);
     } else {
       // TODO: ieeeMinNum/ieeeMaxNum
       static_assert(behavior == ExtremumBehavior::IeeeMinMaxNum,
                     "ieeeMinNum/ieeeMaxNum behavior not implemented");
     }
   } else if (fir::isa_integer(type)) {
-    result = builder.create<mlir::arith::CmpIOp>(loc, integerPredicate, left, right);
+    result =
+        builder.create<mlir::arith::CmpIOp>(loc, integerPredicate, left, right);
   } else if (fir::isa_char(type)) {
     // TODO: ! character min and max is tricky because the result
     // length is the length of the longest argument!

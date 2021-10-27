@@ -615,8 +615,8 @@ static mlir::ParseResult parseCallOp(mlir::OpAsmParser &parser,
   mlir::SymbolRefAttr funcAttr;
   bool isDirect = operands.empty();
   if (isDirect)
-    if (parser.parseAttribute(funcAttr,
-        fir::CallOp::getCalleeAttrName(), attrs))
+    if (parser.parseAttribute(funcAttr, fir::CallOp::getCalleeAttrName(),
+                              attrs))
       return mlir::failure();
 
   Type type;
@@ -692,7 +692,8 @@ static void printCmpOp(OpAsmPrinter &p, OPTY op) {
             OPTY::getPredicateAttrName())
           .getInt());
   assert(predSym.hasValue() && "invalid symbol value for predicate");
-  p << '"' << mlir::arith::stringifyCmpFPredicate(predSym.getValue()) << '"' << ", ";
+  p << '"' << mlir::arith::stringifyCmpFPredicate(predSym.getValue()) << '"'
+    << ", ";
   p.printOperand(op.lhs());
   p << ", ";
   p.printOperand(op.rhs());
@@ -748,7 +749,8 @@ mlir::ParseResult fir::parseCmpcOp(mlir::OpAsmParser &parser,
   return parseCmpOp<fir::CmpcOp>(parser, result);
 }
 
-mlir::arith::CmpFPredicate fir::CmpcOp::getPredicateByName(llvm::StringRef name) {
+mlir::arith::CmpFPredicate
+fir::CmpcOp::getPredicateByName(llvm::StringRef name) {
   auto pred = mlir::arith::symbolizeCmpFPredicate(name);
   assert(pred.hasValue() && "invalid predicate name");
   return pred.getValue();
@@ -990,9 +992,8 @@ static mlir::ParseResult parseDispatchTableOp(mlir::OpAsmParser &parser,
     return failure();
 
   // Convert the parsed name attr into a string attr.
-  result.attributes.set(
-      mlir::SymbolTable::getSymbolAttrName(),
-      nameAttr.getRootReference());
+  result.attributes.set(mlir::SymbolTable::getSymbolAttrName(),
+                        nameAttr.getRootReference());
 
   // Parse the optional table body.
   mlir::Region *body = result.addRegion();
@@ -1419,7 +1420,8 @@ static mlir::ParseResult parseFieldIndexOp(mlir::OpAsmParser &parser,
 static void print(mlir::OpAsmPrinter &p, fir::FieldIndexOp &op) {
   p << ' '
     << op.getOperation()
-           ->getAttrOfType<mlir::StringAttr>(fir::FieldIndexOp::getFieldAttrName())
+           ->getAttrOfType<mlir::StringAttr>(
+               fir::FieldIndexOp::getFieldAttrName())
            .getValue()
     << ", " << op.getOperation()->getAttr(fir::FieldIndexOp::getTypeAttrName());
   if (op.getNumOperands()) {
@@ -1726,9 +1728,8 @@ static mlir::LogicalResult verify(fir::IterWhileOp op) {
 }
 
 static void print(mlir::OpAsmPrinter &p, fir::IterWhileOp op) {
-  p << " (" << op.getInductionVar()
-    << " = " << op.lowerBound() << " to " << op.upperBound() << " step "
-    << op.step() << ") and (";
+  p << " (" << op.getInductionVar() << " = " << op.lowerBound() << " to "
+    << op.upperBound() << " step " << op.step() << ") and (";
   assert(op.hasIterOperands());
   auto regionArgs = op.getRegionIterArgs();
   auto operands = op.getIterOperands();
@@ -1949,7 +1950,8 @@ static mlir::ParseResult parseDoLoopOp(mlir::OpAsmParser &parser,
 
   // Induction variable.
   if (prependCount)
-    result.addAttribute(DoLoopOp::getFinalValueAttrName(), builder.getUnitAttr());
+    result.addAttribute(DoLoopOp::getFinalValueAttrName(),
+                        builder.getUnitAttr());
   else
     argTypes.push_back(indexType);
   // Loop carried variables
@@ -2023,8 +2025,8 @@ static mlir::LogicalResult verify(fir::DoLoopOp op) {
 
 static void print(mlir::OpAsmPrinter &p, fir::DoLoopOp op) {
   bool printBlockTerminators = false;
-  p << ' ' << op.getInductionVar() << " = "
-    << op.lowerBound() << " to " << op.upperBound() << " step " << op.step();
+  p << ' ' << op.getInductionVar() << " = " << op.lowerBound() << " to "
+    << op.upperBound() << " step " << op.step();
   if (op.unordered())
     p << " unordered";
   if (op.hasIterOperands()) {
@@ -2113,9 +2115,8 @@ static mlir::ParseResult parseDTEntryOp(mlir::OpAsmParser &parser,
 }
 
 static void print(mlir::OpAsmPrinter &p, fir::DTEntryOp &op) {
-  p << ' '
-    << op.getOperation()->getAttr(fir::DTEntryOp::getMethodAttrName()) << ", "
-    << op.getOperation()->getAttr(fir::DTEntryOp::getProcAttrName());
+  p << ' ' << op.getOperation()->getAttr(fir::DTEntryOp::getMethodAttrName())
+    << ", " << op.getOperation()->getAttr(fir::DTEntryOp::getProcAttrName());
 }
 
 //===----------------------------------------------------------------------===//
@@ -2291,7 +2292,7 @@ static constexpr llvm::StringRef getTargetOffsetAttr() {
 template <typename A, typename... AdditionalArgs>
 static A getSubOperands(unsigned pos, A allArgs,
                         mlir::DenseIntElementsAttr ranges,
-                        AdditionalArgs &&... additionalArgs) {
+                        AdditionalArgs &&...additionalArgs) {
   unsigned start = 0;
   for (unsigned i = 0; i < pos; ++i)
     start += (*(ranges.begin() + i)).getZExtValue();

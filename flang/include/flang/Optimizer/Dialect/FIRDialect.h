@@ -16,7 +16,7 @@
 #include "mlir/IR/Dialect.h"
 
 namespace mlir {
-  class BlockAndValueMapping;
+class BlockAndValueMapping;
 } // namespace mlir
 
 namespace fir {

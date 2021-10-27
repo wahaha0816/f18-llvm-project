@@ -83,9 +83,7 @@ inline int realBitsToTypeCode(unsigned bits) {
   // clang-format on
 }
 
-static constexpr int derivedToTypeCode() {
-  return CFI_type_struct;
-}
+static constexpr int derivedToTypeCode() { return CFI_type_struct; }
 
 } // namespace fir
 

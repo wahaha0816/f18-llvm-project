@@ -30,7 +30,6 @@ namespace fir::support {
       mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect,                \
       mlir::vector::VectorDialect
 
-
 // The definitive list of dialects used by flang.
 #define FLANG_DIALECT_LIST                                                     \
   FLANG_NONCODEGEN_DIALECT_LIST, FIRCodeGenDialect, mlir::LLVM::LLVMDialect

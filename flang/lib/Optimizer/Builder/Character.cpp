@@ -378,7 +378,8 @@ void fir::factory::CharacterExprHelper::createCopy(
     auto i64Ty = builder.getI64Type();
     auto kindBytes = builder.createIntegerConstant(loc, i64Ty, bytes);
     auto castCount = builder.createConvert(loc, i64Ty, count);
-    auto totalBytes = builder.create<mlir::arith::MulIOp>(loc, kindBytes, castCount);
+    auto totalBytes =
+        builder.create<mlir::arith::MulIOp>(loc, kindBytes, castCount);
     auto notVolatile = builder.createBool(loc, false);
     auto memmv = getLlvmMemmove(builder);
     auto argTys = memmv.getType().getInputs();
@@ -455,7 +456,8 @@ void fir::factory::CharacterExprHelper::createLengthOneAssign(
 /// Returns the minimum of integer mlir::Value \p a and \b.
 mlir::Value genMin(fir::FirOpBuilder &builder, mlir::Location loc,
                    mlir::Value a, mlir::Value b) {
-  auto cmp = builder.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::slt, a, b);
+  auto cmp = builder.create<mlir::arith::CmpIOp>(
+      loc, mlir::arith::CmpIPredicate::slt, a, b);
   return builder.create<mlir::SelectOp>(loc, cmp, a, b);
 }
 
@@ -487,7 +489,8 @@ void fir::factory::CharacterExprHelper::createAssign(
   // Pad if needed.
   if (!compileTimeSameLength) {
     auto one = builder.createIntegerConstant(loc, lhs.getLen().getType(), 1);
-    auto maxPadding = builder.create<mlir::arith::SubIOp>(loc, lhs.getLen(), one);
+    auto maxPadding =
+        builder.create<mlir::arith::SubIOp>(loc, lhs.getLen(), one);
     createPadding(lhs, copyCount, maxPadding);
   }
 }
@@ -532,7 +535,8 @@ fir::CharBoxValue fir::factory::CharacterExprHelper::createSubstring(
   auto lowerBound = castBounds[0];
   // FIR CoordinateOp is zero based but Fortran substring are one based.
   auto one = builder.createIntegerConstant(loc, lowerBound.getType(), 1);
-  auto offset = builder.create<mlir::arith::SubIOp>(loc, lowerBound, one).getResult();
+  auto offset =
+      builder.create<mlir::arith::SubIOp>(loc, lowerBound, one).getResult();
   auto addr = createElementAddr(box.getBuffer(), offset);
   auto kind = getCharacterKind(box.getBuffer().getType());
   auto charTy = fir::CharacterType::getUnknownLen(builder.getContext(), kind);
@@ -552,8 +556,8 @@ fir::CharBoxValue fir::factory::CharacterExprHelper::createSubstring(
 
   // Set length to zero if bounds were reversed (Fortran 2018 9.4.1)
   auto zero = builder.createIntegerConstant(loc, substringLen.getType(), 0);
-  auto cdt = builder.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::slt,
-                                          substringLen, zero);
+  auto cdt = builder.create<mlir::arith::CmpIOp>(
+      loc, mlir::arith::CmpIPredicate::slt, substringLen, zero);
   substringLen = builder.create<mlir::SelectOp>(loc, cdt, zero, substringLen);
 
   return {substringRef, substringLen};
@@ -584,8 +588,8 @@ fir::factory::CharacterExprHelper::createLenTrim(const fir::CharBoxValue &str) {
   auto codeAddr =
       builder.createConvert(loc, builder.getRefType(blank.getType()), elemAddr);
   auto c = builder.create<fir::LoadOp>(loc, codeAddr);
-  auto isBlank =
-      builder.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::eq, blank, c);
+  auto isBlank = builder.create<mlir::arith::CmpIOp>(
+      loc, mlir::arith::CmpIPredicate::eq, blank, c);
   llvm::SmallVector<mlir::Value> results = {isBlank, index};
   builder.create<fir::ResultOp>(loc, results);
   builder.restoreInsertionPoint(insPt);

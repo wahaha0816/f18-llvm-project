@@ -18,9 +18,9 @@
 #include "flang/Lower/Runtime.h"
 #include "flang/Lower/Todo.h"
 #include "flang/Optimizer/Builder/FIRBuilder.h"
+#include "flang/Optimizer/Builder/Runtime/RTBuilder.h"
 #include "flang/Optimizer/Dialect/FIROps.h"
 #include "flang/Optimizer/Dialect/FIROpsSupport.h"
-#include "flang/Optimizer/Builder/Runtime/RTBuilder.h"
 #include "flang/Optimizer/Support/FatalError.h"
 #include "flang/Parser/parse-tree.h"
 #include "flang/Runtime/allocatable.h"
@@ -77,8 +77,8 @@ struct ErrorManager {
   void genStatCheck(fir::FirOpBuilder &builder, mlir::Location loc) {
     if (statValue) {
       auto zero = builder.createIntegerConstant(loc, statValue.getType(), 0);
-      auto cmp = builder.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::eq,
-                                              statValue, zero);
+      auto cmp = builder.create<mlir::arith::CmpIOp>(
+          loc, mlir::arith::CmpIPredicate::eq, statValue, zero);
       auto ifOp = builder.create<fir::IfOp>(loc, cmp,
                                             /*withElseRegion=*/false);
       builder.setInsertionPointToStart(&ifOp.thenRegion().front());
@@ -350,7 +350,8 @@ private:
       ub = builder.createConvert(loc, idxTy, ub);
       if (lb) {
         auto diff = builder.create<mlir::arith::SubIOp>(loc, ub, lb);
-        extents.emplace_back(builder.create<mlir::arith::AddIOp>(loc, diff, one));
+        extents.emplace_back(
+            builder.create<mlir::arith::AddIOp>(loc, diff, one));
       } else {
         extents.emplace_back(ub);
       }

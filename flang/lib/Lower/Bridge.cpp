@@ -746,15 +746,15 @@ private:
     auto sum = builder->create<mlir::arith::AddFOp>(loc, expr, expr);
     auto zero = builder->create<mlir::arith::ConstantOp>(
         loc, exprType, builder->getFloatAttr(exprType, 0.0));
-    auto cond1 =
-        builder->create<mlir::arith::CmpFOp>(loc, mlir::arith::CmpFPredicate::OLT, sum, zero);
+    auto cond1 = builder->create<mlir::arith::CmpFOp>(
+        loc, mlir::arith::CmpFPredicate::OLT, sum, zero);
     auto *elseIfBlock =
         builder->getBlock()->splitBlock(builder->getInsertionPoint());
     genFIRConditionalBranch(cond1, blockOfLabel(eval, std::get<1>(stmt.t)),
                             elseIfBlock);
     startBlock(elseIfBlock);
-    auto cond2 =
-        builder->create<mlir::arith::CmpFOp>(loc, mlir::arith::CmpFPredicate::OGT, sum, zero);
+    auto cond2 = builder->create<mlir::arith::CmpFOp>(
+        loc, mlir::arith::CmpFPredicate::OGT, sum, zero);
     genFIRConditionalBranch(cond2, blockOfLabel(eval, std::get<3>(stmt.t)),
                             blockOfLabel(eval, std::get<2>(stmt.t)));
   }
@@ -1005,21 +1005,26 @@ private:
       // Unstructured loop preheader - initialize tripVariable and loopVariable.
       mlir::Value tripCount;
       if (info.hasRealControl) {
-        auto diff1 = builder->create<mlir::arith::SubFOp>(loc, upperValue, lowerValue);
-        auto diff2 = builder->create<mlir::arith::AddFOp>(loc, diff1, info.stepValue);
-        tripCount = builder->create<mlir::arith::DivFOp>(loc, diff2, info.stepValue);
+        auto diff1 =
+            builder->create<mlir::arith::SubFOp>(loc, upperValue, lowerValue);
+        auto diff2 =
+            builder->create<mlir::arith::AddFOp>(loc, diff1, info.stepValue);
+        tripCount =
+            builder->create<mlir::arith::DivFOp>(loc, diff2, info.stepValue);
         controlType = builder->getIndexType();
         tripCount = builder->createConvert(loc, controlType, tripCount);
       } else {
-        auto diff1 = builder->create<mlir::arith::SubIOp>(loc, upperValue, lowerValue);
-        auto diff2 = builder->create<mlir::arith::AddIOp>(loc, diff1, info.stepValue);
+        auto diff1 =
+            builder->create<mlir::arith::SubIOp>(loc, upperValue, lowerValue);
+        auto diff2 =
+            builder->create<mlir::arith::AddIOp>(loc, diff1, info.stepValue);
         tripCount =
             builder->create<mlir::arith::DivSIOp>(loc, diff2, info.stepValue);
       }
       if (forceLoopToExecuteOnce) { // minimum tripCount is 1
         auto one = builder->createIntegerConstant(loc, controlType, 1);
-        auto cond = builder->create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::slt,
-                                                  tripCount, one);
+        auto cond = builder->create<mlir::arith::CmpIOp>(
+            loc, mlir::arith::CmpIPredicate::slt, tripCount, one);
         tripCount = builder->create<mlir::SelectOp>(loc, cond, one, tripCount);
       }
       info.tripVariable = builder->createTemporary(loc, controlType);
@@ -1031,8 +1036,8 @@ private:
       startBlock(info.headerBlock);
       tripCount = builder->create<fir::LoadOp>(loc, info.tripVariable);
       auto zero = builder->createIntegerConstant(loc, controlType, 0);
-      auto cond = builder->create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::sgt,
-                                                tripCount, zero);
+      auto cond = builder->create<mlir::arith::CmpIOp>(
+          loc, mlir::arith::CmpIPredicate::sgt, tripCount, zero);
       if (info.maskExpr) {
         genFIRConditionalBranch(cond, info.maskBlock, info.exitBlock);
         startBlock(info.maskBlock);
@@ -1092,9 +1097,11 @@ private:
       builder->create<fir::StoreOp>(loc, tripCount, info.tripVariable);
       mlir::Value value = builder->create<fir::LoadOp>(loc, info.loopVariable);
       if (info.hasRealControl)
-        value = builder->create<mlir::arith::AddFOp>(loc, value, info.stepValue);
+        value =
+            builder->create<mlir::arith::AddFOp>(loc, value, info.stepValue);
       else
-        value = builder->create<mlir::arith::AddIOp>(loc, value, info.stepValue);
+        value =
+            builder->create<mlir::arith::AddIOp>(loc, value, info.stepValue);
       builder->create<fir::StoreOp>(loc, value, info.loopVariable);
 
       genFIRBranch(info.headerBlock);

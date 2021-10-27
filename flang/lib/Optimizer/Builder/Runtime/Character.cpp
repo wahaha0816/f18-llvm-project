@@ -74,9 +74,9 @@ void fir::runtime::genAdjust(fir::FirOpBuilder &builder, mlir::Location loc,
 
 mlir::Value
 fir::runtime::genCharCompare(fir::FirOpBuilder &builder, mlir::Location loc,
-                             mlir::arith::CmpIPredicate cmp, mlir::Value lhsBuff,
-                             mlir::Value lhsLen, mlir::Value rhsBuff,
-                             mlir::Value rhsLen) {
+                             mlir::arith::CmpIPredicate cmp,
+                             mlir::Value lhsBuff, mlir::Value lhsLen,
+                             mlir::Value rhsBuff, mlir::Value rhsLen) {
   mlir::FuncOp beginFunc;
   switch (discoverKind(lhsBuff.getType())) {
   case 1:

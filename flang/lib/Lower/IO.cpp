@@ -669,8 +669,8 @@ static void genIoLoop(Fortran::lower::AbstractConverter &converter,
   builder.setInsertionPointToEnd(iterWhileOp.getBody());
   auto iterateResult = builder.getBlock()->back().getResult(0);
   auto inductionResult0 = iterWhileOp.getInductionVar();
-  auto inductionResult1 =
-      builder.create<mlir::arith::AddIOp>(loc, inductionResult0, iterWhileOp.step());
+  auto inductionResult1 = builder.create<mlir::arith::AddIOp>(
+      loc, inductionResult0, iterWhileOp.step());
   auto inductionResult = builder.create<mlir::SelectOp>(
       loc, iterateResult, inductionResult1, inductionResult0);
   llvm::SmallVector<mlir::Value> results = {inductionResult, iterateResult};
@@ -702,15 +702,15 @@ static mlir::Value locToLineNo(Fortran::lower::AbstractConverter &converter,
 
 static mlir::Value getDefaultScratch(fir::FirOpBuilder &builder,
                                      mlir::Location loc, mlir::Type toType) {
-  mlir::Value null =
-      builder.create<mlir::arith::ConstantOp>(loc, builder.getI64IntegerAttr(0));
+  mlir::Value null = builder.create<mlir::arith::ConstantOp>(
+      loc, builder.getI64IntegerAttr(0));
   return builder.createConvert(loc, toType, null);
 }
 
 static mlir::Value getDefaultScratchLen(fir::FirOpBuilder &builder,
                                         mlir::Location loc, mlir::Type toType) {
-  return builder.create<mlir::arith::ConstantOp>(loc,
-                                          builder.getIntegerAttr(toType, 0));
+  return builder.create<mlir::arith::ConstantOp>(
+      loc, builder.getIntegerAttr(toType, 0));
 }
 
 /// Generate a reference to a buffer and the length of buffer given

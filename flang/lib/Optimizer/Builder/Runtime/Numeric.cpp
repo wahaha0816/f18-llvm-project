@@ -289,8 +289,8 @@ mlir::Value fir::runtime::genNearest(fir::FirOpBuilder &builder,
 
   mlir::Type sTy = s.getType();
   mlir::Value zero = builder.createRealZeroConstant(loc, sTy);
-  auto cmp =
-      builder.create<mlir::arith::CmpFOp>(loc, mlir::arith::CmpFPredicate::OGT, s, zero);
+  auto cmp = builder.create<mlir::arith::CmpFOp>(
+      loc, mlir::arith::CmpFPredicate::OGT, s, zero);
 
   mlir::Type boolTy = mlir::IntegerType::get(builder.getContext(), 1);
   mlir::Value False = builder.createIntegerConstant(loc, boolTy, 0);

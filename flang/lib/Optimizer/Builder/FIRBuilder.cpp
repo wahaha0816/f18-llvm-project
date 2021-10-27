@@ -449,14 +449,12 @@ mlir::Value fir::FirOpBuilder::createBox(mlir::Location loc,
       });
 }
 
-void fir::FirOpBuilder::dumpFunc() {
-   getFunction().dump();
-}
+void fir::FirOpBuilder::dumpFunc() { getFunction().dump(); }
 
-static mlir::Value genNullPointerComparison(fir::FirOpBuilder &builder,
-                                            mlir::Location loc,
-                                            mlir::Value addr,
-                                            mlir::arith::CmpIPredicate condition) {
+static mlir::Value
+genNullPointerComparison(fir::FirOpBuilder &builder, mlir::Location loc,
+                         mlir::Value addr,
+                         mlir::arith::CmpIPredicate condition) {
   auto intPtrTy = builder.getIntPtrType();
   auto ptrToInt = builder.createConvert(loc, intPtrTy, addr);
   auto c0 = builder.createIntegerConstant(loc, intPtrTy, 0);
@@ -465,11 +463,13 @@ static mlir::Value genNullPointerComparison(fir::FirOpBuilder &builder,
 
 mlir::Value fir::FirOpBuilder::genIsNotNull(mlir::Location loc,
                                             mlir::Value addr) {
-  return genNullPointerComparison(*this, loc, addr, mlir::arith::CmpIPredicate::ne);
+  return genNullPointerComparison(*this, loc, addr,
+                                  mlir::arith::CmpIPredicate::ne);
 }
 
 mlir::Value fir::FirOpBuilder::genIsNull(mlir::Location loc, mlir::Value addr) {
-  return genNullPointerComparison(*this, loc, addr, mlir::arith::CmpIPredicate::eq);
+  return genNullPointerComparison(*this, loc, addr,
+                                  mlir::arith::CmpIPredicate::eq);
 }
 
 mlir::Value fir::FirOpBuilder::genExtentFromTriplet(mlir::Location loc,
@@ -484,7 +484,8 @@ mlir::Value fir::FirOpBuilder::genExtentFromTriplet(mlir::Location loc,
   auto diff = create<mlir::arith::SubIOp>(loc, ub, lb);
   auto add = create<mlir::arith::AddIOp>(loc, diff, step);
   auto div = create<mlir::arith::DivSIOp>(loc, add, step);
-  auto cmp = create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::sgt, div, zero);
+  auto cmp = create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::sgt,
+                                         div, zero);
   return create<mlir::SelectOp>(loc, cmp, div, zero);
 }
 
@@ -893,8 +894,8 @@ mlir::Value fir::factory::genLenOfCharacter(
     auto diff = builder.create<mlir::arith::SubIOp>(loc, upper, lower);
     auto one = builder.createIntegerConstant(loc, idxTy, 1);
     auto size = builder.create<mlir::arith::AddIOp>(loc, diff, one);
-    auto cmp =
-        builder.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::sgt, size, zero);
+    auto cmp = builder.create<mlir::arith::CmpIOp>(
+        loc, mlir::arith::CmpIPredicate::sgt, size, zero);
     return builder.create<mlir::SelectOp>(loc, cmp, size, zero);
   };
   if (substring.size() == 2) {

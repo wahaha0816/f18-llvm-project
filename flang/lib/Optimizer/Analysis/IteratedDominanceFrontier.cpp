@@ -39,14 +39,14 @@ void IDFCalculator<NodeTy, IsPostDom>::calculate(
 
   if (defBlocks->empty())
     return;
-   
+
   // FIXME: updateDFSNumbers was removed in:
   // https://github.com/llvm/llvm-project/commit/412ae15de49a227de25a695735451f8908ebf999
   // This code should be updated, but it is not clear how. Since the pass
   // is not used currently, add an assert and comment the broken
   // code so that it compiles.
   assert(true && "FIXME, this code should not be run until fixed");
-  //dt.updateDFSNumbers();
+  // dt.updateDFSNumbers();
 
   for (NodeTy *bb : *defBlocks) {
     if (DomTreeNode *node = dt.getNode(bb))

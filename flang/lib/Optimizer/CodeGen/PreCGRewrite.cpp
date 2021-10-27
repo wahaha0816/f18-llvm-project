@@ -251,8 +251,8 @@ public:
     auto &context = getContext();
     mlir::OpBuilder rewriter(&context);
     mlir::ConversionTarget target(context);
-    target.addLegalDialect<mlir::arith::ArithmeticDialect, FIROpsDialect, FIRCodeGenDialect,
-                           mlir::StandardOpsDialect>();
+    target.addLegalDialect<mlir::arith::ArithmeticDialect, FIROpsDialect,
+                           FIRCodeGenDialect, mlir::StandardOpsDialect>();
     target.addIllegalOp<ArrayCoorOp>();
     target.addIllegalOp<ReboxOp>();
     target.addDynamicallyLegalOp<EmboxOp>([](EmboxOp embox) {

@@ -25,10 +25,10 @@
 #include "flang/Optimizer/Support/KindMapping.h"
 #include "flang/Optimizer/Support/TypeCode.h"
 #include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"
+#include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Conversion/OpenMPToLLVM/ConvertOpenMPToLLVM.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
-#include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
@@ -68,7 +68,8 @@ namespace fir {
 bool allConstants(OperandTy operands) {
   for (auto opnd : operands) {
     if (auto *defop = opnd.getDefiningOp())
-      if (isa<mlir::LLVM::ConstantOp>(defop) || isa<mlir::arith::ConstantOp>(defop))
+      if (isa<mlir::LLVM::ConstantOp>(defop) ||
+          isa<mlir::arith::ConstantOp>(defop))
         continue;
     return false;
   }
@@ -364,7 +365,7 @@ struct AllocaOpConversion : public FIROpConversion<fir::AllocaOp> {
       } else if (auto recTy = scalarType.dyn_cast<fir::RecordType>()) {
         auto memSizeFn = getDependentTypeMemSizeFn(recTy, alloc, rewriter);
         auto attr = rewriter.getNamedAttr("callee",
-                                           mlir::SymbolRefAttr::get(memSizeFn));
+                                          mlir::SymbolRefAttr::get(memSizeFn));
         auto call = rewriter.create<mlir::LLVM::CallOp>(
             loc, ity, lenParams, llvm::ArrayRef<mlir::NamedAttribute>{attr});
         size = call.getResult(0);
@@ -442,7 +443,7 @@ struct AllocMemOpConversion : public FIROpConversion<fir::AllocMemOp> {
     for (auto opnd : operands)
       size = rewriter.create<mlir::LLVM::MulOp>(
           loc, ity, size, integerCast(loc, rewriter, ity, opnd));
-    heap->setAttr("callee",  mlir::SymbolRefAttr::get(mallocFunc));
+    heap->setAttr("callee", mlir::SymbolRefAttr::get(mallocFunc));
     auto malloc = rewriter.create<mlir::LLVM::CallOp>(
         loc, getVoidPtrType(heap.getContext()), size, heap->getAttrs());
     rewriter.replaceOpWithNewOp<mlir::LLVM::BitcastOp>(heap, ty,
@@ -495,8 +496,7 @@ struct FreeMemOpConversion : public FIROpConversion<fir::FreeMemOp> {
         freemem.getLoc(), voidPtrTy(), operands[0]);
     freemem->setAttr("callee", mlir::SymbolRefAttr::get(freeFunc));
     rewriter.create<mlir::LLVM::CallOp>(
-        loc, mlir::TypeRange{},
-        mlir::ValueRange{bitcast}, freemem->getAttrs());
+        loc, mlir::TypeRange{}, mlir::ValueRange{bitcast}, freemem->getAttrs());
     rewriter.eraseOp(freemem);
     return success();
   }
@@ -645,8 +645,8 @@ struct BoxProcHostOpConversion : public FIROpConversion<fir::BoxProcHostOp> {
                   mlir::ConversionPatternRewriter &rewriter) const override {
     auto a = operands[0];
     auto ty = convertType(boxprochost.getType());
-    auto c1 = mlir::ArrayAttr::get(boxprochost.getContext(), 
-        rewriter.getI32IntegerAttr(1));
+    auto c1 = mlir::ArrayAttr::get(boxprochost.getContext(),
+                                   rewriter.getI32IntegerAttr(1));
     rewriter.replaceOpWithNewOp<mlir::LLVM::ExtractValueOp>(boxprochost, ty, a,
                                                             c1);
     return success();
@@ -703,10 +703,11 @@ struct StringLitOpConversion : public FIROpConversion<fir::StringLitOp> {
     } else {
       // FIXME: As of llvm head 85bf221f204eafc1142a064f1650ffa9d9e03dad, using
       // a dense elements attr causes llvm ir verification error:
-      //   %0 = llvm.mlir.constant(dense<[234, 456]> : vector<2xi16>) : !llvm.array<2 x i16>
-      //   creates a vector type constant instead of an array, later
-      //   conflicting with its usage. It is likely an MLIR bug that should
-      //   be investigated. In the meantime, do a dumb chain of inserts.
+      //   %0 = llvm.mlir.constant(dense<[234, 456]> : vector<2xi16>) :
+      //   !llvm.array<2 x i16> creates a vector type constant instead of an
+      //   array, later conflicting with its usage. It is likely an MLIR bug
+      //   that should be investigated. In the meantime, do a dumb chain of
+      //   inserts.
       auto arr = attr.cast<mlir::ArrayAttr>();
       auto charTy = constop.getType().cast<fir::CharacterType>();
       auto bits = lowerTy().characterBitsize(charTy);
@@ -716,13 +717,15 @@ struct StringLitOpConversion : public FIROpConversion<fir::StringLitOp> {
       mlir::Value cst = rewriter.create<mlir::LLVM::UndefOp>(loc, ty);
       for (auto a : llvm::enumerate(arr.getValue())) {
         // convert each character to a precise bitsize
-        auto elemAttr =
-          mlir::IntegerAttr::get(
-            intTy, a.value().cast<mlir::IntegerAttr>().getValue().sextOrTrunc(bits));
-        auto elemCst = rewriter.create<mlir::LLVM::ConstantOp>(loc, intTy, elemAttr);
-        auto index = mlir::ArrayAttr::get(constop.getContext(), rewriter.getI32IntegerAttr(a.index()));
-        cst = rewriter.create<mlir::LLVM::InsertValueOp>(
-          loc, ty, cst, elemCst, index);
+        auto elemAttr = mlir::IntegerAttr::get(
+            intTy,
+            a.value().cast<mlir::IntegerAttr>().getValue().sextOrTrunc(bits));
+        auto elemCst =
+            rewriter.create<mlir::LLVM::ConstantOp>(loc, intTy, elemAttr);
+        auto index = mlir::ArrayAttr::get(
+            constop.getContext(), rewriter.getI32IntegerAttr(a.index()));
+        cst = rewriter.create<mlir::LLVM::InsertValueOp>(loc, ty, cst, elemCst,
+                                                         index);
       }
       rewriter.replaceOp(constop, cst);
     }
@@ -2487,16 +2490,16 @@ struct GlobalOpConversion : public FIROpConversion<fir::GlobalOp> {
             auto convertOp = mlir::dyn_cast<fir::ConvertOp>(op);
             if (!convertOp)
               continue;
-            constant =
-                cast<mlir::arith::ConstantOp>(convertOp.value().getDefiningOp());
+            constant = cast<mlir::arith::ConstantOp>(
+                convertOp.value().getDefiningOp());
           }
           mlir::Type vecType = mlir::VectorType::get(
               insertOp.getType().getShape(), constant.getType());
           auto denseAttr = mlir::DenseElementsAttr::get(
               vecType.cast<ShapedType>(), constant.value());
           rewriter.setInsertionPointAfter(insertOp);
-          rewriter.replaceOpWithNewOp<mlir::arith::ConstantOp>(insertOp, seqTyAttr,
-                                                        denseAttr);
+          rewriter.replaceOpWithNewOp<mlir::arith::ConstantOp>(
+              insertOp, seqTyAttr, denseAttr);
         }
       }
     }
@@ -3183,7 +3186,7 @@ public:
     mlir::populateStdToLLVMConversionPatterns(typeConverter, pattern);
     mlir::populateOpenMPToLLVMConversionPatterns(typeConverter, pattern);
     mlir::arith::populateArithmeticToLLVMConversionPatterns(typeConverter,
-                                                              pattern);
+                                                            pattern);
     mlir::ConversionTarget target{*context};
     target.addLegalDialect<mlir::LLVM::LLVMDialect>();
     // The OpenMP dialect is legal for Operations without regions, for those
