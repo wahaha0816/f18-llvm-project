@@ -13,7 +13,7 @@
 ! CHECK:           %[[VAL_2:.*]] = arith.constant 1 : i32
 ! CHECK:           %[[VAL_3:.*]] = fir.load %[[VAL_4:.*]] : !fir.ref<i32>
 ! CHECK:           %[[VAL_5:.*]] = arith.constant 1 : i32
-! CHECK:           omp.wsloop (%[[VAL_6:.*]]) : i32 = (%[[VAL_2]]) to (%[[VAL_3]]) step (%[[VAL_5]]) inclusive {
+! CHECK:           omp.wsloop (%[[VAL_6:.*]]) : i32 = (%[[VAL_2]]) to (%[[VAL_3]]) inclusive step (%[[VAL_5]]) {
 ! CHECK:             %[[VAL_7:.*]] = arith.constant 1 : i32
 ! CHECK:             %[[VAL_8:.*]] = fir.convert %[[VAL_7]] : (i32) -> index
 ! CHECK:             %[[VAL_9:.*]] = fir.load %[[VAL_4]] : !fir.ref<i32>

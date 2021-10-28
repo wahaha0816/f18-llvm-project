@@ -164,7 +164,7 @@ program wsloop_collapse
   do i = 1, a
      do j= 1, b
         do k = 1, c
-! FIRDialect:           omp.wsloop (%[[VAL_9:.*]], %[[VAL_10:.*]], %[[VAL_11:.*]]) : i32 = (%[[VAL_20]], %[[VAL_23]], %[[VAL_26]]) to (%[[VAL_21]], %[[VAL_24]], %[[VAL_27]]) step (%[[VAL_22]], %[[VAL_25]], %[[VAL_28]]) collapse(3) inclusive {
+! FIRDialect:           omp.wsloop (%[[VAL_9:.*]], %[[VAL_10:.*]], %[[VAL_11:.*]]) : i32 = (%[[VAL_20]], %[[VAL_23]], %[[VAL_26]]) to (%[[VAL_21]], %[[VAL_24]], %[[VAL_27]]) inclusive step (%[[VAL_22]], %[[VAL_25]], %[[VAL_28]]) collapse(3) {
 ! FIRDialect:             %[[VAL_12:.*]] = fir.load %[[VAL_6]] : !fir.ref<i32>
 ! FIRDialect:             %[[VAL_13:.*]] = arith.addi %[[VAL_12]], %[[VAL_9]] : i32
 ! FIRDialect:             %[[VAL_14:.*]] = arith.addi %[[VAL_13]], %[[VAL_10]] : i32
@@ -172,7 +172,7 @@ program wsloop_collapse
 ! FIRDialect:             fir.store %[[VAL_15]] to %[[VAL_6]] : !fir.ref<i32>
 ! FIRDialect:             omp.yield
 ! FIRDialect:           }
-! LLVMIRDialect:             omp.wsloop (%[[VAL_24:.*]], %[[VAL_25:.*]], %[[VAL_26:.*]]) : i32 = (%[[VAL_4]], %[[VAL_4]], %[[VAL_4]]) to (%[[VAL_21]], %[[VAL_22]], %[[VAL_23]]) step (%[[VAL_4]], %[[VAL_4]], %[[VAL_4]]) collapse(3) inclusive {
+! LLVMIRDialect:             omp.wsloop (%[[VAL_24:.*]], %[[VAL_25:.*]], %[[VAL_26:.*]]) : i32 = (%[[VAL_4]], %[[VAL_4]], %[[VAL_4]]) to (%[[VAL_21]], %[[VAL_22]], %[[VAL_23]]) inclusive step (%[[VAL_4]], %[[VAL_4]], %[[VAL_4]]) collapse(3) {
 ! LLVMIRDialect:               %[[VAL_27:.*]] = llvm.load %[[VAL_20]] : !llvm.ptr<i32>
 ! LLVMIRDialect:               %[[VAL_28:.*]] = llvm.add %[[VAL_27]], %[[VAL_24]]  : i32
 ! LLVMIRDialect:               %[[VAL_29:.*]] = llvm.add %[[VAL_28]], %[[VAL_25]]  : i32
