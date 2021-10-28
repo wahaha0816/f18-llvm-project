@@ -30,7 +30,6 @@ class Expr;
 
 namespace lower {
 
-using MaskAddrAndShape = std::pair<mlir::Value, mlir::Value>;
 using FrontEndExpr = const evaluate::Expr<evaluate::SomeType> *;
 using FrontEndSymbol = const semantics::Symbol *;
 
@@ -61,6 +60,85 @@ struct DenseMapInfo<Fortran::lower::FrontEndExpr> {
 } // namespace llvm
 
 namespace Fortran::lower {
+
+/// Abstraction of the iteration space for building the elemental compute loop
+/// of an array(-like) statement.
+struct IterationSpace {
+  IterationSpace() = default;
+
+  template <typename A>
+  explicit IterationSpace(mlir::Value inArg, mlir::Value outRes,
+                          llvm::iterator_range<A> range)
+      : inArg{inArg}, outRes{outRes}, indices{range.begin(), range.end()} {}
+
+  explicit IterationSpace(const IterationSpace &from,
+                          llvm::ArrayRef<mlir::Value> idxs)
+      : inArg(from.inArg), outRes(from.outRes), element(from.element),
+        indices(idxs.begin(), idxs.end()) {}
+
+  bool empty() const { return indices.empty(); }
+
+  /// This is the output value as it appears as an argument in the innermost
+  /// loop in the nest. The output value is threaded through the loop (and
+  /// conditionals) to maintain proper SSA form.
+  mlir::Value innerArgument() const { return inArg; }
+
+  /// This is the output value as it appears as an output value from the
+  /// outermost loop in the loop nest. The output value is threaded through the
+  /// loop (and conditionals) to maintain proper SSA form.
+  mlir::Value outerResult() const { return outRes; }
+
+  /// Returns a vector for the iteration space. This vector is used to access
+  /// elements of arrays in the compute loop.
+  llvm::SmallVector<mlir::Value> iterVec() const { return indices; }
+
+  mlir::Value iterValue(std::size_t i) const {
+    assert(i < indices.size());
+    return indices[i];
+  }
+
+  /// Set (rewrite) the Value at a given index.
+  void setIndexValue(std::size_t i, mlir::Value v) {
+    assert(i < indices.size());
+    indices[i] = v;
+  }
+
+  void setIndexValues(llvm::ArrayRef<mlir::Value> vals) {
+    indices.assign(vals.begin(), vals.end());
+  }
+
+  void insertIndexValue(std::size_t i, mlir::Value av) {
+    assert(i <= indices.size());
+    indices.insert(indices.begin() + i, av);
+  }
+
+  /// Set the `element` value. This is the SSA value that corresponds to an
+  /// element of the resultant array value.
+  void setElement(fir::ExtendedValue &&ele) {
+    assert(!fir::getBase(element) && "result element already set");
+    element = ele;
+  }
+
+  /// Get the value that will be merged into the resultant array. This is the
+  /// computed value that will be stored to the lhs of the assignment.
+  mlir::Value getElement() const {
+    assert(fir::getBase(element) && "element must be set");
+    return fir::getBase(element);
+  }
+
+  /// Get the element as an extended value.
+  fir::ExtendedValue elementExv() const { return element; }
+
+private:
+  mlir::Value inArg;
+  mlir::Value outRes;
+  fir::ExtendedValue element;
+  llvm::SmallVector<mlir::Value> indices;
+};
+
+using GenerateElementalArrayFunc =
+    std::function<fir::ExtendedValue(const IterationSpace &)>;
+
 template <typename A>
 class StackableConstructExpr {
 public:
@@ -79,32 +157,27 @@ public:
       stmtCtx.finalize();
   }
 
-  /// Bind a front-end expression to a value and shape.
-  void bind(FrontEndExpr e, mlir::Value v, mlir::Value shape) {
-    vmap.try_emplace(e, v, shape);
-  }
-  void bind(FrontEndExpr e, const MaskAddrAndShape &p) { vmap.insert({e, p}); }
-
-  /// Get the value bound to the front-end expression, `e`.
-  mlir::Value getBinding(FrontEndExpr e) const {
-    return getBindingWithShape(e).first;
+  /// Bind a front-end expression to a closure.
+  void bind(FrontEndExpr e, GenerateElementalArrayFunc &&fun) {
+    vmap.insert({e, std::move(fun)});
   }
 
-  /// Get the value and shape bound to the front-end expression, `e`.
-  MaskAddrAndShape getBindingWithShape(FrontEndExpr e) const {
-    assert(vmap.count(e) && "key not already in map");
+  /// Replace the binding of front-end expression `e` with a new closure.
+  void rebind(FrontEndExpr e, GenerateElementalArrayFunc &&fun) {
+    vmap.erase(e);
+    bind(e, std::move(fun));
+  }
+
+  /// Get the closure bound to the front-end expression, `e`.
+  GenerateElementalArrayFunc getBoundClosure(FrontEndExpr e) const {
+    if (!vmap.count(e))
+      llvm::report_fatal_error(
+          "evaluate::Expr is not in the map of lowered mask expressions");
     return vmap.lookup(e);
   }
 
   /// Has the front-end expression, `e`, been lowered and bound?
   bool isLowered(FrontEndExpr e) const { return vmap.count(e); }
-
-  /// Replace the binding of front-end expression `e` with a new value and
-  /// shape pair.
-  void replaceBinding(FrontEndExpr e, mlir::Value v, mlir::Value shape) {
-    vmap.erase(e);
-    vmap.try_emplace(e, v, shape);
-  }
 
   StatementContext &stmtContext() { return stmtCtx; }
 
@@ -114,7 +187,7 @@ protected:
 
   // Map each mask expression back to the temporary holding the initial
   // evaluation results.
-  llvm::DenseMap<FrontEndExpr, MaskAddrAndShape> vmap;
+  llvm::DenseMap<FrontEndExpr, GenerateElementalArrayFunc> vmap;
 
   // Inflate the statement context for the entire construct. We have to cache
   // the mask expression results, which are always evaluated first, across the
