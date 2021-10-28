@@ -12,6 +12,10 @@ add_flang_library(flangFrontend
 
   DEPENDS
   clangBasic
+  FIRBuilder
+  FIRDialect
+  FIRSupport
+  ${dialect_libs}
 
   LINK_LIBS
   FortranParser
