@@ -2557,670 +2557,6 @@ convertToArrayBoxValue(mlir::Location loc, fir::FirOpBuilder &builder,
   return fir::ArrayBoxValue(val, extents);
 }
 
-namespace {
-/// In an explicit iteration space, a scalar expression can be lowered
-/// immediately as the explicit iteration space will have already been
-/// constructed. However, the base array expressions must be handled distinctly
-/// from a "regular" scalar expression. Base arrays are bound to fir.array_load
-/// values. Base arrays on the LHS of an assignment must be properly threaded
-/// using block arguments.
-class ScalarArrayExprLowering {
-  using ExtValue = fir::ExtendedValue;
-  using PathComponent = std::variant<const Fortran::evaluate::ArrayRef *,
-                                     const Fortran::evaluate::Component *,
-                                     const Fortran::evaluate::Subscript *,
-                                     const Fortran::evaluate::Substring *, int>;
-
-  using PathValues = llvm::SmallVector<mlir::Value>;
-
-public:
-  explicit ScalarArrayExprLowering(Fortran::lower::AbstractConverter &c,
-                                   Fortran::lower::SymMap &symMap,
-                                   Fortran::lower::ExplicitIterSpace &esp,
-                                   Fortran::lower::StatementContext &sc)
-      : converter{c}, builder{c.getFirOpBuilder()}, stmtCtx{sc}, symMap{symMap},
-        expSpace{esp} {}
-
-  template <typename A>
-  ExtValue lower(const A &x) {
-    return gen(x);
-  }
-
-  template <typename A>
-  ExtValue lowerRef(const A &x) {
-    semant = ConstituentSemantics::RefOpaque;
-    return gen(x);
-  }
-
-  template <typename A, typename B>
-  ExtValue assign(const A &lhs, const B &rhs) {
-    semant = ConstituentSemantics::RefTransparent;
-    // 1) Lower the rhs expression with array_fetch op(s).
-    elementalExv = lower(rhs);
-    // 2) Lower the lhs expression to an array_update.
-    semant = ConstituentSemantics::ProjectedCopyInCopyOut;
-    auto lexv = lower(lhs);
-    // 3) Finalize the inner context.
-    expSpace.finalizeContext();
-    // 4) Thread the array value updated forward. Note: the lhs might be
-    // ill-formed (performing scalar assignment in an array context),
-    // in which case there is no array to thread.
-    auto createResult = [&](auto op) {
-      auto oldInnerArg = op.sequence();
-      auto offset = expSpace.argPosition(oldInnerArg);
-      expSpace.setInnerArg(offset, fir::getBase(lexv));
-      builder.create<fir::ResultOp>(getLoc(), fir::getBase(lexv));
-    };
-    if (auto updateOp = mlir::dyn_cast<fir::ArrayUpdateOp>(
-            fir::getBase(lexv).getDefiningOp()))
-      createResult(updateOp);
-    else if (auto amend = mlir::dyn_cast<fir::ArrayAmendOp>(
-                 fir::getBase(lexv).getDefiningOp()))
-      createResult(amend);
-    else if (auto modifyOp = mlir::dyn_cast<fir::ArrayModifyOp>(
-                 fir::getBase(lexv).getDefiningOp()))
-      createResult(modifyOp);
-    return lexv;
-  }
-
-  ExtValue userAssign(mlir::FuncOp userAssignment,
-                      const Fortran::lower::SomeExpr &lhs,
-                      const Fortran::lower::SomeExpr &rhs) {
-    auto loc = getLoc();
-    semant = ConstituentSemantics::RefTransparent;
-    // 1) Lower the rhs expression with array_fetch op(s).
-    auto rexv = lower(rhs);
-    // 2) Lower the lhs expression to an array_modify.
-    semant = ConstituentSemantics::CustomCopyInCopyOut;
-    auto lexv = lower(lhs);
-    bool isIllFormedLHS = false;
-    // 3) Insert the call
-    if (auto modifyOp = mlir::dyn_cast<fir::ArrayModifyOp>(
-            fir::getBase(lexv).getDefiningOp())) {
-      auto oldInnerArg = modifyOp.sequence();
-      auto offset = expSpace.argPosition(oldInnerArg);
-      expSpace.setInnerArg(offset, fir::getBase(lexv));
-      auto exv =
-          arrayModifyToExv(builder, loc, expSpace.getLhsLoad(0).getValue(),
-                           modifyOp.getResult(0));
-      genScalarUserDefinedAssignmentCall(builder, loc, userAssignment, exv,
-                                         rexv);
-    } else {
-      // LHS is ill formed, it is a scalar with no references to FORALL
-      // subscripts, so there is actually no array assignment here. The user
-      // code is probably bad, but still insert user assignment call since it
-      // was not rejected by semantics (a warning was emitted).
-      isIllFormedLHS = true;
-      genScalarUserDefinedAssignmentCall(builder, getLoc(), userAssignment,
-                                         lexv, rexv);
-    }
-    // 4) Finalize the inner context.
-    expSpace.finalizeContext();
-    // 5). Thread the array value updated forward.
-    if (!isIllFormedLHS)
-      builder.create<fir::ResultOp>(getLoc(), fir::getBase(lexv));
-    return lexv;
-  }
-
-private:
-  bool pathIsEmpty() { return reversePath.empty(); }
-
-  void clearPath() { reversePath.clear(); }
-
-  // Returns the path and a set of substring indices.
-  std::pair<llvm::SmallVector<mlir::Value>, llvm::SmallVector<mlir::Value>>
-  lowerPath(mlir::Type ty) {
-    auto loc = getLoc();
-    auto fieldTy = fir::FieldType::get(builder.getContext());
-    auto idxTy = builder.getIndexType();
-    llvm::SmallVector<mlir::Value> result;
-    llvm::SmallVector<mlir::Value> substringBounds;
-    for (const auto &v : llvm::reverse(reversePath)) {
-      auto addField = [&](const Fortran::evaluate::Component &x) {
-        // TODO: Move to a helper function.
-        auto name = toStringRef(x.GetLastSymbol().name());
-        auto recTy = ty.cast<fir::RecordType>();
-        auto memTy = recTy.getType(name);
-        auto fld = builder.create<fir::FieldIndexOp>(
-            loc, fieldTy, name, recTy, /*typeparams=*/mlir::ValueRange{});
-        result.push_back(fld);
-        return memTy;
-      };
-      auto addSub = [&](const Fortran::evaluate::Subscript &sub) {
-        auto v = fir::getBase(gen(sub));
-        auto cast = builder.createConvert(loc, idxTy, v);
-        result.push_back(cast);
-      };
-      std::visit(
-          Fortran::common::visitors{
-              [&](int) { ty = fir::unwrapSequenceType(ty); },
-              [&](const Fortran::evaluate::Subscript *x) { addSub(*x); },
-              [&](const Fortran::evaluate::ArrayRef *x) {
-                assert(!x->base().IsSymbol());
-                for (const auto &sub : x->subscript())
-                  addSub(sub);
-                ty = fir::unwrapSequenceType(ty);
-              },
-              [&](const Fortran::evaluate::Component *x) { ty = addField(*x); },
-              [&](const Fortran::evaluate::Substring *x) {
-                populateBounds(substringBounds, x);
-              }},
-          v);
-    }
-    return {result, substringBounds};
-  }
-
-  void populateBounds(llvm::SmallVectorImpl<mlir::Value> &bounds,
-                      const Fortran::evaluate::Substring *substring) {
-    if (!substring)
-      return;
-    bounds.push_back(fir::getBase(asScalar(substring->lower())));
-    if (auto upper = substring->upper())
-      bounds.push_back(fir::getBase(asScalar(*upper)));
-  }
-
-  /// Apply the reversed path components to the value returned from `load`.
-  ExtValue applyPathToArrayLoad(fir::ArrayLoadOp load) {
-    auto loc = getLoc();
-    ExtValue result;
-    auto [path, substringBounds] = lowerPath(load.getType());
-    if (isProjectedCopyInCopyOut()) {
-      auto innerArg = expSpace.findArgumentOfLoad(load);
-      auto eleTy = fir::applyPathToType(innerArg.getType(), path);
-      if (isAdjustedArrayElementType(eleTy)) {
-        auto eleRefTy = builder.getRefType(eleTy);
-        auto arrayOp = builder.create<fir::ArrayAccessOp>(
-            loc, eleRefTy, innerArg, path, load.typeparams());
-        arrayOp->setAttr(fir::factory::attrFortranArrayOffsets(),
-                         builder.getUnitAttr());
-        if (auto charTy = eleTy.dyn_cast<fir::CharacterType>()) {
-          auto dstLen = fir::factory::genLenOfCharacter(builder, loc, load,
-                                                        path, substringBounds);
-          auto amend =
-              createCharArrayAmend(loc, builder, arrayOp, dstLen, elementalExv,
-                                   innerArg, substringBounds);
-          result = arrayLoadExtValue(builder, loc, load, path, amend, dstLen);
-        } else if (fir::isa_derived(eleTy)) {
-          auto amend = createDerivedArrayAmend(loc, load, builder, arrayOp,
-                                               elementalExv, eleTy, innerArg);
-          result = arrayLoadExtValue(builder, loc, load, path, amend);
-        } else {
-          assert(eleTy.isa<fir::SequenceType>());
-          TODO(loc, "array (as element) assignment");
-        }
-      } else {
-        auto eleVal = fir::getBase(elementalExv);
-        auto castedEle = builder.createConvert(loc, eleTy, eleVal);
-        auto arrayOp = builder.create<fir::ArrayUpdateOp>(
-            loc, innerArg.getType(), innerArg, castedEle, path,
-            load.typeparams());
-        // Flag the offsets as "Fortran" as they are not zero-origin.
-        arrayOp->setAttr(fir::factory::attrFortranArrayOffsets(),
-                         builder.getUnitAttr());
-        result = arrayLoadExtValue(builder, loc, load, path, arrayOp);
-      }
-    } else if (isCustomCopyInCopyOut()) {
-      // Create an array_modify to get the LHS element address and indicate
-      // the assignment, and create the call to the user defined assignment.
-      auto innerArg = expSpace.findArgumentOfLoad(load);
-      auto eleTy = fir::applyPathToType(innerArg.getType(), path);
-      auto refEleTy =
-          fir::isa_ref_type(eleTy) ? eleTy : builder.getRefType(eleTy);
-      auto arrModify = builder.create<fir::ArrayModifyOp>(
-          loc, mlir::TypeRange{refEleTy, innerArg.getType()}, innerArg, path,
-          load.typeparams());
-      // Flag the offsets as "Fortran" as they are not zero-origin.
-      arrModify->setAttr(fir::factory::attrFortranArrayOffsets(),
-                         builder.getUnitAttr());
-      result =
-          arrayLoadExtValue(builder, loc, load, path, arrModify.getResult(1));
-    } else {
-      auto eleTy = fir::applyPathToType(load.getType(), path);
-      assert(eleTy && "path did not apply to type");
-      if (semant == ConstituentSemantics::RefOpaque ||
-          isAdjustedArrayElementType(eleTy)) {
-        auto eleRefTy = builder.getRefType(eleTy);
-        // Use array element reference semantics.
-        auto access = builder.create<fir::ArrayAccessOp>(
-            loc, eleRefTy, load, path, load.typeparams());
-        access->setAttr(fir::factory::attrFortranArrayOffsets(),
-                        builder.getUnitAttr());
-        mlir::Value newBase = access;
-        if (fir::isa_char(eleTy)) {
-          auto dstLen = fir::factory::genLenOfCharacter(builder, loc, load,
-                                                        path, substringBounds);
-          if (!substringBounds.empty()) {
-            fir::CharBoxValue charDst{access, dstLen};
-            fir::factory::CharacterExprHelper helper{builder, loc};
-            charDst = helper.createSubstring(charDst, substringBounds);
-            newBase = charDst.getAddr();
-          }
-          result = arrayLoadExtValue(builder, loc, load, path, newBase, dstLen);
-        } else {
-          result = arrayLoadExtValue(builder, loc, load, path, newBase);
-        }
-      } else {
-        auto fetch = builder.create<fir::ArrayFetchOp>(loc, eleTy, load, path,
-                                                       load.typeparams());
-        // Flag the offsets as "Fortran" as they are not zero-origin.
-        fetch->setAttr(fir::factory::attrFortranArrayOffsets(),
-                       builder.getUnitAttr());
-        result = arrayLoadExtValue(builder, loc, load, path, fetch);
-      }
-    }
-    clearPath();
-    return result;
-  }
-
-  //===-------------------------------------------------------------------===//
-  // Use the cached base array_load, where possible.
-  //===-------------------------------------------------------------------===//
-
-  ExtValue gen(const Fortran::evaluate::Subscript &sub) {
-    if (const auto *e =
-            std::get_if<Fortran::evaluate::IndirectSubscriptIntegerExpr>(
-                &sub.u))
-      return asScalarArray(e->value());
-    TODO(getLoc(), "triplet");
-  }
-
-  ExtValue gen(const Fortran::semantics::Symbol &x) {
-    if (auto load = expSpace.findBinding(&x))
-      return applyPathToArrayLoad(load);
-    if (pathIsEmpty())
-      return asScalar(x);
-    return {};
-  }
-
-  ExtValue gen(const Fortran::evaluate::Component &x) {
-    if (auto load = expSpace.findBinding(&x))
-      return applyPathToArrayLoad(load);
-    auto top = pathIsEmpty();
-    reversePath.push_back(&x);
-    auto result = gen(x.base());
-    if (pathIsEmpty())
-      return result;
-    if (top)
-      return asScalar(x);
-    return {};
-  }
-
-  ExtValue gen(const Fortran::evaluate::ArrayRef &x) {
-    if (auto load = expSpace.findBinding(&x)) {
-      reversePath.push_back(0); // flag for end of subscripts
-      for (const auto &sub : llvm::reverse(x.subscript()))
-        reversePath.push_back(&sub);
-      return applyPathToArrayLoad(load);
-    }
-    auto top = pathIsEmpty();
-    reversePath.push_back(&x);
-    auto result = gen(x.base());
-    if (pathIsEmpty())
-      return result;
-    if (top)
-      return asScalar(x);
-    return {};
-  }
-
-  ExtValue gen(const Fortran::evaluate::CoarrayRef &x) {
-    TODO(getLoc(), "coarray reference");
-    return {};
-  }
-
-  //===-------------------------------------------------------------------===//
-  // Traversal and canonical translation boilerplate.
-  //===-------------------------------------------------------------------===//
-
-  ExtValue gen(const Fortran::evaluate::NamedEntity &x) {
-    return x.IsSymbol() ? gen(x.GetFirstSymbol()) : gen(x.GetComponent());
-  }
-  ExtValue gen(const Fortran::evaluate::DataRef &x,
-               const Fortran::evaluate::Substring *ss = {}) {
-    // Add substring to reversePath.
-    if (ss)
-      reversePath.push_back(ss);
-    return std::visit([&](const auto &v) { return gen(v); }, x.u);
-  }
-  ExtValue gen(const Fortran::evaluate::ComplexPart &x) {
-    auto exv = gen(x.complex());
-    auto imaginary = x.part() != Fortran::evaluate::ComplexPart::Part::RE;
-    fir::factory::ComplexExprHelper helper(builder, getLoc());
-    auto base = fir::getBase(exv);
-    if (fir::isa_complex(base.getType()))
-      return helper.extractComplexPart(base, imaginary);
-    auto eleTy =
-        helper.getComplexPartType(fir::dyn_cast_ptrEleTy(base.getType()));
-    auto loc = getLoc();
-    auto idxTy = builder.getIndexType();
-    auto offset = builder.createIntegerConstant(loc, idxTy, imaginary ? 1 : 0);
-    mlir::Value result = builder.create<fir::CoordinateOp>(
-        loc, builder.getRefType(eleTy), base, mlir::ValueRange{offset});
-    return result;
-  }
-  template <Fortran::common::TypeCategory TC1, int KIND,
-            Fortran::common::TypeCategory TC2>
-  ExtValue
-  gen(const Fortran::evaluate::Convert<Fortran::evaluate::Type<TC1, KIND>, TC2>
-          &x) {
-    auto exv = gen(x.left());
-    auto ty = converter.genType(TC1, KIND);
-    return builder.createConvert(getLoc(), ty, fir::getBase(exv));
-  }
-  template <int KIND>
-  ExtValue gen(const Fortran::evaluate::ComplexComponent<KIND> &x) {
-    auto exv = gen(x.left());
-    return fir::factory::ComplexExprHelper{builder, getLoc()}
-        .extractComplexPart(fir::getBase(exv), x.isImaginaryPart);
-  }
-  template <typename T>
-  ExtValue gen(const Fortran::evaluate::Parentheses<T> &x) {
-    auto exv = gen(x.left());
-    auto base = fir::getBase(exv);
-    auto newBase =
-        builder.create<fir::NoReassocOp>(getLoc(), base.getType(), base);
-    return fir::substBase(exv, newBase);
-  }
-  template <int KIND>
-  ExtValue gen(const Fortran::evaluate::Negate<Fortran::evaluate::Type<
-                   Fortran::common::TypeCategory::Integer, KIND>> &x) {
-    auto loc = getLoc();
-    auto exv = gen(x.left());
-    auto ty = converter.genType(Fortran::common::TypeCategory::Integer, KIND);
-    auto zero = builder.createIntegerConstant(loc, ty, 0);
-    return builder.create<mlir::arith::SubIOp>(loc, zero, fir::getBase(exv));
-  }
-  template <typename OP, typename A>
-  ExtValue genNegate(const A &x) {
-    auto exv = gen(x.left());
-    return builder.create<OP>(getLoc(), fir::getBase(exv));
-  }
-  template <int KIND>
-  ExtValue
-  gen(const Fortran::evaluate::Negate<
-      Fortran::evaluate::Type<Fortran::common::TypeCategory::Real, KIND>> &x) {
-    return genNegate<mlir::arith::NegFOp>(x);
-  }
-  template <int KIND>
-  ExtValue gen(const Fortran::evaluate::Negate<Fortran::evaluate::Type<
-                   Fortran::common::TypeCategory::Complex, KIND>> &x) {
-    return genNegate<fir::NegcOp>(x);
-  }
-
-  template <typename OP, typename A>
-  ExtValue createBinaryOp(const A &evEx) {
-    auto lhs = gen(evEx.left());
-    auto rhs = gen(evEx.right());
-    return builder.create<OP>(getLoc(), fir::getBase(lhs), fir::getBase(rhs));
-  }
-
-#undef GENBIN
-#define GENBIN(GenBinEvOp, GenBinTyCat, GenBinFirOp)                           \
-  template <int KIND>                                                          \
-  ExtValue gen(const Fortran::evaluate::GenBinEvOp<Fortran::evaluate::Type<    \
-                   Fortran::common::TypeCategory::GenBinTyCat, KIND>> &x) {    \
-    return createBinaryOp<GenBinFirOp>(x);                                     \
-  }
-  GENBIN(Add, Integer, mlir::arith::AddIOp)
-  GENBIN(Add, Real, mlir::arith::AddFOp)
-  GENBIN(Add, Complex, fir::AddcOp)
-  GENBIN(Subtract, Integer, mlir::arith::SubIOp)
-  GENBIN(Subtract, Real, mlir::arith::SubFOp)
-  GENBIN(Subtract, Complex, fir::SubcOp)
-  GENBIN(Multiply, Integer, mlir::arith::MulIOp)
-  GENBIN(Multiply, Real, mlir::arith::MulFOp)
-  GENBIN(Multiply, Complex, fir::MulcOp)
-  GENBIN(Divide, Integer, mlir::arith::DivSIOp)
-  GENBIN(Divide, Real, mlir::arith::DivFOp)
-  GENBIN(Divide, Complex, fir::DivcOp)
-
-  template <Fortran::common::TypeCategory TC, int KIND>
-  ExtValue
-  gen(const Fortran::evaluate::Power<Fortran::evaluate::Type<TC, KIND>> &x) {
-    auto ty = converter.genType(TC, KIND);
-    auto lhs = gen(x.left());
-    auto rhs = gen(x.right());
-    return Fortran::lower::genPow(builder, getLoc(), ty, fir::getBase(lhs),
-                                  fir::getBase(rhs));
-  }
-  template <Fortran::common::TypeCategory TC, int KIND>
-  ExtValue
-  gen(const Fortran::evaluate::Extremum<Fortran::evaluate::Type<TC, KIND>> &x) {
-    auto loc = getLoc();
-    auto lhs = gen(x.left());
-    auto rhs = gen(x.right());
-    switch (x.ordering) {
-    case Fortran::evaluate::Ordering::Greater:
-      return Fortran::lower::genMax(
-          builder, loc,
-          llvm::ArrayRef<mlir::Value>{fir::getBase(lhs), fir::getBase(rhs)});
-    case Fortran::evaluate::Ordering::Less:
-      return Fortran::lower::genMin(
-          builder, loc,
-          llvm::ArrayRef<mlir::Value>{fir::getBase(lhs), fir::getBase(rhs)});
-    case Fortran::evaluate::Ordering::Equal:
-      llvm_unreachable("Equal is not a valid ordering in this context");
-    }
-    llvm_unreachable("unknown ordering");
-  }
-  template <Fortran::common::TypeCategory TC, int KIND>
-  ExtValue
-  gen(const Fortran::evaluate::RealToIntPower<Fortran::evaluate::Type<TC, KIND>>
-          &x) {
-    auto loc = getLoc();
-    auto ty = converter.genType(TC, KIND);
-    auto lhs = gen(x.left());
-    auto rhs = gen(x.right());
-    return Fortran::lower::genPow(builder, loc, ty, fir::getBase(lhs),
-                                  fir::getBase(rhs));
-  }
-  template <int KIND>
-  ExtValue gen(const Fortran::evaluate::ComplexConstructor<KIND> &x) {
-    auto loc = getLoc();
-    auto left = gen(x.left());
-    auto right = gen(x.right());
-    return fir::factory::ComplexExprHelper{builder, loc}.createComplex(
-        KIND, fir::getBase(left), fir::getBase(right));
-  }
-  template <int KIND>
-  ExtValue gen(const Fortran::evaluate::Concat<KIND> &x) {
-    auto loc = getLoc();
-    auto left = gen(x.left());
-    auto right = gen(x.right());
-    auto *lchr = left.getCharBox();
-    auto *rchr = right.getCharBox();
-    if (lchr && rchr) {
-      return fir::factory::CharacterExprHelper{builder, loc}.createConcatenate(
-          *lchr, *rchr);
-    }
-    TODO(loc, "concat on unexpected extended values");
-    return mlir::Value{};
-  }
-  template <int KIND>
-  ExtValue gen(const Fortran::evaluate::SetLength<KIND> &x) {
-    auto left = gen(x.left());
-    auto right = asScalar(x.right());
-    return fir::CharBoxValue{fir::getBase(left), fir::getBase(right)};
-  }
-  ExtValue gen(const Fortran::semantics::SymbolRef &sym) {
-    return gen(sym.get());
-  }
-  ExtValue gen(const Fortran::evaluate::StaticDataObject::Pointer &,
-               const Fortran::evaluate::Substring *) {
-    fir::emitFatalError(getLoc(), "substring of static array object");
-  }
-  ExtValue gen(const Fortran::evaluate::Substring &x) {
-    return std::visit([&](const auto &p) { return gen(p, &x); }, x.parent());
-  }
-  template <typename A>
-  ExtValue gen(const Fortran::evaluate::FunctionRef<A> &x) {
-    return asScalar(x);
-  }
-  template <typename A>
-  ExtValue gen(const Fortran::evaluate::Constant<A> &x) {
-    return asScalar(x);
-  }
-  ExtValue gen(const Fortran::evaluate::ProcedureDesignator &x) {
-    return asScalar(x);
-  }
-  ExtValue gen(const Fortran::evaluate::ProcedureRef &x) { return asScalar(x); }
-  template <typename A, typename = std::enable_if_t<Fortran::common::HasMember<
-                            A, Fortran::evaluate::TypelessExpression>>>
-  ExtValue gen(const A &x) {
-    return asScalar(x);
-  }
-  template <typename A>
-  ExtValue gen(const Fortran::evaluate::ArrayConstructor<A> &x) {
-    return asScalar(x);
-  }
-  ExtValue gen(const Fortran::evaluate::ImpliedDoIndex &x) {
-    return asScalar(x);
-  }
-  ExtValue gen(const Fortran::evaluate::TypeParamInquiry &x) {
-    return asScalar(x);
-  }
-  ExtValue gen(const Fortran::evaluate::DescriptorInquiry &x) {
-    return asScalar(x);
-  }
-  ExtValue gen(const Fortran::evaluate::StructureConstructor &x) {
-    return asScalar(x);
-  }
-
-  template <int KIND>
-  ExtValue gen(const Fortran::evaluate::Not<KIND> &x) {
-    auto loc = getLoc();
-    auto i1Ty = builder.getI1Type();
-    auto logical = gen(x.left());
-    auto truth = builder.createBool(loc, true);
-    auto val = builder.createConvert(loc, i1Ty, fir::getBase(logical));
-    return builder.create<mlir::arith::XOrIOp>(loc, val, truth);
-  }
-
-  template <typename OP, typename A>
-  ExtValue createBinaryBoolOp(const A &x) {
-    auto loc = getLoc();
-    auto i1Ty = builder.getI1Type();
-    auto left = gen(x.left());
-    auto right = gen(x.right());
-    auto lhs = builder.createConvert(loc, i1Ty, fir::getBase(left));
-    auto rhs = builder.createConvert(loc, i1Ty, fir::getBase(right));
-    return builder.create<OP>(loc, lhs, rhs);
-  }
-  template <typename OP, typename A>
-  ExtValue createCompareBoolOp(mlir::arith::CmpIPredicate pred, const A &x) {
-    auto loc = getLoc();
-    auto i1Ty = builder.getI1Type();
-    auto left = gen(x.left());
-    auto right = gen(x.right());
-    auto lhs = builder.createConvert(loc, i1Ty, fir::getBase(left));
-    auto rhs = builder.createConvert(loc, i1Ty, fir::getBase(right));
-    return builder.create<OP>(loc, pred, lhs, rhs);
-  }
-  template <int KIND>
-  ExtValue gen(const Fortran::evaluate::LogicalOperation<KIND> &x) {
-    switch (x.logicalOperator) {
-    case Fortran::evaluate::LogicalOperator::And:
-      return createBinaryBoolOp<mlir::arith::AndIOp>(x);
-    case Fortran::evaluate::LogicalOperator::Or:
-      return createBinaryBoolOp<mlir::arith::OrIOp>(x);
-    case Fortran::evaluate::LogicalOperator::Eqv:
-      return createCompareBoolOp<mlir::arith::CmpIOp>(
-          mlir::arith::CmpIPredicate::eq, x);
-    case Fortran::evaluate::LogicalOperator::Neqv:
-      return createCompareBoolOp<mlir::arith::CmpIOp>(
-          mlir::arith::CmpIPredicate::ne, x);
-    case Fortran::evaluate::LogicalOperator::Not:
-      llvm_unreachable(".NOT. handled elsewhere");
-    }
-    llvm_unreachable("unhandled case");
-  }
-
-  template <typename OP, typename PRED, typename A>
-  ExtValue createCompareOp(PRED pred, const A &x) {
-    auto loc = getLoc();
-    auto lhs = gen(x.left());
-    auto rhs = gen(x.right());
-    return builder.create<OP>(loc, pred, fir::getBase(lhs), fir::getBase(rhs));
-  }
-  template <typename A>
-  ExtValue createCompareCharOp(mlir::arith::CmpIPredicate pred, const A &x) {
-    auto loc = getLoc();
-    auto lhs = gen(x.left());
-    auto rhs = gen(x.right());
-    return fir::runtime::genCharCompare(builder, loc, pred, lhs, rhs);
-  }
-  template <int KIND>
-  ExtValue gen(const Fortran::evaluate::Relational<Fortran::evaluate::Type<
-                   Fortran::common::TypeCategory::Integer, KIND>> &x) {
-    return createCompareOp<mlir::arith::CmpIOp>(translateRelational(x.opr), x);
-  }
-  template <int KIND>
-  ExtValue gen(const Fortran::evaluate::Relational<Fortran::evaluate::Type<
-                   Fortran::common::TypeCategory::Character, KIND>> &x) {
-    return createCompareCharOp(translateRelational(x.opr), x);
-  }
-  template <int KIND>
-  ExtValue
-  gen(const Fortran::evaluate::Relational<
-      Fortran::evaluate::Type<Fortran::common::TypeCategory::Real, KIND>> &x) {
-    return createCompareOp<mlir::arith::CmpFOp>(translateFloatRelational(x.opr),
-                                                x);
-  }
-  template <int KIND>
-  ExtValue gen(const Fortran::evaluate::Relational<Fortran::evaluate::Type<
-                   Fortran::common::TypeCategory::Complex, KIND>> &x) {
-    return createCompareOp<fir::CmpcOp>(translateFloatRelational(x.opr), x);
-  }
-
-  template <typename A>
-  ExtValue gen(const Fortran::evaluate::Expr<A> &x) {
-    return std::visit([&](const auto &e) { return gen(e); }, x.u);
-  }
-  ExtValue
-  gen(const Fortran::evaluate::Relational<Fortran::evaluate::SomeType> &r) {
-    return std::visit([&](const auto &x) { return gen(x); }, r.u);
-  }
-  template <typename A>
-  ExtValue gen(const Fortran::evaluate::Designator<A> &des) {
-    return std::visit([&](const auto &x) { return gen(x); }, des.u);
-  }
-
-  /// Use archetypal ScalarExprLowering to lower this Expr.
-  template <typename A>
-  ExtValue asScalar(const A &x) {
-    return ScalarExprLowering{getLoc(), converter, symMap, stmtCtx}.genval(x);
-  }
-
-  template <typename A>
-  ExtValue asScalarArray(const A &x) {
-    return ScalarArrayExprLowering{converter, symMap, expSpace, stmtCtx}.gen(x);
-  }
-
-  inline bool isProjectedCopyInCopyOut() {
-    return semant == ConstituentSemantics::ProjectedCopyInCopyOut;
-  }
-
-  // ???: Do we still need this?
-  inline bool isCustomCopyInCopyOut() {
-    return semant == ConstituentSemantics::CustomCopyInCopyOut;
-  }
-
-  inline mlir::Location getLoc() { return converter.getCurrentLocation(); }
-
-  //===--------------------------------------------------------------------===//
-  // Data members.
-  //===--------------------------------------------------------------------===//
-
-  Fortran::lower::AbstractConverter &converter;
-  fir::FirOpBuilder &builder;
-  Fortran::lower::StatementContext &stmtCtx;
-  Fortran::lower::SymMap &symMap;
-  Fortran::lower::ExplicitIterSpace &expSpace;
-  ConstituentSemantics semant = ConstituentSemantics::RefTransparent;
-  ExtValue elementalExv;
-  llvm::SmallVector<PathComponent> reversePath;
-};
-} // namespace
-
 //===----------------------------------------------------------------------===//
 //
 // Lowering of array expressions.
@@ -3244,12 +2580,11 @@ class ArrayExprLowering {
   };
 
   class EndOfSubscripts {};
-  class ImplicitSubscripts {};
-  using PathComponent = std::variant<const Fortran::evaluate::ArrayRef *,
-                                     const Fortran::evaluate::Component *,
-                                     const Fortran::evaluate::Subscript *,
-                                     const Fortran::evaluate::Substring *,
-                                     EndOfSubscripts, ImplicitSubscripts>;
+  using PathComponent =
+      std::variant<const Fortran::evaluate::ArrayRef *,
+                   const Fortran::evaluate::Component *,
+                   const Fortran::evaluate::Subscript *,
+                   const Fortran::evaluate::Substring *, EndOfSubscripts>;
 
   /// Active iteration space.
   using IterationSpace = Fortran::lower::IterationSpace;
@@ -3332,8 +2667,10 @@ public:
       Fortran::lower::ImplicitIterSpace &implicitSpace) {
     if (explicitSpace.isActive() && lhs.Rank() == 0) {
       // Scalar assignment expression in a FORALL context.
-      ScalarArrayExprLowering sael(converter, symMap, explicitSpace, stmtCtx);
-      sael.assign(lhs, rhs);
+      ArrayExprLowering ael(converter, stmtCtx, symMap,
+                            ConstituentSemantics::RefTransparent,
+                            &explicitSpace, &implicitSpace);
+      ael.lowerScalarAssignment(lhs, rhs);
       return;
     }
     // Array assignment expression in a FORALL and/or WHERE context.
@@ -3452,10 +2789,11 @@ public:
 
   /// Entry point into lowering an expression with rank. This entry point is for
   /// lowering a rhs expression, for example. (RefTransparent semantics.)
-  static ExtValue lowerNewArrayExpression(
-      Fortran::lower::AbstractConverter &converter,
-      Fortran::lower::SymMap &symMap, Fortran::lower::StatementContext &stmtCtx,
-      const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &expr) {
+  static ExtValue
+  lowerNewArrayExpression(Fortran::lower::AbstractConverter &converter,
+                          Fortran::lower::SymMap &symMap,
+                          Fortran::lower::StatementContext &stmtCtx,
+                          const Fortran::lower::SomeExpr &expr) {
     ArrayExprLowering ael{converter, stmtCtx, symMap};
     ael.determineShapeOfDest(expr);
     auto loopRes = ael.lowerArrayExpression(expr);
@@ -3551,17 +2889,177 @@ public:
     assert(fir::getBase(loopRes));
   }
 
+  static void
+  lowerElementalUserAssignment(Fortran::lower::AbstractConverter &converter,
+                               Fortran::lower::SymMap &symMap,
+                               Fortran::lower::StatementContext &stmtCtx,
+                               Fortran::lower::ExplicitIterSpace &explicitSpace,
+                               Fortran::lower::ImplicitIterSpace &implicitSpace,
+                               const Fortran::evaluate::ProcedureRef &procRef) {
+    ArrayExprLowering ael(converter, stmtCtx, symMap,
+                          ConstituentSemantics::CustomCopyInCopyOut,
+                          &explicitSpace, &implicitSpace);
+    assert(procRef.arguments().size() == 2);
+    const auto *lhs = procRef.arguments()[0].value().UnwrapExpr();
+    const auto *rhs = procRef.arguments()[1].value().UnwrapExpr();
+    assert(lhs && rhs &&
+           "user defined assignment arguments must be expressions");
+    auto func = Fortran::lower::CallerInterface(procRef, converter).getFuncOp();
+    ael.lowerElementalUserAssignment(func, *lhs, *rhs);
+  }
+
+  void lowerElementalUserAssignment(
+      mlir::FuncOp userAssignment,
+      const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &lhs,
+      const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &rhs) {
+    auto loc = getLoc();
+    PushSemantics(ConstituentSemantics::CustomCopyInCopyOut);
+    auto genArrayModify = genarr(lhs);
+    ccStoreToDest = [=](IterSpace iters) -> ExtValue {
+      auto modifiedArray = genArrayModify(iters);
+      auto arrayModify = mlir::dyn_cast_or_null<fir::ArrayModifyOp>(
+          fir::getBase(modifiedArray).getDefiningOp());
+      assert(arrayModify && "must be created by ArrayModifyOp");
+      auto lhs =
+          arrayModifyToExv(builder, loc, destination, arrayModify.getResult(0));
+      genScalarUserDefinedAssignmentCall(builder, loc, userAssignment, lhs,
+                                         iters.elementExv());
+      return modifiedArray;
+    };
+    determineShapeOfDest(lhs);
+    semant = ConstituentSemantics::RefTransparent;
+    auto exv = lowerArrayExpression(rhs);
+    if (explicitSpaceIsActive()) {
+      explicitSpace->finalizeContext();
+      builder.create<fir::ResultOp>(loc, fir::getBase(exv));
+    } else {
+      builder.create<fir::ArrayMergeStoreOp>(
+          loc, destination, fir::getBase(exv), destination.memref(),
+          destination.slice(), destination.typeparams());
+    }
+  }
+
+  /// Lower an elemental subroutine call with at least one array argument.
+  /// An elemental subroutine is an exception and does not have copy-in/copy-out
+  /// semantics. See 15.8.3.
+  /// Do NOT use this for user defined assignments.
+  static void lowerElementalSubroutine(
+      Fortran::lower::AbstractConverter &converter,
+      Fortran::lower::SymMap &symMap, Fortran::lower::StatementContext &stmtCtx,
+      const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &call) {
+    ArrayExprLowering ael(converter, stmtCtx, symMap,
+                          ConstituentSemantics::RefTransparent);
+    ael.lowerElementalSubroutine(call);
+  }
+
+  void lowerElementalSubroutine(
+      const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &call) {
+    auto f = genarr(call);
+    auto shape = genIterationShape();
+    auto [iterSpace, insPt] = genImplicitLoops(shape, /*innerArg=*/{});
+    f(iterSpace);
+    builder.restoreInsertionPoint(insPt);
+  }
+
+  template <typename A, typename B>
+  ExtValue lowerScalarAssignment(const A &lhs, const B &rhs) {
+    // 1) Lower the rhs expression with array_fetch op(s).
+    IterationSpace iters;
+    iters.setElement(genarr(rhs)(iters));
+    auto elementalExv = iters.elementExv();
+    // 2) Lower the lhs expression to an array_update.
+    semant = ConstituentSemantics::ProjectedCopyInCopyOut;
+    auto lexv = genarr(lhs)(iters);
+    // 3) Finalize the inner context.
+    explicitSpace->finalizeContext();
+    // 4) Thread the array value updated forward. Note: the lhs might be
+    // ill-formed (performing scalar assignment in an array context),
+    // in which case there is no array to thread.
+    auto createResult = [&](auto op) {
+      auto oldInnerArg = op.sequence();
+      auto offset = explicitSpace->argPosition(oldInnerArg);
+      explicitSpace->setInnerArg(offset, fir::getBase(lexv));
+      builder.create<fir::ResultOp>(getLoc(), fir::getBase(lexv));
+    };
+    if (auto updateOp = mlir::dyn_cast<fir::ArrayUpdateOp>(
+            fir::getBase(lexv).getDefiningOp()))
+      createResult(updateOp);
+    else if (auto amend = mlir::dyn_cast<fir::ArrayAmendOp>(
+                 fir::getBase(lexv).getDefiningOp()))
+      createResult(amend);
+    else if (auto modifyOp = mlir::dyn_cast<fir::ArrayModifyOp>(
+                 fir::getBase(lexv).getDefiningOp()))
+      createResult(modifyOp);
+    return lexv;
+  }
+
+  static ExtValue lowerScalarUserAssignment(
+      Fortran::lower::AbstractConverter &converter,
+      Fortran::lower::SymMap &symMap, Fortran::lower::StatementContext &stmtCtx,
+      Fortran::lower::ExplicitIterSpace &explicitIterSpace,
+      mlir::FuncOp userAssignmentFunction, const Fortran::lower::SomeExpr &lhs,
+      const Fortran::lower::SomeExpr &rhs) {
+    Fortran::lower::ImplicitIterSpace implicit;
+    ArrayExprLowering ael(converter, stmtCtx, symMap,
+                          ConstituentSemantics::RefTransparent,
+                          &explicitIterSpace, &implicit);
+    return ael.lowerScalarUserAssignment(userAssignmentFunction, lhs, rhs);
+  }
+
+  ExtValue lowerScalarUserAssignment(mlir::FuncOp userAssignment,
+                                     const Fortran::lower::SomeExpr &lhs,
+                                     const Fortran::lower::SomeExpr &rhs) {
+    auto loc = getLoc();
+    // 1) Lower the rhs expression with array_fetch op(s).
+    IterationSpace iters;
+    iters.setElement(genarr(rhs)(iters));
+    auto elementalExv = iters.elementExv();
+    // 2) Lower the lhs expression to an array_modify.
+    semant = ConstituentSemantics::CustomCopyInCopyOut;
+    auto lexv = genarr(lhs)(iters);
+    bool isIllFormedLHS = false;
+    // 3) Insert the call
+    if (auto modifyOp = mlir::dyn_cast<fir::ArrayModifyOp>(
+            fir::getBase(lexv).getDefiningOp())) {
+      auto oldInnerArg = modifyOp.sequence();
+      auto offset = explicitSpace->argPosition(oldInnerArg);
+      explicitSpace->setInnerArg(offset, fir::getBase(lexv));
+      auto exv = arrayModifyToExv(builder, loc,
+                                  explicitSpace->getLhsLoad(0).getValue(),
+                                  modifyOp.getResult(0));
+      genScalarUserDefinedAssignmentCall(builder, loc, userAssignment, exv,
+                                         elementalExv);
+    } else {
+      // LHS is ill formed, it is a scalar with no references to FORALL
+      // subscripts, so there is actually no array assignment here. The user
+      // code is probably bad, but still insert user assignment call since it
+      // was not rejected by semantics (a warning was emitted).
+      isIllFormedLHS = true;
+      genScalarUserDefinedAssignmentCall(builder, getLoc(), userAssignment,
+                                         lexv, elementalExv);
+    }
+    // 4) Finalize the inner context.
+    explicitSpace->finalizeContext();
+    // 5). Thread the array value updated forward.
+    if (!isIllFormedLHS)
+      builder.create<fir::ResultOp>(getLoc(), fir::getBase(lexv));
+    return lexv;
+  }
+
+private:
   void determineShapeOfDest(const fir::ExtendedValue &lhs) {
     destShape = fir::factory::getExtents(builder, getLoc(), lhs);
   }
 
   void determineShapeOfDest(
       const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &lhs) {
+    if (!destShape.empty())
+      return;
     if (explicitSpaceIsActive() && determineShapeWithSlice(lhs))
       return;
     if (auto shape =
             Fortran::evaluate::GetShape(converter.getFoldingContext(), lhs))
-      determineShapeOfDest(*shape);
+      convertFEShape(shape.value(), destShape);
   }
 
   bool genShapeFromDataRef(const Fortran::semantics::Symbol &x) {
@@ -3654,13 +3152,6 @@ public:
         result.emplace_back(builder.createConvert(
             loc, idxTy, convertOptExtentExpr(converter, stmtCtx, s)));
     }
-  }
-
-  /// Convert the shape computed by the front end if it is constant. Modifies
-  /// `destShape` when successful.
-  void determineShapeOfDest(const Fortran::evaluate::Shape &shape) {
-    assert(destShape.empty());
-    convertFEShape(shape, destShape);
   }
 
   /// CHARACTER and derived type elements are treated as memory references. The
@@ -3762,76 +3253,6 @@ public:
     builder.create<fir::ResultOp>(loc, updVal);
     builder.restoreInsertionPoint(insPt);
     return abstractArrayExtValue(iterSpace.outerResult());
-  }
-
-  /// Lower an elemental subroutine call with at least one array argument.
-  /// Not for user defined assignments.
-  static void lowerArrayElementalSubroutine(
-      Fortran::lower::AbstractConverter &converter,
-      Fortran::lower::SymMap &symMap, Fortran::lower::StatementContext &stmtCtx,
-      const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &call) {
-    ArrayExprLowering ael(converter, stmtCtx, symMap,
-                          ConstituentSemantics::RefTransparent);
-    ael.lowerArrayElementalSubroutine(call);
-  }
-
-  void lowerArrayElementalSubroutine(
-      const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &call) {
-    auto f = genarr(call);
-    auto shape = genIterationShape();
-    auto [iterSpace, insPt] = genImplicitLoops(shape, /*innerArg=*/{});
-    f(iterSpace);
-    builder.restoreInsertionPoint(insPt);
-  }
-
-  static void
-  lowerElementalUserAssignment(Fortran::lower::AbstractConverter &converter,
-                               Fortran::lower::SymMap &symMap,
-                               Fortran::lower::StatementContext &stmtCtx,
-                               Fortran::lower::ExplicitIterSpace &explicitSpace,
-                               Fortran::lower::ImplicitIterSpace &implicitSpace,
-                               const Fortran::evaluate::ProcedureRef &procRef) {
-    ArrayExprLowering ael(converter, stmtCtx, symMap,
-                          ConstituentSemantics::CustomCopyInCopyOut,
-                          &explicitSpace, &implicitSpace);
-    assert(procRef.arguments().size() == 2);
-    const auto *lhs = procRef.arguments()[0].value().UnwrapExpr();
-    const auto *rhs = procRef.arguments()[1].value().UnwrapExpr();
-    assert(lhs && rhs &&
-           "user defined assignment arguments must be expressions");
-    auto func = Fortran::lower::CallerInterface(procRef, converter).getFuncOp();
-    ael.lowerElementalUserAssignment(func, *lhs, *rhs);
-  }
-
-  void lowerElementalUserAssignment(
-      mlir::FuncOp userAssignment,
-      const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &lhs,
-      const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &rhs) {
-    auto loc = getLoc();
-    PushSemantics(ConstituentSemantics::CustomCopyInCopyOut);
-    auto genArrayModify = genarr(lhs);
-    ccStoreToDest = [=](IterSpace iters) -> ExtValue {
-      auto modifiedArray = genArrayModify(iters);
-      auto arrayModify = mlir::dyn_cast_or_null<fir::ArrayModifyOp>(
-          fir::getBase(modifiedArray).getDefiningOp());
-      assert(arrayModify && "must be created by ArrayModifyOp");
-      auto lhs =
-          arrayModifyToExv(builder, loc, destination, arrayModify.getResult(0));
-      genScalarUserDefinedAssignmentCall(builder, loc, userAssignment, lhs,
-                                         iters.elementExv());
-      return modifiedArray;
-    };
-    determineShapeOfDest(lhs);
-    semant = ConstituentSemantics::RefTransparent;
-    auto exv = lowerArrayExpression(rhs);
-    if (explicitSpaceIsActive()) {
-      explicitSpace->finalizeContext();
-      builder.create<fir::ResultOp>(loc, fir::getBase(exv));
-    } else {
-      builder.create<fir::ArrayMergeStoreOp>(
-          loc, destination, fir::getBase(exv), destination.memref(),
-          destination.slice(), destination.typeparams());
-    }
   }
 
   /// Compute the shape of a slice.
@@ -4052,6 +3473,8 @@ public:
             auto ldExt = builder.create<fir::LoadOp>(loc, coor);
             extents.push_back(builder.createConvert(loc, idxTy, ldExt));
           }
+          if (destShape.empty())
+            destShape = extents;
           // Construct shape of buffer.
           auto shapeOp = builder.genShape(loc, extents);
 
@@ -4251,8 +3674,7 @@ public:
   template <typename A>
   ExtValue asScalarArray(const A &x) {
     assert(explicitSpace);
-    return ScalarArrayExprLowering{converter, symMap, *explicitSpace, stmtCtx}
-        .lower(x);
+    return genarr(x)(IterationSpace{});
   }
 
   /// Lower the expression in a scalar context to a (boxed) reference.
@@ -4263,8 +3685,8 @@ public:
   template <typename A>
   ExtValue asScalarArrayRef(const A &x) {
     assert(explicitSpace);
-    return ScalarArrayExprLowering{converter, symMap, *explicitSpace, stmtCtx}
-        .lowerRef(x);
+    PushSemantics(ConstituentSemantics::RefOpaque);
+    return genarr(x)(IterationSpace{});
   }
 
   // An expression with non-zero rank is an array expression.
@@ -4521,35 +3943,14 @@ public:
     return genProcRef(x, llvm::None);
   }
   template <typename A>
-  CC genscl(const A &x) {
+  CC genScalarAndForwardValue(const A &x) {
     auto result = asScalar(x);
     return [=](IterSpace) { return result; };
-  }
-  template <typename A>
-  CC gensclarr(const A &x) {
-    return [=, &x](IterSpace) { return asScalarArray(x); };
-  }
-  template <typename A>
-  CC gensclarr(const A &x, const Fortran::evaluate::Substring *substring) {
-    return [=, &x](IterSpace) -> ExtValue {
-      auto exv = asScalarArray(x);
-      if (substring) {
-        llvm::SmallVector<mlir::Value> substringBounds;
-        populateBounds(substringBounds, substring);
-        auto *charVal = exv.getCharBox();
-        if (!charVal)
-          fir::emitFatalError(getLoc(),
-                              "substring must be applied to character");
-        return fir::factory::CharacterExprHelper{builder, getLoc()}
-            .createSubstring(*charVal, substringBounds);
-      }
-      return exv;
-    };
   }
   template <typename A, typename = std::enable_if_t<Fortran::common::HasMember<
                             A, Fortran::evaluate::TypelessExpression>>>
   CC genarr(const A &x) {
-    return genscl(x);
+    return genScalarAndForwardValue(x);
   }
 
   template <typename A>
@@ -4558,7 +3959,7 @@ public:
     if (isArray(x) || explicitSpaceIsActive() ||
         isElementalProcWithArrayArgs(x))
       return std::visit([&](const auto &e) { return genarr(e); }, x.u);
-    return genscl(x);
+    return genScalarAndForwardValue(x);
   }
 
   // Converting a value of memory bound type requires creating a temp and
@@ -4787,8 +4188,8 @@ public:
 
   template <typename A>
   CC genarr(const Fortran::evaluate::Constant<A> &x) {
-    if (explicitSpaceIsActive() && x.Rank() == 0)
-      return gensclarr(x);
+    if (/*explicitSpaceIsActive() &&*/ x.Rank() == 0)
+      return genScalarAndForwardValue(x);
     auto loc = getLoc();
     auto idxTy = builder.getIndexType();
     auto arrTy = converter.genType(toEvExpr(x));
@@ -4947,10 +4348,29 @@ public:
   }
 
   template <typename A>
-  CC genVectorSubscriptArrayFetch(const A &expr) {
+  CC genVectorSubscriptArrayFetch(const A &expr, std::size_t dim) {
     PushSemantics(ConstituentSemantics::RefTransparent);
     auto saved = Fortran::common::ScopedSet(explicitSpace, nullptr);
-    return genarr(expr);
+    auto savedDestShape = destShape;
+    destShape.clear();
+    auto result = genarr(expr);
+    if (destShape.empty()) {
+      destShape = savedDestShape;
+    } else if (!savedDestShape.empty()) {
+      assert(destShape.size() == 1 && "vector has rank > 1");
+      if (destShape[0] != savedDestShape[dim]) {
+        // Not the same, so choose the smaller value.
+        auto loc = getLoc();
+        auto cmp = builder.create<mlir::arith::CmpIOp>(
+            loc, mlir::arith::CmpIPredicate::sgt, destShape[0],
+            savedDestShape[dim]);
+        auto sel = builder.create<mlir::SelectOp>(loc, cmp, savedDestShape[dim],
+                                                  destShape[0]);
+        savedDestShape[dim] = sel;
+        destShape = savedDestShape;
+      }
+    }
+    return result;
   }
 
   /// Generate an access by vector subscript using the index in the iteration
@@ -5010,9 +4430,9 @@ public:
                   auto base = x.base();
                   auto exv = genArrayBase(base);
                   auto arrExpr = ignoreEvConvert(e);
-                  auto genArrFetch = genVectorSubscriptArrayFetch(arrExpr);
-                  auto currentPC = pc;
                   auto dim = sub.index();
+                  auto genArrFetch = genVectorSubscriptArrayFetch(arrExpr, dim);
+                  auto currentPC = pc;
                   auto lb =
                       fir::factory::readLowerBound(builder, loc, exv, dim, one);
                   pc = [=](IterSpace iters) {
@@ -5127,7 +4547,7 @@ public:
   CC genarr(const Fortran::evaluate::ArrayRef &x,
             const Fortran::evaluate::Substring *ss = {}) {
     if (explicitSpaceIsActive())
-      return x.Rank() == 0 ? gensclarr(x, ss) : genesp(x, ss);
+      return genesp(x, ss);
     const auto &arrBase = x.base();
     if (!arrBase.IsSymbol()) {
       // `x` is a component with rank.
@@ -5165,7 +4585,7 @@ public:
   CC genarr(const Fortran::semantics::Symbol &sym,
             const Fortran::evaluate::Substring *ss = {}) {
     if (explicitSpaceIsActive())
-      return sym.Rank() == 0 ? gensclarr(sym, ss) : genesp(sym, ss);
+      return genesp(sym, ss);
     return genarr(asScalarRef(sym), ss);
   }
 
@@ -5390,12 +4810,12 @@ public:
 
   /// Lower a component path with rank unless this is an explicit iteration
   /// space. In the latter case, the expression may be ranked or scalar and
-  /// those are handled by genesp and gensclarr, resp.
+  /// those are handled by genesp.
   /// Example: <code>array%baz%qux%waldo</code>
   CC genarr(const Fortran::evaluate::Component &x,
             const Fortran::evaluate::Substring *ss = {}) {
     if (explicitSpaceIsActive())
-      return x.Rank() == 0 ? gensclarr(x, ss) : genesp(x, ss);
+      return genesp(x, ss);
     ComponentCollection cmptData;
     auto tup = buildComponentsPath(cmptData, x);
     auto lambda = genSlicePath(std::get<ExtValue>(tup), cmptData.trips,
@@ -6054,7 +5474,6 @@ public:
     llvm::SmallVector<mlir::Value> substringBounds;
     std::size_t dim = 0;
     auto addField = [&](const Fortran::evaluate::Component &x) {
-      // TODO: Move to a helper function.
       auto name = toStringRef(x.GetLastSymbol().name());
       auto recTy = ty.cast<fir::RecordType>();
       auto memTy = recTy.getType(name);
@@ -6069,10 +5488,9 @@ public:
               [&](const Fortran::evaluate::IndirectSubscriptIntegerExpr &e) {
                 if (e.value().Rank() == 0)
                   return fir::getBase(asScalarArray(e.value()));
-                dim++;
                 auto arrExpr = ignoreEvConvert(e.value());
-                auto genArrFetch = genVectorSubscriptArrayFetch(arrExpr);
-                return genAccessByVector(loc, genArrFetch, iters, dim);
+                auto genArrFetch = genVectorSubscriptArrayFetch(arrExpr, dim);
+                return genAccessByVector(loc, genArrFetch, iters, dim++);
               },
               [&](const Fortran::evaluate::Triplet &t) -> mlir::Value {
                 auto impliedIter = iters.iterValue(dim++);
@@ -6107,10 +5525,6 @@ public:
     for (const auto &v : llvm::reverse(revPath)) {
       std::visit(
           Fortran::common::visitors{
-              [&](ImplicitSubscripts) {
-                pushAllIters();
-                ty = fir::unwrapSequenceType(ty);
-              },
               [&](EndOfSubscripts) { ty = fir::unwrapSequenceType(ty); },
               [&](const Fortran::evaluate::Subscript *x) { addSub(*x); },
               [&](const Fortran::evaluate::ArrayRef *x) {
@@ -6125,8 +5539,7 @@ public:
               }},
           v);
     }
-    if (dim == 0) {
-      assert(ty.isa<fir::SequenceType>() && "must be an array to have rank");
+    if (dim == 0 && ty.isa<fir::SequenceType>()) {
       pushAllIters();
       ty = fir::unwrapSequenceType(ty);
     }
@@ -6205,16 +5618,19 @@ public:
                                                          load.typeparams());
         access->setAttr(fir::factory::attrFortranArrayOffsets(),
                         builder.getUnitAttr());
-        mlir::Value dstLen = fir::factory::genLenOfCharacter(
-            builder, loc, load, path, substringBounds);
-        fir::CharBoxValue dstChar(access, dstLen);
-        if (!substringBounds.empty()) {
-          dstChar =
-              fir::factory::CharacterExprHelper{builder, loc}.createSubstring(
-                  dstChar, substringBounds);
+        mlir::Value newBase = access;
+        if (fir::isa_char(eleTy)) {
+          auto dstLen = fir::factory::genLenOfCharacter(builder, loc, load,
+                                                        path, substringBounds);
+          if (!substringBounds.empty()) {
+            fir::CharBoxValue charDst{access, dstLen};
+            fir::factory::CharacterExprHelper helper{builder, loc};
+            charDst = helper.createSubstring(charDst, substringBounds);
+            newBase = charDst.getAddr();
+          }
+          return arrayLoadExtValue(builder, loc, load, path, newBase, dstLen);
         }
-        return arrayLoadExtValue(builder, loc, load, path, dstChar.getAddr(),
-                                 dstChar.getLen());
+        return arrayLoadExtValue(builder, loc, load, path, newBase);
       }
       auto fetch = builder.create<fir::ArrayFetchOp>(loc, eleTy, load, path,
                                                      load.typeparams());
@@ -6317,7 +5733,6 @@ public:
 
   bool pathIsEmpty() { return reversePath.empty(); }
 
-private:
   explicit ArrayExprLowering(Fortran::lower::AbstractConverter &converter,
                              Fortran::lower::StatementContext &stmtCtx,
                              Fortran::lower::SymMap &symMap)
@@ -6567,9 +5982,8 @@ mlir::Value Fortran::lower::createSubroutineCall(
     } else if (explicitIterSpace.isActive() && lhs->Rank() == 0) {
       // Scalar defined assignment (elemental or not) in a FORALL context.
       auto func = Fortran::lower::CallerInterface(call, converter).getFuncOp();
-      ScalarArrayExprLowering sael(converter, symMap, explicitIterSpace,
-                                   stmtCtx);
-      sael.userAssign(func, *lhs, *rhs);
+      ArrayExprLowering::lowerScalarUserAssignment(
+          converter, symMap, stmtCtx, explicitIterSpace, func, *lhs, *rhs);
     } else if (explicitIterSpace.isActive()) {
       // TODO: need to array fetch/modify sub-arrays ?
       TODO(loc, "non elemental user defined array assignment inside FORALL");
@@ -6595,8 +6009,8 @@ mlir::Value Fortran::lower::createSubroutineCall(
 
   if (isElementalProcWithArrayArgs(call)) {
     Fortran::semantics::SomeExpr expr{call};
-    ArrayExprLowering::lowerArrayElementalSubroutine(converter, symMap, stmtCtx,
-                                                     expr);
+    ArrayExprLowering::lowerElementalSubroutine(converter, symMap, stmtCtx,
+                                                expr);
     return {};
   }
   // Simple subroutine call, with potential alternate return.

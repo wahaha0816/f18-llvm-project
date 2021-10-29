@@ -277,11 +277,10 @@ program nested_where
   ! CHECK: %[[VAL_251:.*]] = fir.load %[[VAL_250]] : !fir.ref<i64>
   ! CHECK: %[[VAL_252:.*]] = fir.convert %[[VAL_251]] : (i64) -> index
   ! CHECK: %[[VAL_253:.*]] = fir.shape %[[VAL_252]] : (index) -> !fir.shape<1>
-  ! CHECK: %[[VAL_254:.*]] = arith.constant 3 : i64
-  ! CHECK: %[[VAL_255:.*]] = fir.convert %[[VAL_254]] : (i64) -> index
+  ! CHECK: %[[VAL_274:.*]] = arith.constant 1 : i32
   ! CHECK: %[[VAL_256:.*]] = arith.constant 1 : index
   ! CHECK: %[[VAL_257:.*]] = arith.constant 0 : index
-  ! CHECK: %[[VAL_258:.*]] = arith.subi %[[VAL_255]], %[[VAL_256]] : index
+  ! CHECK: %[[VAL_258:.*]] = arith.subi %[[VAL_221]], %[[VAL_256]] : index
   ! CHECK: %[[VAL_259:.*]] = fir.do_loop %[[VAL_260:.*]] = %[[VAL_257]] to %[[VAL_258]] step %[[VAL_256]] unordered iter_args(%[[VAL_261:.*]] = %[[VAL_190]]) -> (!fir.array<3xi32>) {
   ! CHECK: %[[VAL_262:.*]] = arith.constant 1 : index
   ! CHECK: %[[VAL_263:.*]] = arith.addi %[[VAL_260]], %[[VAL_262]] : index
@@ -295,7 +294,6 @@ program nested_where
   ! CHECK: %[[VAL_271:.*]] = fir.load %[[VAL_270]] : !fir.ref<i8>
   ! CHECK: %[[VAL_272:.*]] = fir.convert %[[VAL_271]] : (i8) -> i1
   ! CHECK: %[[VAL_273:.*]] = fir.if %[[VAL_272]] -> (!fir.array<3xi32>) {
-  ! CHECK: %[[VAL_274:.*]] = arith.constant 1 : i32
   ! CHECK: %[[VAL_275:.*]] = arith.constant 1 : index
   ! CHECK: %[[VAL_276:.*]] = arith.addi %[[VAL_260]], %[[VAL_275]] : index
   ! CHECK: %[[VAL_277:.*]] = fir.array_update %[[VAL_261]], %[[VAL_274]], %[[VAL_276]] {Fortran.offsets} : (!fir.array<3xi32>, i32, index) -> !fir.array<3xi32>
