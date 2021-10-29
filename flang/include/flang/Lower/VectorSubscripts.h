@@ -61,6 +61,8 @@ public:
   using ElementalGeneratorWithBoolReturn =
       std::function<mlir::Value(const fir::ExtendedValue &)>;
   struct LoweredVectorSubscript {
+    LoweredVectorSubscript(fir::ExtendedValue &&vector, mlir::Value size)
+        : vector{std::move(vector)}, size{size} {}
     fir::ExtendedValue vector;
     // Vector size, guaranteed to be of indexType.
     mlir::Value size;
