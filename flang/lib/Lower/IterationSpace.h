@@ -150,13 +150,6 @@ public:
     stack.push_back(A{});
   }
 
-  void shrinkStack() {
-    assert(!empty());
-    stack.pop_back();
-    if (empty())
-      stmtCtx.finalize();
-  }
-
   /// Bind a front-end expression to a closure.
   void bind(FrontEndExpr e, GenerateElementalArrayFunc &&fun) {
     vmap.insert({e, std::move(fun)});
@@ -182,6 +175,15 @@ public:
   StatementContext &stmtContext() { return stmtCtx; }
 
 protected:
+  void shrinkStack() {
+    assert(!empty());
+    stack.pop_back();
+    if (empty()) {
+      stmtCtx.finalize();
+      vmap.clear();
+    }
+  }
+
   // The stack for the construct information.
   llvm::SmallVector<A> stack;
 
@@ -211,6 +213,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &, const ImplicitIterSpace &);
 class ImplicitIterSpace
     : public StackableConstructExpr<llvm::SmallVector<FrontEndExpr>> {
 public:
+  using Base = StackableConstructExpr<llvm::SmallVector<FrontEndExpr>>;
   using FrontEndMaskExpr = FrontEndExpr;
 
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &,
@@ -260,6 +263,12 @@ public:
   const llvm::SmallVector<llvm::SmallVector<FrontEndMaskExpr>> &
   getMasks() const {
     return stack;
+  }
+
+  void shrinkStack() {
+    Base::shrinkStack();
+    if (stack.empty())
+      maskVarMap.clear();
   }
 
 private:

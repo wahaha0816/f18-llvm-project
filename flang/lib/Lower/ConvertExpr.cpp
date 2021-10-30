@@ -5607,7 +5607,7 @@ private:
                                  arrModify.getResult(1));
       };
     }
-    return [=](IterSpace iters) mutable {
+    return [=, semant = this->semant](IterSpace iters) mutable {
       auto [path, eleTy, substringBounds] =
           lowerPath(loc, revPath, load, iters);
       if (semant == ConstituentSemantics::RefOpaque ||
