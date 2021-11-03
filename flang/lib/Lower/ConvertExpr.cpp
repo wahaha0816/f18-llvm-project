@@ -5497,8 +5497,7 @@ private:
               },
               [&](const Fortran::evaluate::Triplet &t) -> mlir::Value {
                 if (iters.empty()) {
-                  // FIXME: should use the lbound, not assume 1.
-                  return builder.createIntegerConstant(loc, idxTy, 1);
+                  TODO(loc, "triplet in array; should this be boxed?");
                 }
                 auto impliedIter = iters.iterValue(dim++);
                 // FIXME: initial should be the lbound of this array. Use 1. See
