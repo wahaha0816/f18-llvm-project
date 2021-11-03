@@ -126,3 +126,54 @@ subroutine slice_with_explicit_iters
   ! CHECK:         return
   ! CHECK:       }
 end subroutine slice_with_explicit_iters
+
+! CHECK-LABEL: func @_QPembox_argument_with_slice(
+! CHECK-SAME:  %[[VAL_0:.*]]: !fir.ref<!fir.array<1xi32>>, %[[VAL_1:.*]]: !fir.ref<!fir.array<2x2xi32>>) {
+! CHECK:         %[[VAL_2:.*]] = fir.alloca i32 {adapt.valuebyref, bindc_name = "i"}
+! CHECK:         %[[VAL_3:.*]] = arith.constant 1 : index
+! CHECK:         %[[VAL_4:.*]] = arith.constant 2 : index
+! CHECK:         %[[VAL_5:.*]] = arith.constant 2 : index
+! CHECK:         %[[VAL_6:.*]] = arith.constant 1 : i32
+! CHECK:         %[[VAL_7:.*]] = fir.convert %[[VAL_6]] : (i32) -> index
+! CHECK:         %[[VAL_8:.*]] = arith.constant 1 : i32
+! CHECK:         %[[VAL_9:.*]] = fir.convert %[[VAL_8]] : (i32) -> index
+! CHECK:         %[[VAL_10:.*]] = arith.constant 1 : index
+! CHECK:         %[[VAL_11:.*]] = fir.shape %[[VAL_3]] : (index) -> !fir.shape<1>
+! CHECK:         %[[VAL_12:.*]] = fir.array_load %[[VAL_0]](%[[VAL_11]]) : (!fir.ref<!fir.array<1xi32>>, !fir.shape<1>) -> !fir.array<1xi32>
+! CHECK:         %[[VAL_13:.*]] = fir.do_loop %[[VAL_14:.*]] = %[[VAL_7]] to %[[VAL_9]] step %[[VAL_10]] unordered iter_args(%[[VAL_15:.*]] = %[[VAL_12]]) -> (!fir.array<1xi32>) {
+! CHECK:           %[[VAL_16:.*]] = fir.convert %[[VAL_14]] : (index) -> i32
+! CHECK:           fir.store %[[VAL_16]] to %[[VAL_2]] : !fir.ref<i32>
+! CHECK:           %[[VAL_17:.*]] = arith.constant 1 : i32
+! CHECK:           %[[VAL_18:.*]] = arith.constant 1 : index
+! CHECK:           %[[VAL_19:.*]] = arith.addi %[[VAL_18]], %[[VAL_4]] : index
+! CHECK:           %[[VAL_20:.*]] = arith.subi %[[VAL_19]], %[[VAL_18]] : index
+! CHECK:           %[[VAL_21:.*]] = arith.constant 1 : i64
+! CHECK:           %[[VAL_22:.*]] = fir.load %[[VAL_2]] : !fir.ref<i32>
+! CHECK:           %[[VAL_23:.*]] = fir.convert %[[VAL_22]] : (i32) -> i64
+! CHECK:           %[[VAL_24:.*]] = fir.undefined index
+! CHECK:           %[[VAL_25:.*]] = fir.shape %[[VAL_4]], %[[VAL_5]] : (index, index) -> !fir.shape<2>
+! CHECK:           %[[VAL_26:.*]] = fir.slice %[[VAL_18]], %[[VAL_20]], %[[VAL_21]], %[[VAL_23]], %[[VAL_24]], %[[VAL_24]] : (index, index, i64, i64, index, index) -> !fir.slice<2>
+! CHECK:           %[[VAL_27:.*]] = fir.embox %[[VAL_1]](%[[VAL_25]]) {{\[}}%[[VAL_26]]] : (!fir.ref<!fir.array<2x2xi32>>, !fir.shape<2>, !fir.slice<2>) -> !fir.box<!fir.array<?xi32>>
+! CHECK:           %[[VAL_28:.*]] = fir.call @_QPe(%[[VAL_27]]) : (!fir.box<!fir.array<?xi32>>) -> i32
+! CHECK:           %[[VAL_29:.*]] = arith.addi %[[VAL_28]], %[[VAL_17]] : i32
+! CHECK:           %[[VAL_30:.*]] = fir.load %[[VAL_2]] : !fir.ref<i32>
+! CHECK:           %[[VAL_31:.*]] = fir.convert %[[VAL_30]] : (i32) -> i64
+! CHECK:           %[[VAL_32:.*]] = fir.convert %[[VAL_31]] : (i64) -> index
+! CHECK:           %[[VAL_33:.*]] = fir.array_update %[[VAL_15]], %[[VAL_29]], %[[VAL_32]] {Fortran.offsets} : (!fir.array<1xi32>, i32, index) -> !fir.array<1xi32>
+! CHECK:           fir.result %[[VAL_33]] : !fir.array<1xi32>
+! CHECK:         }
+! CHECK:         fir.array_merge_store %[[VAL_12]], %[[VAL_34:.*]] to %[[VAL_0]] : !fir.array<1xi32>, !fir.array<1xi32>, !fir.ref<!fir.array<1xi32>>
+subroutine embox_argument_with_slice(a,b)
+  interface
+     pure integer function e(a)
+       integer, intent(in) :: a(:)
+     end function e
+  end interface
+  integer a(1), b(2,2)
+
+  forall (i=1:1)
+     a(i) = e(b(:,i)) + 1
+  end forall
+! CHECK:         return
+! CHECK:       }
+end subroutine embox_argument_with_slice

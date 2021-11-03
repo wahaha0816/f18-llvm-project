@@ -265,6 +265,7 @@ public:
     return stack;
   }
 
+  // Cleanup at the end of a WHERE statement or construct.
   void shrinkStack() {
     Base::shrinkStack();
     if (stack.empty())

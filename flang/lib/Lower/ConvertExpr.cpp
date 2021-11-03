@@ -5463,6 +5463,9 @@ private:
 
   /// Lower the path (`revPath`, in reverse) to be appended to an array_fetch
   /// or array_update op. This function is evaluated from a continuation.
+  ///
+  /// TODO: This needs to deal with array's with initial bounds other than 1.
+  /// TODO: Thread type parameters correctly.
   std::tuple<llvm::SmallVector<mlir::Value>, mlir::Type,
              llvm::SmallVector<mlir::Value>>
   lowerPath(mlir::Location loc, llvm::ArrayRef<PathComponent> revPath,
@@ -5493,6 +5496,9 @@ private:
                 return genAccessByVector(loc, genArrFetch, iters, dim++);
               },
               [&](const Fortran::evaluate::Triplet &t) -> mlir::Value {
+                if (iters.empty()) {
+                  TODO(loc, "triplet in array; should this be boxed?");
+                }
                 auto impliedIter = iters.iterValue(dim++);
                 // FIXME: initial should be the lbound of this array. Use 1. See
                 // getLBound().
@@ -5520,7 +5526,6 @@ private:
         auto vi = builder.createConvert(loc, idxTy, v);
         result.push_back(builder.create<mlir::arith::AddIOp>(loc, vi, one));
       }
-      dim += iters.iterVec().size();
     };
     for (const auto &v : llvm::reverse(revPath)) {
       std::visit(
