@@ -3221,15 +3221,13 @@ mlir::FuncOp fir::createFuncOp(mlir::Location loc, mlir::ModuleOp module,
   return result;
 }
 
-fir::GlobalOp fir::createGlobalOp(mlir::Location loc, mlir::ModuleOp module,
-                                  StringRef name, mlir::Type type,
-                                  llvm::ArrayRef<mlir::NamedAttribute> attrs) {
-  if (auto g = module.lookupSymbol<fir::GlobalOp>(name))
-    return g;
-  mlir::OpBuilder modBuilder(module.getBodyRegion());
-  auto result = modBuilder.create<fir::GlobalOp>(loc, name, type, attrs);
-  result.setVisibility(mlir::SymbolTable::Visibility::Private);
-  return result;
+bool fir::hasHostAssociationArgument(mlir::FuncOp func) {
+  if (auto allArgAttrs = func.getAllArgAttrs())
+    for (auto attr : allArgAttrs)
+      if (auto dict = attr.template dyn_cast_or_null<mlir::DictionaryAttr>())
+        if (dict.get(fir::getHostAssocAttrName()))
+          return true;
+  return false;
 }
 
 bool fir::valueHasFirAttribute(mlir::Value value,

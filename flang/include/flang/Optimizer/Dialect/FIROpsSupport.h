@@ -56,11 +56,6 @@ mlir::FuncOp createFuncOp(mlir::Location loc, mlir::ModuleOp module,
                           llvm::StringRef name, mlir::FunctionType type,
                           llvm::ArrayRef<mlir::NamedAttribute> attrs = {});
 
-/// Get or create a GlobalOp in a module.
-fir::GlobalOp createGlobalOp(mlir::Location loc, mlir::ModuleOp module,
-                             llvm::StringRef name, mlir::Type type,
-                             llvm::ArrayRef<mlir::NamedAttribute> attrs = {});
-
 /// Attribute to mark Fortran entities with the CONTIGUOUS attribute.
 static constexpr llvm::StringRef getContiguousAttrName() {
   return "fir.contiguous";
@@ -81,6 +76,10 @@ static constexpr llvm::StringRef getSymbolAttrName() { return "fir.sym_name"; }
 static constexpr llvm::StringRef getHostAssocAttrName() {
   return "fir.host_assoc";
 }
+
+/// Does the function, \p func, have a host-associations tuple argument?
+/// Some internal procedures may have access to host procedure variables.
+bool hasHostAssociationArgument(mlir::FuncOp func);
 
 /// Tell if \p value is:
 ///   - a function argument that has attribute \p attributeName
