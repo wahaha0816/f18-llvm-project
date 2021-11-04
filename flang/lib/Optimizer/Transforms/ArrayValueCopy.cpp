@@ -13,6 +13,7 @@
 #include "flang/Optimizer/Builder/FIRBuilder.h"
 #include "flang/Optimizer/Builder/Factory.h"
 #include "flang/Optimizer/Dialect/FIRDialect.h"
+#include "flang/Optimizer/Dialect/FIROpsSupport.h"
 #include "flang/Optimizer/Support/FIRContext.h"
 #include "flang/Optimizer/Transforms/Passes.h"
 #include "mlir/Dialect/SCF/SCF.h"
@@ -223,6 +224,11 @@ public:
     if (mlir::isa<ArrayModifyOp>(op))
       for (auto *user : op->getResult(0).getUsers())
         followUsers(user);
+
+    if (mlir::isa<fir::CallOp>(op)) {
+      LLVM_DEBUG(llvm::dbgs() << "add " << *op << " to reachable set\n");
+      reach.push_back(op);
+    }
 
     for (auto u : op->getOperands())
       collectArrayMentionFrom(u);
@@ -539,6 +545,22 @@ static bool conflictDetected(llvm::ArrayRef<mlir::Operation *> reach,
   return conflictOnLoad(reach, st) || conflictOnMerge(mentions);
 }
 
+// Assume that any call to a function that uses host-associations will be
+// modifying the output array.
+static bool
+conservativeCallConflict(llvm::ArrayRef<mlir::Operation *> reaches) {
+  return llvm::any_of(reaches, [](mlir::Operation *op) {
+    if (auto call = mlir::dyn_cast<fir::CallOp>(op))
+      if (auto callee =
+              call.getCallableForCallee().dyn_cast<mlir::SymbolRefAttr>()) {
+        auto module = op->getParentOfType<mlir::ModuleOp>();
+        return fir::hasHostAssociationArgument(
+            module.lookupSymbol<mlir::FuncOp>(callee));
+      }
+    return false;
+  });
+}
+
 /// Constructor of the array copy analysis.
 /// This performs the analysis and saves the intermediate results.
 void ArrayCopyAnalysis::construct(mlir::MutableArrayRef<mlir::Region> regions) {
@@ -550,12 +572,13 @@ void ArrayCopyAnalysis::construct(mlir::MutableArrayRef<mlir::Region> regions) {
         if (auto st = mlir::dyn_cast<ArrayMergeStoreOp>(op)) {
           llvm::SmallVector<Operation *> values;
           ReachCollector::reachingValues(values, st.sequence());
+          auto callConflict = conservativeCallConflict(values);
           llvm::SmallVector<Operation *> mentions;
           arrayMentions(mentions,
                         mlir::cast<ArrayLoadOp>(st.original().getDefiningOp()));
           auto conflict = conflictDetected(values, mentions, st);
           auto refConflict = conflictOnReference(mentions);
-          if (conflict || refConflict) {
+          if (callConflict || conflict || refConflict) {
             LLVM_DEBUG(llvm::dbgs()
                        << "CONFLICT: copies required for " << st << '\n'
                        << "   adding conflicts on: " << op << " and "
