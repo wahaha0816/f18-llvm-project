@@ -96,8 +96,6 @@ public:
     return loadMapSets.lookup(load);
   }
 
-  /// Get all the array value operations that use the original array value
-  /// as passed to `store`.
   void arrayMentions(llvm::SmallVectorImpl<mlir::Operation *> &mentions,
                      ArrayLoadOp load);
 
@@ -126,6 +124,27 @@ public:
     }
     for (auto v : range)
       collectArrayMentionFrom(v);
+  }
+
+  // Collect all the array_access ops in `block`. This recursively looks into
+  // blocks in ops with regions.
+  // FIXME: This is temporarily relying on the array_amend appearing in a
+  // do_loop Region.  This phase ordering assumption can be eliminated by using
+  // dominance information to find the array_access ops or by scanning the
+  // transitive closure of the amending array_access's users and the defs that
+  // reach them.
+  void collectAccesses(llvm::SmallVector<fir::ArrayAccessOp> &result,
+                       mlir::Block *block) {
+    for (auto &op : *block) {
+      if (auto access = mlir::dyn_cast<ArrayAccessOp>(op)) {
+        LLVM_DEBUG(llvm::dbgs() << "adding access: " << access << '\n');
+        result.push_back(access);
+        continue;
+      }
+      for (auto &region : op.getRegions())
+        for (auto &bb : region.getBlocks())
+          collectAccesses(result, &bb);
+    }
   }
 
   void collectArrayMentionFrom(mlir::Operation *op, mlir::Value val) {
@@ -175,9 +194,18 @@ public:
       return;
     }
 
+    // Scan the uses of amend's memref
+    if (auto amend = mlir::dyn_cast<ArrayAmendOp>(op)) {
+      reach.push_back(op);
+      llvm::SmallVector<ArrayAccessOp> accesses;
+      collectAccesses(accesses, op->getBlock());
+      for (auto access : accesses)
+        collectArrayMentionFrom(access.getResult());
+    }
+
     // Otherwise, Op does not contain a region so just chase its operands.
-    if (mlir::isa<ArrayAccessOp, ArrayAmendOp, ArrayLoadOp, ArrayUpdateOp,
-                  ArrayModifyOp, ArrayFetchOp>(op)) {
+    if (mlir::isa<ArrayAccessOp, ArrayLoadOp, ArrayUpdateOp, ArrayModifyOp,
+                  ArrayFetchOp>(op)) {
       LLVM_DEBUG(llvm::dbgs() << "add " << *op << " to reachable set\n");
       reach.push_back(op);
     }
@@ -418,29 +446,41 @@ static bool conflictOnMerge(llvm::ArrayRef<mlir::Operation *> mentions) {
   llvm::SmallVector<mlir::Value> indices;
   LLVM_DEBUG(llvm::dbgs() << "check merge conflict on with " << mentions.size()
                           << " mentions on the list\n");
+  bool valSeen = false;
+  bool refSeen = false;
   for (auto *op : mentions) {
     llvm::SmallVector<mlir::Value> compareVector;
     if (auto u = mlir::dyn_cast<ArrayUpdateOp>(op)) {
+      valSeen = true;
       if (indices.empty()) {
         indices = u.indices();
         continue;
       }
       compareVector = u.indices();
     } else if (auto f = mlir::dyn_cast<ArrayModifyOp>(op)) {
+      valSeen = true;
       if (indices.empty()) {
         indices = f.indices();
         continue;
       }
       compareVector = f.indices();
     } else if (auto f = mlir::dyn_cast<ArrayFetchOp>(op)) {
+      valSeen = true;
       if (indices.empty()) {
         indices = f.indices();
         continue;
       }
       compareVector = f.indices();
-    } else if (mlir::isa<ArrayAccessOp, ArrayAmendOp>(op)) {
-      // Mixed by-value and by-reference? Be conservative.
-      return true;
+    } else if (auto f = mlir::dyn_cast<ArrayAccessOp>(op)) {
+      refSeen = true;
+      if (indices.empty()) {
+        indices = f.indices();
+        continue;
+      }
+      compareVector = f.indices();
+    } else if (mlir::isa<ArrayAmendOp>(op)) {
+      refSeen = true;
+      continue;
     } else {
       mlir::emitError(op->getLoc(), "unexpected operation in analysis");
     }
@@ -451,7 +491,7 @@ static bool conflictOnMerge(llvm::ArrayRef<mlir::Operation *> mentions) {
       return true;
     LLVM_DEBUG(llvm::dbgs() << "vectors compare equal\n");
   }
-  return false;
+  return valSeen && refSeen;
 }
 
 /// With element-by-reference semantics, an amended array with more than once
@@ -493,7 +533,7 @@ amendingAccess(llvm::ArrayRef<mlir::Operation *> mentions) {
 }
 
 // Are any conflicts present? The conflicts detected here are described above.
-inline bool conflictDetected(llvm::ArrayRef<mlir::Operation *> reach,
+static bool conflictDetected(llvm::ArrayRef<mlir::Operation *> reach,
                              llvm::ArrayRef<mlir::Operation *> mentions,
                              ArrayMergeStoreOp st) {
   return conflictOnLoad(reach, st) || conflictOnMerge(mentions);
@@ -522,8 +562,8 @@ void ArrayCopyAnalysis::construct(mlir::MutableArrayRef<mlir::Region> regions) {
                        << st.original() << '\n');
             conflicts.insert(&op);
             conflicts.insert(st.original().getDefiningOp());
-            if (refConflict)
-              amendAccesses.insert(amendingAccess(mentions));
+            if (auto *access = amendingAccess(mentions))
+              amendAccesses.insert(access);
           }
           auto *ld = st.original().getDefiningOp();
           LLVM_DEBUG(llvm::dbgs()
