@@ -912,7 +912,9 @@ bool IONAME(GetNewUnit)(Cookie cookie, int &unit, int kind) {
 // Data transfers
 
 bool IONAME(OutputDescriptor)(Cookie cookie, const Descriptor &descriptor) {
-  return descr::DescriptorIO<Direction::Output>(*cookie, descriptor);
+  descriptor.Dump();
+  return true;
+  //return descr::DescriptorIO<Direction::Output>(*cookie, descriptor);
 }
 
 bool IONAME(InputDescriptor)(Cookie cookie, const Descriptor &descriptor) {

@@ -1577,17 +1577,22 @@ private:
            mlir::ConversionPatternRewriter &rewriter) const {
     auto loc = rebox.getLoc();
     auto voidPtrTy = getVoidPtrType(rebox.getContext());
-    // Apply subcomponent shift on base address.
-    if (!rebox.subcomponent().empty()) {
+    auto idxTy = lowerTy().indexType();
+    mlir::Value zero = genConstantIndex(loc, idxTy, rewriter, 0);
+    // Apply subcomponent and substring shift on base address.
+    if (!rebox.subcomponent().empty() || !rebox.substr().empty()) {
       // Cast to inputEleTy* so that a GEP can be used.
       auto inputEleTy = getInputEleTy(rebox);
       auto llvmElePtrTy =
           mlir::LLVM::LLVMPointerType::get(convertType(inputEleTy));
       base = rewriter.create<mlir::LLVM::BitcastOp>(loc, llvmElePtrTy, base);
-      base = genGEP(loc, llvmElePtrTy, rewriter, base, rebox.subcomponent());
+      llvm::SmallVector<mlir::Value> gepOpenrands = {zero};
+      gepOpenrands.append(rebox.subcomponent().begin(), rebox.subcomponent().end());
+      if (!rebox.substr().empty())
+        gepOpenrands.push_back(rebox.substr()[0]);
+      base = genGEP(loc, llvmElePtrTy, rewriter, base, gepOpenrands);
       base = rewriter.create<mlir::LLVM::BitcastOp>(loc, voidPtrTy, base);
     }
-    if (rebox.slice().empty())
       // The slice is of the form array%component, keep the input array extents
       // and strides.
       return finalizeRebox(rebox, dest, base, /*lbounds*/ llvm::None,
@@ -1597,9 +1602,7 @@ private:
     // and strides.
     llvm::SmallVector<mlir::Value> slicedExtents;
     llvm::SmallVector<mlir::Value> slicedStrides;
-    auto idxTy = lowerTy().indexType();
     auto one = genConstantIndex(loc, idxTy, rewriter, 1);
-    auto zero = genConstantIndex(loc, idxTy, rewriter, 0);
     const bool sliceHasOrigins = !rebox.shift().empty();
     auto sliceOps = rebox.slice().begin();
     auto shiftOps = rebox.shift().begin();
