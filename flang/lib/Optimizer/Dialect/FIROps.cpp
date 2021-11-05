@@ -2198,7 +2198,10 @@ static mlir::LogicalResult verify(fir::ReboxOp op) {
   if (inputEleTy != outEleTy)
     // TODO: check that outBoxTy is a parent type of inputBoxTy for derived
     // types.
-    if (!inputEleTy.isa<fir::RecordType>())
+    // Character input and output types may be different if there is a
+    // substring in the slice, otherwise, they must match.
+    if (!inputEleTy.isa<fir::RecordType>() &&
+        !(op.slice() && inputEleTy.isa<fir::CharacterType>()))
       return op.emitOpError(
           "op input and output element types must match for intrinsic types");
   return mlir::success();

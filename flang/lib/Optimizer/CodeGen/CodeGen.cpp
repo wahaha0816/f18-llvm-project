@@ -1274,6 +1274,25 @@ struct EmboxCommonConversion : public FIROpConversion<OP> {
     return {boxTy, dest, eleSize};
   }
 
+  /// Compute the base address of a substring given the base address of a scalar
+  /// string and the zero based string lower bound.
+  mlir::Value shiftSubstringBase(mlir::ConversionPatternRewriter &rewriter,
+                                 mlir::Location loc, mlir::Value base,
+                                 mlir::Value lowerBound) const {
+    llvm::SmallVector<mlir::Value> gepOperands;
+    auto baseType =
+        base.getType().cast<mlir::LLVM::LLVMPointerType>().getElementType();
+    if (baseType.isa<mlir::LLVM::LLVMArrayType>()) {
+      auto idxTy = this->lowerTy().indexType();
+      mlir::Value zero = genConstantIndex(loc, idxTy, rewriter, 0);
+      gepOperands.push_back(zero);
+      gepOperands.push_back(lowerBound);
+    } else {
+      gepOperands.push_back(lowerBound);
+    }
+    return this->genGEP(loc, base.getType(), rewriter, base, gepOperands);
+  }
+
   /// If the embox is not in a globalOp body, allocate storage for the box and
   /// store the value inside. Return the input value otherwise.
   mlir::Value
@@ -1478,11 +1497,9 @@ struct XEmboxOpConversion : public EmboxCommonConversion<fir::cg::XEmboxOp> {
         const auto *lastOffset = beginOffset + xbox.subcomponent().size();
         args.append(beginOffset, lastOffset);
       }
-      if (!xbox.substr().empty()) {
-        // Append the substring starting offset.
-        args.push_back(xbox.substr()[0]);
-      }
       base = rewriter.create<mlir::LLVM::GEPOp>(loc, base.getType(), args);
+      if (!xbox.substr().empty())
+        base = shiftSubstringBase(rewriter, loc, base, xbox.substr()[0]);
     }
     dest = insertBaseAddress(rewriter, loc, dest, base);
     if (isDerivedTypeWithLenParams(boxTy))
@@ -1533,12 +1550,9 @@ struct XReboxOpConversion : public EmboxCommonConversion<fir::cg::XReboxOp> {
       inputExtents.emplace_back(dimInfo[1]);
       inputStrides.emplace_back(dimInfo[2]);
     }
-    // Base address is cast to void* because strides are in bytes, so
-    // pointer arithmetic is done in bytes.
+
     auto baseTy = getBaseAddrTypeFromBox(loweredBox.getType());
     auto baseAddr = loadBaseAddrFromBox(loc, baseTy, loweredBox, rewriter);
-    auto voidPtrTy = getVoidPtrType(rebox.getContext());
-    baseAddr = rewriter.create<mlir::LLVM::BitcastOp>(loc, voidPtrTy, baseAddr);
 
     if (!rebox.slice().empty() || !rebox.subcomponent().empty())
       return sliceBox(rebox, dest, baseAddr, inputExtents, inputStrides,
@@ -1577,29 +1591,40 @@ private:
            mlir::ConversionPatternRewriter &rewriter) const {
     auto loc = rebox.getLoc();
     auto voidPtrTy = getVoidPtrType(rebox.getContext());
-    // Apply subcomponent shift on base address.
-    if (!rebox.subcomponent().empty()) {
+    auto idxTy = lowerTy().indexType();
+    mlir::Value zero = genConstantIndex(loc, idxTy, rewriter, 0);
+    // Apply subcomponent and substring shift on base address.
+    if (!rebox.subcomponent().empty() || !rebox.substr().empty()) {
       // Cast to inputEleTy* so that a GEP can be used.
       auto inputEleTy = getInputEleTy(rebox);
       auto llvmElePtrTy =
           mlir::LLVM::LLVMPointerType::get(convertType(inputEleTy));
       base = rewriter.create<mlir::LLVM::BitcastOp>(loc, llvmElePtrTy, base);
-      base = genGEP(loc, llvmElePtrTy, rewriter, base, rebox.subcomponent());
-      base = rewriter.create<mlir::LLVM::BitcastOp>(loc, voidPtrTy, base);
+
+      if (!rebox.subcomponent().empty()) {
+        llvm::SmallVector<mlir::Value> gepOperands = {zero};
+        gepOperands.append(rebox.subcomponent().begin(),
+                           rebox.subcomponent().end());
+        base = genGEP(loc, llvmElePtrTy, rewriter, base, gepOperands);
+      }
+      if (!rebox.substr().empty())
+        base = shiftSubstringBase(rewriter, loc, base, rebox.substr()[0]);
     }
+
     if (rebox.slice().empty())
-      // The slice is of the form array%component, keep the input array extents
-      // and strides.
+      // The array section is of the form array[%component][substring], keep
+      // the input array extents and strides.
       return finalizeRebox(rebox, dest, base, /*lbounds*/ llvm::None,
                            inputExtents, inputStrides, rewriter);
+
+    // Strides from the fir.box are in bytes.
+    base = rewriter.create<mlir::LLVM::BitcastOp>(loc, voidPtrTy, base);
 
     // The slice is of the form array(i:j:k)[%component]. Compute new extents
     // and strides.
     llvm::SmallVector<mlir::Value> slicedExtents;
     llvm::SmallVector<mlir::Value> slicedStrides;
-    auto idxTy = lowerTy().indexType();
     auto one = genConstantIndex(loc, idxTy, rewriter, 1);
-    auto zero = genConstantIndex(loc, idxTy, rewriter, 0);
     const bool sliceHasOrigins = !rebox.shift().empty();
     auto sliceOps = rebox.slice().begin();
     auto shiftOps = rebox.shift().begin();
@@ -1650,9 +1675,13 @@ private:
       return finalizeRebox(rebox, dest, base, rebox.shift(), inputExtents,
                            inputStrides, rewriter);
 
+    auto loc = rebox.getLoc();
+    // Strides from the fir.box are in bytes.
+    auto voidPtrTy = getVoidPtrType(rebox.getContext());
+    base = rewriter.create<mlir::LLVM::BitcastOp>(loc, voidPtrTy, base);
+
     llvm::SmallVector<mlir::Value> newStrides;
     llvm::SmallVector<mlir::Value> newExtents;
-    auto loc = rebox.getLoc();
     auto idxTy = lowerTy().indexType();
     // First stride from input box is kept. The rest is assumed contiguous
     // (it is not possible to reshape otherwise). If the input is scalar,
