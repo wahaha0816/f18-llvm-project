@@ -1728,3 +1728,48 @@ Fortran::lower::pft::buildFuncResultDependencyList(
   variableList[0].pop_back();
   return variableList[0];
 }
+
+namespace {
+/// Helper class to find all the symbols referenced in a FunctionLikeUnit.
+/// It defines a parse tree visitor doing a deep visit in all nodes with
+/// symbols (including evaluate::Expr).
+struct SymbolVisitor {
+  template <typename A>
+  bool Pre(const A &x) {
+    if constexpr (Fortran::parser::HasTypedExpr<A>::value)
+      if (const auto *expr = Fortran::semantics::GetExpr(x))
+        visitExpr(*expr);
+    return true;
+  }
+
+  bool Pre(const Fortran::parser::Name &name) {
+    if (const auto *symbol = name.symbol)
+      visitSymbol(*symbol);
+    return false;
+  }
+
+  void
+  visitExpr(const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &expr) {
+    for (const auto &symbol : Fortran::evaluate::CollectSymbols(expr))
+      visitSymbol(symbol);
+  }
+
+  void visitSymbol(const Fortran::semantics::Symbol &symbol) {
+    callBack(symbol);
+  }
+
+  template <typename A>
+  constexpr void Post(const A &) {}
+
+  const std::function<void(const Fortran::semantics::Symbol &)> &callBack;
+};
+} // namespace
+
+void Fortran::lower::pft::visitAllSymbols(
+    const Fortran::lower::pft::FunctionLikeUnit &funit,
+    const std::function<void(const Fortran::semantics::Symbol &)> callBack) {
+  SymbolVisitor visitor{callBack};
+  funit.visit([&](const auto &functionParserNode) {
+    parser::Walk(functionParserNode, visitor);
+  });
+}

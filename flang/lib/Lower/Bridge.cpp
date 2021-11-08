@@ -191,37 +191,29 @@ public:
       declareFunction(f);
   }
 
-  /// Return the host symbol if \p sym is a symbol inside an internal procedure
-  /// of a variable that belongs to the host procedure.
-  const Fortran::semantics::Symbol *
-  getIfHostProcedureSymbol(const Fortran::semantics::Symbol &sym) {
-    if (const auto *details =
-            sym.detailsIf<Fortran::semantics::HostAssocDetails>()) {
-      const auto &ultimateSym = details->symbol().GetUltimate();
-      const auto &refScope = Fortran::semantics::GetProgramUnitContaining(sym);
-      const auto &owningScope =
-          Fortran::semantics::GetProgramUnitContaining(ultimateSym);
-      if (refScope != owningScope && !owningScope.IsModule())
-        return &ultimateSym;
-    }
-    return nullptr;
-  }
-
   /// Collects the canonical list of all host associated symbols. These bindings
   /// must be aggregated into a tuple which can then be added to each of the
   /// internal procedure declarations and passed at each call site.
   void collectHostAssociatedVariables(
       Fortran::lower::pft::FunctionLikeUnit &funit,
       llvm::SetVector<const Fortran::semantics::Symbol *> &escapees) {
-    for (const auto &var : funit.getOrderedSymbolTable()) {
-      if (var.isAggregateStore())
-        continue;
-      const auto &sym = var.getSymbol();
-      if (const auto *escapingSym = getIfHostProcedureSymbol(sym)) {
-        LLVM_DEBUG(llvm::dbgs() << "host associated symbol " << sym << '\n');
-        escapees.insert(escapingSym);
+    const auto *internalScope = funit.getSubprogramSymbol().scope();
+    assert(internalScope && "internal procedures symbol must create a scope");
+    auto addToListIfEscapee = [&](const Fortran::semantics::Symbol &sym) {
+      auto &ultimate = sym.GetUltimate();
+      if (ultimate.has<Fortran::semantics::ObjectEntityDetails>() ||
+          Fortran::semantics::IsProcedurePointer(ultimate) ||
+          Fortran::semantics::IsDummy(sym)) {
+        const auto &ultimateScope = ultimate.owner();
+        if (ultimateScope.kind() ==
+                Fortran::semantics::Scope::Kind::MainProgram ||
+            ultimateScope.kind() == Fortran::semantics::Scope::Kind::Subprogram)
+          if (ultimateScope != *internalScope &&
+              ultimateScope.Contains(*internalScope))
+            escapees.insert(&ultimate);
       }
-    }
+    };
+    Fortran::lower::pft::visitAllSymbols(funit, addToListIfEscapee);
   }
 
   //===--------------------------------------------------------------------===//
@@ -2413,14 +2405,17 @@ private:
         continue;
       }
       const Fortran::semantics::Symbol &sym = var.getSymbol();
-      // Never instantitate host associated variables, as they are already
-      // instantiated from an argument tuple. Instead, just bind the symbol to
-      // the reference to the host variable, which must be in the map.
-      if (const auto *escapingSym = getIfHostProcedureSymbol(sym)) {
-        auto hostBox = localSymbols.lookupSymbol(escapingSym);
-        assert(hostBox && "host association is not in map");
-        localSymbols.addSymbol(sym, hostBox.toExtendedValue());
-        continue;
+      if (funit.parentHasHostAssoc()) {
+        // Never instantitate host associated variables, as they are already
+        // instantiated from an argument tuple. Instead, just bind the symbol to
+        // the reference to the host variable, which must be in the map.
+        const auto &ultimate = sym.GetUltimate();
+        if (funit.parentHostAssoc().isAssociated(ultimate)) {
+          auto hostBox = localSymbols.lookupSymbol(ultimate);
+          assert(hostBox && "host association is not in map");
+          localSymbols.addSymbol(sym, hostBox.toExtendedValue());
+          continue;
+        }
       }
       if (!sym.IsFuncResult() || !funit.primaryResult) {
         instantiateVar(var, storeMap);
