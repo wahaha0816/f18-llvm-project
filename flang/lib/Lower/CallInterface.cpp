@@ -30,6 +30,22 @@ static std::string getMangledName(const Fortran::semantics::Symbol &symbol) {
   return bindName ? *bindName : Fortran::lower::mangle::mangleName(symbol);
 }
 
+/// Return the type of a dummy procedure given its characteristic (if it has
+/// one).
+mlir::Type
+getDummyProcedureTypeImpl(const Fortran::evaluate::characteristics::Procedure *,
+                          Fortran::lower::AbstractConverter &converter) {
+  // TODO: Get actual function type of the dummy procedure, at least when an
+  // interface is given.
+  // In general, that is a nice to have but we cannot guarantee to find the
+  // function type that will match the one of the calls, we may not even know
+  // how many arguments the dummy procedure accepts (e.g. if a procedure
+  // pointer is only transiting through the current procedure without being
+  // called), so a function type cast must always be inserted.
+  return mlir::FunctionType::get(&converter.getMLIRContext(), llvm::None,
+                                 llvm::None);
+}
+
 //===----------------------------------------------------------------------===//
 // Caller side interface implementation
 //===----------------------------------------------------------------------===//
@@ -743,16 +759,9 @@ private:
             Fortran::evaluate::characteristics::DummyProcedure::Attr::Pointer))
       llvm_unreachable("TODO: procedure pointer arguments");
     // Otherwise, it is a dummy procedure
-
-    // TODO: Get actual function type of the dummy procedure, at least when an
-    // interface is given.
-    // In general, that is a nice to have but we cannot guarantee to find the
-    // function type that will match the one of the calls, we may not even know
-    // how many arguments the dummy procedure accepts (e.g. if a procedure
-    // pointer is only transiting through the current procedure without being
-    // called), so a function type cast must always be inserted.
     auto funcType =
-        mlir::FunctionType::get(&mlirContext, llvm::None, llvm::None);
+        getDummyProcedureTypeImpl(&proc.procedure.value(), interface.converter);
+
     addFirOperand(funcType, nextPassedArgPosition(), Property::BaseAddress);
     addPassedArg(PassEntityBy::BaseAddress, entity, characteristics);
   }
@@ -1031,4 +1040,13 @@ mlir::FuncOp Fortran::lower::getOrDeclareFunction(
   auto newFunc = fir::FirOpBuilder::createFunction(loc, module, name, ty);
   addSymbolAttribute(newFunc, *symbol, converter.getMLIRContext());
   return newFunc;
+}
+
+mlir::Type Fortran::lower::getDummyProcedureType(
+    const Fortran::semantics::Symbol &dummyProc,
+    Fortran::lower::AbstractConverter &converter) {
+  auto iface = Fortran::evaluate::characteristics::Procedure::Characterize(
+      dummyProc, converter.getFoldingContext());
+  return getDummyProcedureTypeImpl(iface.has_value() ? &*iface : nullptr,
+                                   converter);
 }

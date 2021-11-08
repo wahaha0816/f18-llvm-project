@@ -769,6 +769,11 @@ ParentType *getAncestor(A &node) {
       [](auto &p) -> ParentType * { return getAncestor<ParentType>(p); }});
 }
 
+/// Call the provided \p callBack on all symbols that are referenced inside \p
+/// funit.
+void visitAllSymbols(const FunctionLikeUnit &funit,
+                     std::function<void(const semantics::Symbol &)> callBack);
+
 } // namespace Fortran::lower::pft
 
 namespace Fortran::lower {
