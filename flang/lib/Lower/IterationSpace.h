@@ -227,7 +227,7 @@ public:
   }
 
   llvm::SmallVector<FrontEndMaskExpr> getExprs() const {
-    auto maskList = getMasks()[0];
+    llvm::SmallVector<FrontEndMaskExpr> maskList = getMasks()[0];
     for (size_t i = 1, d = getMasks().size(); i < d; ++i)
       maskList.append(getMasks()[i].begin(), getMasks()[i].end());
     return maskList;
@@ -493,7 +493,7 @@ public:
       loopCleanup = fn;
       return;
     }
-    auto oldFn = loopCleanup.getValue();
+    std::function<void(fir::FirOpBuilder &)> oldFn = loopCleanup.getValue();
     loopCleanup = [=](fir::FirOpBuilder &builder) {
       oldFn(builder);
       fn(builder);
