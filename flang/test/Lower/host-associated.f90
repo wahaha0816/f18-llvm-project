@@ -347,6 +347,26 @@ subroutine bar()
 end subroutine
 end subroutine
 
+subroutine issue990b()
+  ! Test when an internal procedure uses a statement function from its host
+  ! which uses host variables that are otherwise not used by the internal
+  ! procedure.
+  implicit none
+  integer :: captured, captured_stmt_func, i
+  captured_stmt_func(i) = i + captured
+  call bar()
+contains
+! CHECK-LABEL: func @_QFissue990bPbar(
+! CHECK-SAME: %[[tup:.*]]: !fir.ref<tuple<!fir.ptr<i32>>> {fir.host_assoc}) {
+subroutine bar()
+  ! CHECK: %[[tupAddr:.*]] = fir.coordinate_of %[[tup]], %c0{{.*}} : (!fir.ref<tuple<!fir.ptr<i32>>>, i32) -> !fir.ref<!fir.ptr<i32>>
+  ! CHECK: %[[addr:.*]] = fir.load %[[tupAddr]] : !fir.ref<!fir.ptr<i32>>
+  ! CHECK: %[[value:.*]] = fir.load %[[addr]] : !fir.ptr<i32>
+  ! CHECK: arith.addi %{{.*}}, %[[value]] : i32
+  print *, captured_stmt_func(10)
+end subroutine
+end subroutine
+
 ! Test capture of dummy procedure functions.
 subroutine test8(dummy_proc)
  implicit none

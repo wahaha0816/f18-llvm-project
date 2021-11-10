@@ -1756,6 +1756,11 @@ struct SymbolVisitor {
 
   void visitSymbol(const Fortran::semantics::Symbol &symbol) {
     callBack(symbol);
+    // Visit statement function body since it will be inlined in lowering.
+    if (const auto *subprogramDetails =
+            symbol.detailsIf<Fortran::semantics::SubprogramDetails>())
+      if (const auto &maybeExpr = subprogramDetails->stmtFunction())
+        visitExpr(*maybeExpr);
   }
 
   template <typename A>
