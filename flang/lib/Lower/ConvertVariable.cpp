@@ -1292,11 +1292,10 @@ void Fortran::lower::mapSymbolAttributes(
           return;
         }
         // local CHARACTER variable
-        mlir::Value len;
-        if (charLen)
-          len = genValue(*charLen);
-        else
-          len = builder.createIntegerConstant(loc, idxTy, sym.size());
+        if (!charLen)
+          fir::emitFatalError(loc,
+                              "local characters must have explicit length");
+        mlir::Value len = genValue(*charLen);
         if (preAlloc) {
           symMap.addCharSymbol(sym, preAlloc, len);
           return;
@@ -1461,10 +1460,10 @@ void Fortran::lower::mapSymbolAttributes(
           }
         } else {
           // local CHARACTER variable
-          if (charLen)
-            len = genValue(*charLen);
-          else
-            len = builder.createIntegerConstant(loc, idxTy, sym.size());
+          if (!charLen)
+            fir::emitFatalError(loc,
+                                "local characters must have explicit length");
+          len = genValue(*charLen);
         }
         llvm::SmallVector<mlir::Value> lengths = {len};
 
@@ -1599,10 +1598,10 @@ void Fortran::lower::mapSymbolAttributes(
           }
         } else {
           // local CHARACTER variable
-          if (charLen)
-            len = genValue(*charLen);
-          else
-            len = builder.createIntegerConstant(loc, idxTy, sym.size());
+          if (!charLen)
+            fir::emitFatalError(loc,
+                                "local characters must have explicit length");
+          len = genValue(*charLen);
         }
         llvm::SmallVector<mlir::Value> lengths = {len};
 

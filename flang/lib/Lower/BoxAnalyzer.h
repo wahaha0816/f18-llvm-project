@@ -469,11 +469,9 @@ private:
   // Get the constant LEN of a CHARACTER, if it exists.
   llvm::Optional<int64_t>
   charLenConstant(const Fortran::semantics::Symbol &sym) {
-    const Fortran::semantics::ParamValue &lenParam =
-        sym.GetType()->characterTypeSpec().length();
-    if (Fortran::semantics::MaybeIntExpr expr = lenParam.GetExplicit())
-      if (std::optional<int64_t> asInt = Fortran::evaluate::ToInt64(
-              Fortran::evaluate::AsGenericExpr(std::move(*expr))))
+    if (llvm::Optional<Fortran::semantics::SomeExpr> expr =
+            charLenVariable(sym))
+      if (std::optional<int64_t> asInt = Fortran::evaluate::ToInt64(*expr))
         return {*asInt};
     return llvm::None;
   }
@@ -485,6 +483,19 @@ private:
         sym.GetType()->characterTypeSpec().length();
     if (Fortran::semantics::MaybeIntExpr expr = lenParam.GetExplicit())
       return {Fortran::evaluate::AsGenericExpr(std::move(*expr))};
+    // For assumed length parameters, the length comes from the initialization
+    // expression.
+    if (sym.attrs().test(Fortran::semantics::Attr::PARAMETER)) {
+      const auto &objectDetails =
+          sym.get<Fortran::semantics::ObjectEntityDetails>();
+      if (objectDetails.init()) {
+        const auto &charExpr =
+            std::get<Fortran::evaluate::Expr<Fortran::evaluate::SomeCharacter>>(
+                objectDetails.init()->u);
+        if (Fortran::semantics::MaybeSubscriptIntExpr expr = charExpr.LEN())
+          return {Fortran::evaluate::AsGenericExpr(std::move(*expr))};
+      }
+    }
     return llvm::None;
   }
 
