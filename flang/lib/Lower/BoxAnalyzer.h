@@ -485,17 +485,17 @@ private:
       return {Fortran::evaluate::AsGenericExpr(std::move(*expr))};
     // For assumed length parameters, the length comes from the initialization
     // expression.
-    if (sym.attrs().test(Fortran::semantics::Attr::PARAMETER)) {
-      const auto &objectDetails =
-          sym.get<Fortran::semantics::ObjectEntityDetails>();
-      if (objectDetails.init()) {
-        const auto &charExpr =
-            std::get<Fortran::evaluate::Expr<Fortran::evaluate::SomeCharacter>>(
-                objectDetails.init()->u);
-        if (Fortran::semantics::MaybeSubscriptIntExpr expr = charExpr.LEN())
-          return {Fortran::evaluate::AsGenericExpr(std::move(*expr))};
-      }
-    }
+    if (sym.attrs().test(Fortran::semantics::Attr::PARAMETER))
+      if (const auto *objectDetails =
+              sym.GetUltimate()
+                  .detailsIf<Fortran::semantics::ObjectEntityDetails>())
+        if (objectDetails->init())
+          if (const auto *charExpr = std::get_if<
+                  Fortran::evaluate::Expr<Fortran::evaluate::SomeCharacter>>(
+                  &objectDetails->init()->u))
+            if (Fortran::semantics::MaybeSubscriptIntExpr expr =
+                    charExpr->LEN())
+              return {Fortran::evaluate::AsGenericExpr(std::move(*expr))};
     return llvm::None;
   }
 
