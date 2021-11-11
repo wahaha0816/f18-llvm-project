@@ -25,17 +25,11 @@ bool IoStatementBase::Emit(const char *, std::size_t, std::size_t) {
   return false;
 }
 
-bool IoStatementBase::Emit(const char *, std::size_t) {
-  return false;
-}
+bool IoStatementBase::Emit(const char *, std::size_t) { return false; }
 
-bool IoStatementBase::Emit(const char16_t *, std::size_t) {
-  return false;
-}
+bool IoStatementBase::Emit(const char16_t *, std::size_t) { return false; }
 
-bool IoStatementBase::Emit(const char32_t *, std::size_t) {
-  return false;
-}
+bool IoStatementBase::Emit(const char32_t *, std::size_t) { return false; }
 
 std::optional<char32_t> IoStatementBase::GetCurrentChar() {
   return std::nullopt;
@@ -70,9 +64,7 @@ bool IoStatementBase::Inquire(InquiryKeywordHash, char *, std::size_t) {
   return false;
 }
 
-bool IoStatementBase::Inquire(InquiryKeywordHash, bool &) {
-  return false;
-}
+bool IoStatementBase::Inquire(InquiryKeywordHash, bool &) { return false; }
 
 bool IoStatementBase::Inquire(InquiryKeywordHash, std::int64_t, bool &) {
   return false;
@@ -274,6 +266,11 @@ template <Direction DIR> int ExternalIoStatementState<DIR>::EndIoStatement() {
     BeginReadingRecord(); // in case there were no I/O items
     if (!mutableModes().nonAdvancing || GetIoStat() == IostatEor) {
       FinishReadingRecord();
+    } else {
+      // Set furthestPositionInRecord to the current position to avoid
+      // overwriting the beginning of the record that was red here with
+      // blanks in the next statement if it is an output statement.
+      unit().furthestPositionInRecord = unit().positionInRecord;
     }
   } else {
     if (!mutableModes().nonAdvancing) {
