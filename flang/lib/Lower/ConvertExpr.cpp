@@ -764,8 +764,8 @@ public:
   }
 
   mlir::Value extractComplexPart(mlir::Value cplx, bool isImagPart) {
-    return fir::factory::ComplexExprHelper{builder, getLoc()}
-        .extractComplexPart(cplx, isImagPart);
+    return fir::factory::Complex{builder, getLoc()}.extractComplexPart(
+        cplx, isImagPart);
   }
 
   template <int KIND>
@@ -849,7 +849,7 @@ public:
 
   template <int KIND>
   ExtValue genval(const Fortran::evaluate::ComplexConstructor<KIND> &op) {
-    return fir::factory::ComplexExprHelper{builder, getLoc()}.createComplex(
+    return fir::factory::Complex{builder, getLoc()}.createComplex(
         KIND, genunbox(op.left()), genunbox(op.right()));
   }
 
@@ -1235,7 +1235,7 @@ public:
     auto idxTy = builder.getIndexType();
     auto exv = gen(x.complex());
     auto base = fir::getBase(exv);
-    fir::factory::ComplexExprHelper helper{builder, loc};
+    fir::factory::Complex helper{builder, loc};
     auto eleTy =
         helper.getComplexPartType(fir::dyn_cast_ptrEleTy(base.getType()));
     auto offset = builder.createIntegerConstant(
@@ -4020,8 +4020,8 @@ private:
     auto isImagPart = x.isImaginaryPart;
     return [=](IterSpace iters) -> ExtValue {
       auto lhs = fir::getBase(lambda(iters));
-      return fir::factory::ComplexExprHelper{builder, loc}.extractComplexPart(
-          lhs, isImagPart);
+      return fir::factory::Complex{builder, loc}.extractComplexPart(lhs,
+                                                                    isImagPart);
     };
   }
 
@@ -4173,8 +4173,7 @@ private:
     return [=](IterSpace iters) -> ExtValue {
       auto lhs = fir::getBase(lf(iters));
       auto rhs = fir::getBase(rf(iters));
-      return fir::factory::ComplexExprHelper{builder, loc}.createComplex(
-          KIND, lhs, rhs);
+      return fir::factory::Complex{builder, loc}.createComplex(KIND, lhs, rhs);
     };
   }
 
