@@ -478,7 +478,7 @@ struct IntrinsicLibrary {
   fir::ExtendedValue genMatmul(mlir::Type, llvm::ArrayRef<fir::ExtendedValue>);
   fir::ExtendedValue genMaxloc(mlir::Type, llvm::ArrayRef<fir::ExtendedValue>);
   fir::ExtendedValue genMaxval(mlir::Type, llvm::ArrayRef<fir::ExtendedValue>);
-  mlir::Value genMerge(mlir::Type, llvm::ArrayRef<mlir::Value>);
+  fir::ExtendedValue genMerge(mlir::Type, llvm::ArrayRef<fir::ExtendedValue>);
   fir::ExtendedValue genMinloc(mlir::Type, llvm::ArrayRef<fir::ExtendedValue>);
   fir::ExtendedValue genMinval(mlir::Type, llvm::ArrayRef<fir::ExtendedValue>);
   mlir::Value genMod(mlir::Type, llvm::ArrayRef<mlir::Value>);
@@ -2561,11 +2561,23 @@ IntrinsicLibrary::genMatmul(mlir::Type resultType,
 }
 
 // MERGE
-mlir::Value IntrinsicLibrary::genMerge(mlir::Type,
-                                       llvm::ArrayRef<mlir::Value> args) {
+fir::ExtendedValue IntrinsicLibrary::genMerge(mlir::Type,
+                   llvm::ArrayRef<fir::ExtendedValue> args) {
   assert(args.size() == 3);
-  auto mask = builder.createConvert(loc, builder.getI1Type(), args[2]);
-  return builder.create<mlir::SelectOp>(loc, mask, args[0], args[1]);
+  mlir::Value arg0 = fir::getBase(args[0]);
+  mlir::Value arg1 = fir::getBase(args[1]);
+  mlir::Value arg2 = fir::getBase(args[2]);
+  auto type0 = fir::unwrapRefType(arg0.getType());
+  bool isCharRslt = fir::isa_char(type0); // result is same as first argument
+  auto mask = builder.createConvert(loc, builder.getI1Type(), arg2);
+  auto rslt = builder.create<mlir::SelectOp>(loc, mask, arg0, arg1);
+  if (isCharRslt) {
+    // Need a CharBoxValue for character results
+    auto charBox = args[0].getCharBox();
+    auto charRslt = fir::CharBoxValue{rslt, charBox->getLen()};
+    return charRslt;
+  }
+  return rslt;
 }
 
 // MOD
