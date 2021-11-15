@@ -13,8 +13,8 @@
 #ifndef FORTRAN_LOWER_ITERATIONSPACE_H
 #define FORTRAN_LOWER_ITERATIONSPACE_H
 
-#include "StatementContext.h"
 #include "flang/Evaluate/tools.h"
+#include "flang/Lower/StatementContext.h"
 #include "flang/Optimizer/Builder/FIRBuilder.h"
 
 namespace llvm {

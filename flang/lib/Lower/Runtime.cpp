@@ -7,8 +7,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "flang/Lower/Runtime.h"
-#include "StatementContext.h"
 #include "flang/Lower/Bridge.h"
+#include "flang/Lower/StatementContext.h"
 #include "flang/Optimizer/Builder/BoxValue.h"
 #include "flang/Optimizer/Builder/FIRBuilder.h"
 #include "flang/Optimizer/Builder/Runtime/RTBuilder.h"

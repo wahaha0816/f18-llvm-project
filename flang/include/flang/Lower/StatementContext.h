@@ -13,7 +13,7 @@
 #ifndef FORTRAN_LOWER_STATEMENTCONTEXT_H
 #define FORTRAN_LOWER_STATEMENTCONTEXT_H
 
-#include "SymbolMap.h"
+#include "flang/Lower/SymbolMap.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <functional>
 

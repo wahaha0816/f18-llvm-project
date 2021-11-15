@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "../../lib/Lower/IntervalSet.h"
+#include "flang/Lower/IntervalSet.h"
 #include "gtest/gtest.h"
 
 struct IntervalSetTest : public testing::Test {

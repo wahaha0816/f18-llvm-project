@@ -11,9 +11,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "flang/Lower/ConvertExpr.h"
-#include "BuiltinModules.h"
-#include "ComponentPath.h"
-#include "ConvertVariable.h"
 #include "flang/Common/default-kinds.h"
 #include "flang/Common/unwrap.h"
 #include "flang/Evaluate/fold.h"
@@ -21,9 +18,12 @@
 #include "flang/Evaluate/traverse.h"
 #include "flang/Lower/Allocatable.h"
 #include "flang/Lower/Bridge.h"
+#include "flang/Lower/BuiltinModules.h"
 #include "flang/Lower/CallInterface.h"
 #include "flang/Lower/Coarray.h"
+#include "flang/Lower/ComponentPath.h"
 #include "flang/Lower/ConvertType.h"
+#include "flang/Lower/ConvertVariable.h"
 #include "flang/Lower/DumpEvaluateExpr.h"
 #include "flang/Lower/IntrinsicCall.h"
 #include "flang/Lower/Mangler.h"
