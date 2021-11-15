@@ -10,7 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "IterationSpace.h"
+#include "flang/Lower/IterationSpace.h"
 #include "flang/Evaluate/expression.h"
 #include "flang/Lower/AbstractConverter.h"
 #include "flang/Lower/Support/Utils.h"

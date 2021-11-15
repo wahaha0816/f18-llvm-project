@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ComponentPath.h"
+#include "flang/Lower/ComponentPath.h"
 
 static std::function<
     Fortran::lower::IterationSpace(const Fortran::lower::IterationSpace &)>

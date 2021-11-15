@@ -11,10 +11,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "flang/Lower/OpenMP.h"
-#include "StatementContext.h"
 #include "flang/Common/idioms.h"
 #include "flang/Lower/Bridge.h"
 #include "flang/Lower/PFTBuilder.h"
+#include "flang/Lower/StatementContext.h"
 #include "flang/Lower/Todo.h"
 #include "flang/Optimizer/Builder/BoxValue.h"
 #include "flang/Optimizer/Builder/FIRBuilder.h"
@@ -48,7 +48,8 @@ static void createPrivateVarSyms(Fortran::lower::AbstractConverter &converter,
     // Privatization for symbols which are pre-determined (like loop index
     // variables) happen separately, for everything else privatize here
     if (!sym->test(Fortran::semantics::Symbol::Flag::OmpPreDetermined)) {
-      [[maybe_unused]] bool success = converter.createHostAssociateVarClone(*sym);
+      [[maybe_unused]] bool success =
+          converter.createHostAssociateVarClone(*sym);
       assert(success && "Privatization failed due to existing binding");
       constexpr bool init =
           std::is_same_v<T, Fortran::parser::OmpClause::Firstprivate>;

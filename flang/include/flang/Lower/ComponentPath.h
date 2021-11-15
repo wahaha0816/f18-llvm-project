@@ -9,7 +9,7 @@
 #ifndef FORTRAN_LOWER_COMPONENTPATH_H
 #define FORTRAN_LOWER_COMPONENTPATH_H
 
-#include "IterationSpace.h"
+#include "flang/Lower/IterationSpace.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace fir {

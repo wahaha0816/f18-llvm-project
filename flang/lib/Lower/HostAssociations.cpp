@@ -7,14 +7,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "flang/Lower/HostAssociations.h"
-#include "BoxAnalyzer.h"
-#include "SymbolMap.h"
 #include "flang/Evaluate/check-expression.h"
 #include "flang/Lower/AbstractConverter.h"
 #include "flang/Lower/Allocatable.h"
+#include "flang/Lower/BoxAnalyzer.h"
 #include "flang/Lower/CallInterface.h"
 #include "flang/Lower/ConvertType.h"
 #include "flang/Lower/PFTBuilder.h"
+#include "flang/Lower/SymbolMap.h"
 #include "flang/Lower/Todo.h"
 #include "flang/Optimizer/Builder/Character.h"
 #include "flang/Optimizer/Builder/FIRBuilder.h"
