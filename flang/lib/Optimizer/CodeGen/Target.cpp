@@ -37,6 +37,7 @@ struct GenericTarget : public CodeGenSpecifics {
 
   mlir::Type complexMemoryType(mlir::Type eleTy) const override {
     assert(fir::isa_real(eleTy));
+    // Use a type that will be translated into LLVM as:
     // { t, t }   struct of 2 eleTy
     mlir::TypeRange range = {eleTy, eleTy};
     return mlir::TupleType::get(eleTy.getContext(), range);
@@ -45,6 +46,7 @@ struct GenericTarget : public CodeGenSpecifics {
   mlir::Type boxcharMemoryType(mlir::Type eleTy) const override {
     auto idxTy = mlir::IntegerType::get(eleTy.getContext(), S::defaultWidth);
     auto ptrTy = fir::ReferenceType::get(eleTy);
+    // Use a type that will be translated into LLVM as:
     // { t*, index }
     mlir::TypeRange range = {ptrTy, idxTy};
     return mlir::TupleType::get(eleTy.getContext(), range);
@@ -59,7 +61,8 @@ struct GenericTarget : public CodeGenSpecifics {
     // split format with all pointers first (in the declared position) and all
     // LEN arguments appended after all of the dummy arguments.
     // NB: Other conventions/ABIs can/should be supported via options.
-    marshal.emplace_back(idxTy, AT{0, {}, {}, /*append=*/!sret});
+    marshal.emplace_back(idxTy, AT{/*alignment=*/0, /*byval=*/false,
+                                   /*sret=*/sret, /*append=*/!sret});
     return marshal;
   }
 };
@@ -79,11 +82,12 @@ struct TargetI386 : public GenericTarget<TargetI386> {
   complexArgumentType(mlir::Type eleTy) const override {
     assert(fir::isa_real(eleTy));
     CodeGenSpecifics::Marshalling marshal;
+    // Use a type that will be translated into LLVM as:
     // { t, t }   struct of 2 eleTy, byval, align 4
     mlir::TypeRange range = {eleTy, eleTy};
     auto structTy = mlir::TupleType::get(eleTy.getContext(), range);
     marshal.emplace_back(fir::ReferenceType::get(structTy),
-                         AT{4, /*byval=*/true, {}});
+                         AT{/*alignment=*/4, /*byval=*/true});
     return marshal;
   }
 
@@ -97,11 +101,12 @@ struct TargetI386 : public GenericTarget<TargetI386> {
       marshal.emplace_back(mlir::IntegerType::get(eleTy.getContext(), 64),
                            AT{});
     } else if (sem == &llvm::APFloat::IEEEdouble()) {
+      // Use a type that will be translated into LLVM as:
       // { t, t }   struct of 2 eleTy, sret, align 4
       mlir::TypeRange range = {eleTy, eleTy};
       auto structTy = mlir::TupleType::get(eleTy.getContext(), range);
       marshal.emplace_back(fir::ReferenceType::get(structTy),
-                           AT{4, {}, /*sret=*/true});
+                           AT{/*alignment=*/4, /*byval=*/false, /*sret=*/true});
     } else {
       llvm::report_fatal_error("complex for this precision not implemented");
     }
@@ -145,6 +150,7 @@ struct TargetX86_64 : public GenericTarget<TargetX86_64> {
       // <2 x t>   vector of 2 eleTy
       marshal.emplace_back(fir::VectorType::get(2, eleTy), AT{});
     } else if (sem == &llvm::APFloat::IEEEdouble()) {
+      // Use a type that will be translated into LLVM as:
       // { double, double }   struct of 2 double
       mlir::TypeRange range = {eleTy, eleTy};
       marshal.emplace_back(mlir::TupleType::get(eleTy.getContext(), range),
@@ -187,6 +193,7 @@ struct TargetAArch64 : public GenericTarget<TargetAArch64> {
     const auto *sem = &floatToSemantics(kindMap, eleTy);
     if (sem == &llvm::APFloat::IEEEsingle() ||
         sem == &llvm::APFloat::IEEEdouble()) {
+      // Use a type that will be translated into LLVM as:
       // { t, t }   struct of 2 eleTy
       mlir::TypeRange range = {eleTy, eleTy};
       marshal.emplace_back(mlir::TupleType::get(eleTy.getContext(), range),
@@ -221,6 +228,7 @@ struct TargetPPC64le : public GenericTarget<TargetPPC64le> {
   CodeGenSpecifics::Marshalling
   complexReturnType(mlir::Type eleTy) const override {
     CodeGenSpecifics::Marshalling marshal;
+    // Use a type that will be translated into LLVM as:
     // { t, t }   struct of 2 element type
     mlir::TypeRange range = {eleTy, eleTy};
     marshal.emplace_back(mlir::TupleType::get(eleTy.getContext(), range), AT{});
