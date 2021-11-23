@@ -4438,6 +4438,7 @@ private:
     auto &pc = cmptData.pc;
     const bool useTripsForSlice = !explicitSpaceIsActive();
     const bool createDestShape = destShape.empty();
+    bool useSlice = false;
     std::size_t shapeIndex = 0;
     for (auto sub : llvm::enumerate(x.subscript())) {
       const auto subsIndex = sub.index();
@@ -4471,6 +4472,7 @@ private:
                         loc, lowerBound, upperBound, stride, idxTy);
                     destShape.push_back(extent);
                   }
+                  useSlice = true;
                 }
                 if (!useTripsForSlice) {
                   auto currentPC = pc;
@@ -4524,14 +4526,12 @@ private:
                     return newIters;
                   };
                   if (useTripsForSlice) {
-                    // Create a slice with the vector size so that the shape
-                    // of array reference is correctly computed in later phase,
-                    // even though this is not a triplet.
-                    auto vectorSubscriptShape = getShape(arrayOperands.back());
-                    assert(vectorSubscriptShape.size() == 1);
-                    trips.push_back(one);
-                    trips.push_back(vectorSubscriptShape[0]);
-                    trips.push_back(one);
+                    LLVM_ATTRIBUTE_UNUSED auto vectorSubscriptShape =
+                        getShape(arrayOperands.back());
+                    auto undef = builder.create<fir::UndefOp>(loc, idxTy);
+                    trips.push_back(undef);
+                    trips.push_back(undef);
+                    trips.push_back(undef);
                   }
                   shapeIndex++;
                 } else {
@@ -4585,6 +4585,8 @@ private:
               }},
           sub.value().u);
     }
+    if (!useSlice)
+      trips.clear();
   }
 
   static mlir::Type unwrapBoxEleTy(mlir::Type ty) {
