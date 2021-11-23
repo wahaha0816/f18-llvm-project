@@ -216,7 +216,7 @@ protected:
     return rewriter.create<mlir::LLVM::LoadOp>(loc, ty, p);
   }
 
-   mlir::Value
+  mlir::Value
   loadElementSizeFromBox(mlir::Location loc, mlir::Type ty, mlir::Value box,
                          mlir::ConversionPatternRewriter &rewriter) const {
     mlir::LLVM::ConstantOp c0 = genConstantOffset(loc, rewriter, 0);
@@ -1410,41 +1410,48 @@ struct XEmboxOpConversion : public EmboxCommonConversion<fir::cg::XEmboxOp> {
     llvm::SmallVector<mlir::Value> gepArgs;
     unsigned constRows = 0;
     mlir::Value ptrOffset = zero;
-    if (auto memEleTy = fir::dyn_cast_ptrEleTy(xbox.memref().getType()))
-      if (auto seqTy = memEleTy.dyn_cast<fir::SequenceType>()) {
-        auto seqEleTy = seqTy.getEleTy();
-        // Adjust the element scaling factor if the element is a dependent type.
-        if (fir::hasDynamicSize(seqEleTy)) {
-          if (fir::isa_char(seqEleTy)) {
-            assert(xbox.lenParams().size() == 1);
-            prevPtrOff = integerCast(loc, rewriter, i64Ty,
-                                     operands[xbox.lenParamOffset()]);
-          } else if (seqEleTy.isa<fir::RecordType>()) {
-            // prevPtrOff = ;
-            TODO(loc, "generate call to calculate size of PDT");
-          } else {
-            fir::emitFatalError(loc, "unexpected dynamic type");
-          }
-        } else {
-          constRows = seqTy.getConstantRows();
-        }
+    auto memEleTy = fir::dyn_cast_ptrEleTy(xbox.memref().getType());
+    assert(memEleTy.isa<fir::SequenceType>());
+    auto seqTy = memEleTy.cast<fir::SequenceType>();
+    auto seqEleTy = seqTy.getEleTy();
+    // Adjust the element scaling factor if the element is a dependent type.
+    if (fir::hasDynamicSize(seqEleTy)) {
+      if (auto charTy = seqEleTy.dyn_cast<fir::CharacterType>()) {
+        assert(xbox.lenParams().size() == 1);
+        auto charSize = genConstantIndex(
+            loc, i64Ty, rewriter, lowerTy().characterBitsize(charTy) / 8);
+        auto byteOffset = rewriter.create<mlir::LLVM::MulOp>(
+            loc, i64Ty, charSize, operands[xbox.lenParamOffset()]);
+        prevPtrOff = integerCast(loc, rewriter, i64Ty, byteOffset);
+      } else if (seqEleTy.isa<fir::RecordType>()) {
+        // prevPtrOff = ;
+        TODO(loc, "generate call to calculate size of PDT");
+      } else {
+        fir::emitFatalError(loc, "unexpected dynamic type");
       }
+    } else {
+      constRows = seqTy.getConstantRows();
+    }
 
-    auto hasSubcomp = !xbox.subcomponent().empty();
+    const auto hasSubcomp = !xbox.subcomponent().empty();
+    const bool hasSubstr = !xbox.substr().empty();
     mlir::Value stepExpr;
     if (hasSubcomp) {
       // We have a subcomponent. The step value needs to be the number of
       // bytes per element (which is a derived type).
-      auto ty0 = base.getType();
-      [[maybe_unused]] auto ptrTy = ty0.dyn_cast<mlir::LLVM::LLVMPointerType>();
-      assert(ptrTy && "expected pointer type");
-      auto memEleTy = fir::dyn_cast_ptrEleTy(xbox.memref().getType());
-      assert(memEleTy && "expected fir pointer type");
-      auto seqTy = memEleTy.dyn_cast<fir::SequenceType>();
-      assert(seqTy && "expected sequence type");
-      auto seqEleTy = seqTy.getEleTy();
       auto eleTy = mlir::LLVM::LLVMPointerType::get(convertType(seqEleTy));
       stepExpr = computeDerivedTypeSize(loc, eleTy, i64Ty, rewriter);
+    } else if (hasSubstr) {
+      // We have a substring. The step value needs to be the number of bytes
+      // per CHARACTER element.
+      auto charTy = seqEleTy.cast<fir::CharacterType>();
+      if (fir::hasDynamicSize(charTy)) {
+        stepExpr = prevPtrOff;
+      } else {
+        stepExpr = genConstantIndex(loc, i64Ty, rewriter,
+                                    charTy.getLen() *
+                                        lowerTy().characterBitsize(charTy) / 8);
+      }
     }
 
     // Process the array subspace arguments (shape, shift, etc.), if any,
@@ -1495,8 +1502,7 @@ struct XEmboxOpConversion : public EmboxCommonConversion<fir::cg::XEmboxOp> {
         dest = insertExtent(rewriter, loc, dest, descIdx, extent);
 
         // store step (scaled by shaped extent)
-
-        mlir::Value step = hasSubcomp ? stepExpr : prevDim;
+        mlir::Value step = (hasSubcomp || hasSubstr) ? stepExpr : prevDim;
         if (hasSlice)
           step = rewriter.create<mlir::LLVM::MulOp>(loc, i64Ty, step,
                                                     operands[sliceOff + 2]);
@@ -1518,7 +1524,7 @@ struct XEmboxOpConversion : public EmboxCommonConversion<fir::cg::XEmboxOp> {
       if (hasSlice)
         sliceOff += 3;
     }
-    if (hasSlice || hasSubcomp || !xbox.substr().empty()) {
+    if (hasSlice || hasSubcomp || hasSubstr) {
       llvm::SmallVector<mlir::Value> args = {base, ptrOffset};
       args.append(gepArgs.rbegin(), gepArgs.rend());
       if (hasSubcomp) {
@@ -1533,7 +1539,7 @@ struct XEmboxOpConversion : public EmboxCommonConversion<fir::cg::XEmboxOp> {
         args.append(beginOffset, lastOffset);
       }
       base = rewriter.create<mlir::LLVM::GEPOp>(loc, base.getType(), args);
-      if (!xbox.substr().empty())
+      if (hasSubstr)
         base = shiftSubstringBase(rewriter, loc, base, xbox.substr()[0]);
     }
     dest = insertBaseAddress(rewriter, loc, dest, base);
@@ -3250,8 +3256,8 @@ public:
         SliceOpConversion, StoreOpConversion, StringLitOpConversion,
         SubcOpConversion, UnboxCharOpConversion, UnboxProcOpConversion,
         UndefOpConversion, UnreachableOpConversion, XArrayCoorOpConversion,
-        XEmboxOpConversion, XReboxOpConversion,
-        ZeroOpConversion>(context, typeConverter);
+        XEmboxOpConversion, XReboxOpConversion, ZeroOpConversion>(
+        context, typeConverter);
     mlir::populateStdToLLVMConversionPatterns(typeConverter, pattern);
     mlir::populateOpenMPToLLVMConversionPatterns(typeConverter, pattern);
     mlir::arith::populateArithmeticToLLVMConversionPatterns(typeConverter,
