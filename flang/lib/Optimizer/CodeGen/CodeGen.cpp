@@ -1415,8 +1415,10 @@ struct XEmboxOpConversion : public EmboxCommonConversion<fir::cg::XEmboxOp> {
         assert(xbox.lenParams().size() == 1);
         auto charSize = genConstantIndex(
             loc, i64Ty, rewriter, lowerTy().characterBitsize(charTy) / 8);
-        auto byteOffset = rewriter.create<mlir::LLVM::MulOp>(
-            loc, i64Ty, charSize, operands[xbox.lenParamOffset()]);
+        auto castedLen =
+            integerCast(loc, rewriter, i64Ty, operands[xbox.lenParamOffset()]);
+        auto byteOffset =
+            rewriter.create<mlir::LLVM::MulOp>(loc, i64Ty, charSize, castedLen);
         prevPtrOff = integerCast(loc, rewriter, i64Ty, byteOffset);
       } else if (seqEleTy.isa<fir::RecordType>()) {
         // prevPtrOff = ;
