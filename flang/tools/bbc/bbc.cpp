@@ -46,6 +46,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorOr.h"
@@ -275,7 +276,9 @@ static mlir::LogicalResult convertFortranSourceToMLIR(
     pm.addNestedPass<mlir::FuncOp>(fir::createCharacterConversionPass());
     pm.addPass(mlir::createCanonicalizerPass());
     fir::addCSE(pm);
-    pm.addPass(mlir::createInlinerPass());
+    llvm::StringMap<mlir::OpPassManager> pipelines;
+    pm.addPass(mlir::createInlinerPass(
+        pipelines, fir::defaultFlangInlinerOptPipeline));
     pm.addPass(mlir::createCSEPass());
 
     // convert control flow to CFG form
@@ -283,7 +286,10 @@ static mlir::LogicalResult convertFortranSourceToMLIR(
     pm.addNestedPass<mlir::FuncOp>(fir::createControlFlowLoweringPass());
     pm.addPass(mlir::createLowerToCFGPass());
 
-    pm.addPass(mlir::createCanonicalizerPass());
+    mlir::GreedyRewriteConfig config;
+    config.enableRegionSimplification = false;
+    pm.addPass(mlir::createCanonicalizerPass(config));
+    pm.addPass(fir::createSimplifyRegionLitePass());
     fir::addCSE(pm);
   }
 
