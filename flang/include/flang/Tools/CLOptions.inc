@@ -13,7 +13,6 @@
 #include "flang/Optimizer/Transforms/Passes.h"
 #include "mlir/Conversion/SCFToStandard/SCFToStandard.h"
 #include "mlir/Pass/PassManager.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/Support/CommandLine.h"
 
@@ -54,12 +53,6 @@ void addNestedPassConditionally(
 
 namespace fir {
 
-static void defaultFlangInlinerOptPipeline(mlir::OpPassManager &pm) {
-  mlir::GreedyRewriteConfig config;
-  config.enableRegionSimplification = false;
-  pm.addPass(mlir::createCanonicalizerPass(config));
-}
-
 inline void addCfgConversionPass(mlir::PassManager &pm) {
   addNestedPassConditionally<mlir::FuncOp>(
       pm, disableCfgConversion, fir::createFirToCfgPass);
@@ -98,18 +91,12 @@ inline void addLLVMDialectToLLVMPass(
 inline void createMLIRToLLVMPassPipeline(mlir::PassManager &pm)
 {
   // simplify the IR
-  mlir::GreedyRewriteConfig config;
-  config.enableRegionSimplification = false;
   fir::addCSE(pm);
   pm.addNestedPass<mlir::FuncOp>(fir::createArrayValueCopyPass());
   pm.addNestedPass<mlir::FuncOp>(fir::createCharacterConversionPass());
-  pm.addPass(mlir::createCanonicalizerPass(config));
+  pm.addPass(mlir::createCanonicalizerPass());
   fir::addCSE(pm);
-  // The default inliner pass adds the canonicalizer pass with the default
-  // configuration. Create the inliner pass with tco config.
-  llvm::StringMap<mlir::OpPassManager> pipelines;
-  pm.addPass(
-      mlir::createInlinerPass(pipelines, defaultFlangInlinerOptPipeline));
+  pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::createCSEPass());
 
   // convert control flow to CFG form
@@ -117,8 +104,7 @@ inline void createMLIRToLLVMPassPipeline(mlir::PassManager &pm)
   pm.addNestedPass<mlir::FuncOp>(fir::createControlFlowLoweringPass());
   pm.addPass(mlir::createLowerToCFGPass());
 
-  pm.addPass(mlir::createCanonicalizerPass(config));
-  pm.addPass(fir::createSimplifyRegionLitePass());
+  pm.addPass(mlir::createCanonicalizerPass());
   fir::addCSE(pm);
 
   pm.addNestedPass<mlir::FuncOp>(fir::createAbstractResultOptPass());
