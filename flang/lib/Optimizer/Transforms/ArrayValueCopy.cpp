@@ -803,24 +803,22 @@ void genArrayCopy(mlir::Location loc, mlir::PatternRewriter &rewriter,
       factory::originateIndices(loc, rewriter, dst.getType(), shapeOp, indices),
       typeparams);
   auto eleTy = unwrapSequenceType(unwrapPassByRefType(dst.getType()));
-  if (hasDynamicSize(eleTy)) {
-    if (auto charTy = eleTy.dyn_cast<CharacterType>()) {
-      assert(charTy.hasDynamicLen() && "dynamic size and constant length");
-      // Copy from (to) object to (from) temp copy of same object.
-      auto len = typeparams.back();
-      CharBoxValue toChar(toAddr, len);
-      CharBoxValue fromChar(fromAddr, len);
-      auto module = toAddr->getParentOfType<mlir::ModuleOp>();
-      FirOpBuilder builder(rewriter, getKindMapping(module));
-      factory::CharacterExprHelper helper{builder, loc};
-      helper.createAssign(ExtendedValue{toChar}, ExtendedValue{fromChar});
-    } else {
-      TODO(loc, "copy element of dynamic size");
-    }
+  auto module = toAddr->getParentOfType<mlir::ModuleOp>();
+  FirOpBuilder builder(rewriter, getKindMapping(module));
+  // Copy from (to) object to (from) temp copy of same object.
+  if (auto charTy = eleTy.dyn_cast<CharacterType>()) {
+    auto len =
+        charTy.hasDynamicLen()
+            ? typeparams.back()
+            : builder.createIntegerConstant(
+                  loc, builder.getCharacterLengthType(), charTy.getLen());
+    CharBoxValue toChar(toAddr, len);
+    CharBoxValue fromChar(fromAddr, len);
+    fir::factory::genScalarAssignment(builder, loc, toChar, fromChar);
   } else {
-    // TODO: Should this check if the size of the element is "too big"?
-    auto load = rewriter.create<fir::LoadOp>(loc, fromAddr);
-    rewriter.create<fir::StoreOp>(loc, load, toAddr);
+    if (hasDynamicSize(eleTy))
+      TODO(loc, "copy element of dynamic size");
+    fir::factory::genScalarAssignment(builder, loc, toAddr, fromAddr);
   }
   rewriter.restoreInsertionPoint(insPt);
 }
