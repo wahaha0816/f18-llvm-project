@@ -823,8 +823,99 @@ fir::ExtendedValue fir::factory::arraySectionElementToExtendedValue(
   return fir::factory::componentToExtendedValue(builder, loc, element);
 }
 
+void fir::factory::genScalarAssignment(fir::FirOpBuilder &builder,
+                                       mlir::Location loc,
+                                       const fir::ExtendedValue &lhs,
+                                       const fir::ExtendedValue &rhs) {
+  assert(lhs.rank() == 0 && rhs.rank() == 0 && "must be scalars");
+  auto type = fir::unwrapSequenceType(
+      fir::unwrapPassByRefType(fir::getBase(lhs).getType()));
+  if (type.isa<fir::CharacterType>()) {
+    const fir::CharBoxValue *toChar = lhs.getCharBox();
+    const fir::CharBoxValue *fromChar = rhs.getCharBox();
+    assert(toChar && fromChar);
+    fir::factory::CharacterExprHelper helper{builder, loc};
+    helper.createAssign(fir::ExtendedValue{*toChar},
+                        fir::ExtendedValue{*fromChar});
+  } else if (type.isa<fir::RecordType>()) {
+    fir::factory::genRecordAssignment(builder, loc, lhs, rhs);
+  } else {
+    assert(!fir::hasDynamicSize(type));
+    auto rhsVal = fir::getBase(rhs);
+    if (fir::isa_ref_type(rhsVal.getType()))
+      rhsVal = builder.create<fir::LoadOp>(loc, rhsVal);
+    mlir::Value lhsAddr = fir::getBase(lhs);
+    rhsVal = builder.createConvert(loc, fir::unwrapRefType(lhsAddr.getType()),
+                                   rhsVal);
+    builder.create<fir::StoreOp>(loc, rhsVal, lhsAddr);
+  }
+}
+
+static void genComponentByComponentAssignment(fir::FirOpBuilder &builder,
+                                              mlir::Location loc,
+                                              const fir::ExtendedValue &lhs,
+                                              const fir::ExtendedValue &rhs) {
+  auto baseType = fir::unwrapPassByRefType(fir::getBase(lhs).getType());
+  auto lhsType = baseType.dyn_cast<fir::RecordType>();
+  assert(lhsType && "lhs must be a scalar record type");
+  auto fieldIndexType = fir::FieldType::get(lhsType.getContext());
+  for (auto [fieldName, fieldType] : lhsType.getTypeList()) {
+    assert(!fir::hasDynamicSize(fieldType));
+    mlir::Value field = builder.create<fir::FieldIndexOp>(
+        loc, fieldIndexType, fieldName, lhsType, fir::getTypeParams(lhs));
+    auto fieldRefType = builder.getRefType(fieldType);
+    mlir::Value fromCoor = builder.create<fir::CoordinateOp>(
+        loc, fieldRefType, fir::getBase(rhs), field);
+    mlir::Value toCoor = builder.create<fir::CoordinateOp>(
+        loc, fieldRefType, fir::getBase(lhs), field);
+    llvm::Optional<fir::DoLoopOp> outerLoop;
+    if (auto sequenceType = fieldType.dyn_cast<fir::SequenceType>()) {
+      // Create loops to assign array components elements by elements.
+      // Note that, since these are components, they either do not overlap,
+      // or are the same and exactly overlap. They also have compile time
+      // constant shapes.
+      mlir::Type idxTy = builder.getIndexType();
+      llvm::SmallVector<mlir::Value> indices;
+      mlir::Value zero = builder.createIntegerConstant(loc, idxTy, 0);
+      mlir::Value one = builder.createIntegerConstant(loc, idxTy, 1);
+      for (auto extent : llvm::reverse(sequenceType.getShape())) {
+        // TODO: add zero size test !
+        mlir::Value ub = builder.createIntegerConstant(loc, idxTy, extent - 1);
+        auto loop = builder.create<fir::DoLoopOp>(loc, zero, ub, one);
+        if (!outerLoop)
+          outerLoop = loop;
+        indices.push_back(loop.getInductionVar());
+        builder.setInsertionPointToStart(loop.getBody());
+      }
+      // Set indices in column-major order.
+      std::reverse(indices.begin(), indices.end());
+      auto elementRefType = builder.getRefType(sequenceType.getEleTy());
+      toCoor = builder.create<fir::CoordinateOp>(loc, elementRefType, toCoor,
+                                                 indices);
+      fromCoor = builder.create<fir::CoordinateOp>(loc, elementRefType,
+                                                   fromCoor, indices);
+    }
+    auto fieldElementType = fir::unwrapSequenceType(fieldType);
+    if (fieldElementType.isa<fir::BoxType>()) {
+      assert(fieldElementType.cast<fir::BoxType>()
+                 .getEleTy()
+                 .isa<fir::PointerType>() &&
+             "allocatable require deep copy");
+      auto fromPointerValue = builder.create<fir::LoadOp>(loc, fromCoor);
+      builder.create<fir::StoreOp>(loc, fromPointerValue, toCoor);
+    } else {
+      auto from =
+          fir::factory::componentToExtendedValue(builder, loc, fromCoor);
+      auto to = fir::factory::componentToExtendedValue(builder, loc, toCoor);
+      fir::factory::genScalarAssignment(builder, loc, to, from);
+    }
+    if (outerLoop)
+      builder.setInsertionPointAfter(*outerLoop);
+  }
+}
+
 /// Can the assignment of this record type be implement with a simple memory
-/// copy ?
+/// copy (it requires no deep copy or user defined assignment of components )?
 static bool recordTypeCanBeMemCopied(fir::RecordType recordType) {
   if (fir::hasDynamicSize(recordType))
     return false;
@@ -872,10 +963,13 @@ void fir::factory::genRecordAssignment(fir::FirOpBuilder &builder,
   }
   // Otherwise, the derived type has compile time constant size and for which
   // the component by component assignment can be replaced by a memory copy.
-  auto rhsVal = fir::getBase(rhs);
-  if (fir::isa_ref_type(rhsVal.getType()))
-    rhsVal = builder.create<fir::LoadOp>(loc, rhsVal);
-  builder.create<fir::StoreOp>(loc, rhsVal, fir::getBase(lhs));
+  // Since we do not know the size of the derived type in lowering, do a
+  // component by component assignment. Note that a single fir.load/fir.store
+  // could be used on "small" record types, but as the type size grows, this
+  // leads to issues in LLVM (long compile times, long IR files, and even
+  // asserts at some point). Since there is no good size boundary, just always
+  // use component by component assignment here.
+  genComponentByComponentAssignment(builder, loc, lhs, rhs);
 }
 
 mlir::TupleType

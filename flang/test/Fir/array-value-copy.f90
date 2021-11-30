@@ -34,8 +34,11 @@ func @derived_type_component_overlap(%arg0: !fir.ref<!fir.array<100x!fir.type<t{
 // CHECK:             %[[VAL_18:.*]] = arith.constant 1 : index
 // CHECK:             %[[VAL_19:.*]] = arith.addi %[[VAL_14]], %[[VAL_18]] : index
 // CHECK:             %[[VAL_20:.*]] = fir.array_coor %[[VAL_9]](%[[VAL_6]]) %[[VAL_19]] : (!fir.heap<!fir.array<100x!fir.type<t{i:i32}>>>, !fir.shape<1>, index) -> !fir.ref<!fir.type<t{i:i32}>>
-// CHECK:             %[[VAL_21:.*]] = fir.load %[[VAL_17]] : !fir.ref<!fir.type<t{i:i32}>>
-// CHECK:             fir.store %[[VAL_21]] to %[[VAL_20]] : !fir.ref<!fir.type<t{i:i32}>>
+// CHECK:             %[[VAL_21:.*]] = fir.field_index i, !fir.type<t{i:i32}>
+// CHECK:             %[[VAL_22:.*]] = fir.coordinate_of %[[VAL_17]], %[[VAL_21]] : (!fir.ref<!fir.type<t{i:i32}>>, !fir.field) -> !fir.ref<i32>
+// CHECK:             %[[VAL_23:.*]] = fir.coordinate_of %[[VAL_20]], %[[VAL_21]] : (!fir.ref<!fir.type<t{i:i32}>>, !fir.field) -> !fir.ref<i32>
+// CHECK:             %[[VAL_24:.*]] = fir.load %[[VAL_22]] : !fir.ref<i32>
+// CHECK:             fir.store %[[VAL_24]] to %[[VAL_23]] : !fir.ref<i32>
 // CHECK:           }
 
 // Actual assignment and copy-out

@@ -493,6 +493,9 @@ public:
     return addr.match(
         [](const fir::CharBoxValue &box) -> ExtValue { return box; },
         [&](const fir::UnboxedValue &v) -> ExtValue {
+          if (fir::unwrapRefType(fir::getBase(v).getType())
+                  .isa<fir::RecordType>())
+            return v;
           return builder.create<fir::LoadOp>(loc, fir::getBase(v));
         },
         [&](const auto &v) -> ExtValue {
@@ -683,18 +686,12 @@ public:
       auto to = fir::factory::componentToExtendedValue(builder, loc, coor);
       to.match(
           [&](const fir::UnboxedValue &toPtr) {
-            // FIXME: if toPtr is a derived type, it is incorrect after F95 to
-            // simply load/store derived type since they may have allocatable
-            // components that require deep-copy or may have defined assignment
-            // procedures.
-            auto val = fir::getBase(genval(expr.value()));
-            auto cast = builder.createConvert(
-                loc, fir::dyn_cast_ptrEleTy(toPtr.getType()), val);
-            builder.create<fir::StoreOp>(loc, cast, toPtr);
+            ExtValue value = genval(expr.value());
+            fir::factory::genScalarAssignment(builder, loc, to, value);
           },
           [&](const fir::CharBoxValue &) {
-            fir::factory::CharacterExprHelper{builder, loc}.createAssign(
-                to, genval(expr.value()));
+            ExtValue value = genval(expr.value());
+            fir::factory::genScalarAssignment(builder, loc, to, value);
           },
           [&](const fir::ArrayBoxValue &) {
             Fortran::lower::createSomeArrayAssignment(
@@ -722,7 +719,7 @@ public:
             TODO(loc, "procedure pointer component in derived type assignment");
           });
     }
-    return builder.create<fir::LoadOp>(loc, res);
+    return res;
   }
 
   /// Lowering of an <i>ac-do-variable</i>, which is not a Symbol.
@@ -5260,8 +5257,7 @@ private:
               builder.createConvert(loc, fir::HeapType::get(resTy), mem);
           auto buffi = builder.create<fir::CoordinateOp>(loc, eleRefTy, buff,
                                                          mlir::ValueRange{off});
-          auto val = builder.createConvert(loc, eleTy, v);
-          builder.create<fir::StoreOp>(loc, val, buffi);
+          fir::factory::genScalarAssignment(builder, loc, buffi, v);
           builder.create<fir::StoreOp>(loc, plusOne, buffPos);
         },
         [&](const fir::CharBoxValue &v) {
