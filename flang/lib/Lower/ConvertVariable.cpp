@@ -1075,6 +1075,17 @@ lowerExplicitCharLen(Fortran::lower::AbstractConverter &converter,
   return mlir::Value{};
 }
 
+/// Treat negative values as undefined. Assumed size arrays will return -1 from
+/// the front end for example. Using negative values can produce hard to find
+/// bugs much further along in the compilation.
+static mlir::Value genExtentValue(fir::FirOpBuilder &builder,
+                                  mlir::Location loc, mlir::Type idxTy,
+                                  long frontEndExtent) {
+  if (frontEndExtent >= 0)
+    return builder.createIntegerConstant(loc, idxTy, frontEndExtent);
+  return builder.create<fir::UndefOp>(loc, idxTy);
+}
+
 /// Lower specification expressions and attributes of variable \p var and
 /// add it to the symbol map.
 /// For global and aliases, the address must be pre-computed and provided
@@ -1346,7 +1357,7 @@ void Fortran::lower::mapSymbolAttributes(
           // if lower bounds are all ones, build simple shaped object
           llvm::SmallVector<mlir::Value> shape;
           for (auto i : x.shapes)
-            shape.push_back(builder.createIntegerConstant(loc, idxTy, i));
+            shape.push_back(genExtentValue(builder, loc, idxTy, i));
           mlir::Value local =
               isDummy ? addr : createNewLocal(converter, loc, var, preAlloc);
           symMap.addSymbolWithShape(sym, local, shape, isDummy);
@@ -1358,7 +1369,7 @@ void Fortran::lower::mapSymbolAttributes(
         llvm::SmallVector<mlir::Value> lbounds;
         for (auto [fst, snd] : llvm::zip(x.lbounds, x.shapes)) {
           lbounds.emplace_back(builder.createIntegerConstant(loc, idxTy, fst));
-          extents.emplace_back(builder.createIntegerConstant(loc, idxTy, snd));
+          extents.emplace_back(genExtentValue(builder, loc, idxTy, snd));
         }
         mlir::Value local =
             isDummy ? addr
@@ -1439,7 +1450,7 @@ void Fortran::lower::mapSymbolAttributes(
           // if lower bounds are all ones, build simple shaped object
           llvm::SmallVector<mlir::Value> shape;
           for (auto i : x.shapes)
-            shape.push_back(builder.createIntegerConstant(loc, idxTy, i));
+            shape.push_back(genExtentValue(builder, loc, idxTy, i));
           mlir::Value local =
               isDummy ? addr : createNewLocal(converter, loc, var, preAlloc);
           symMap.addCharSymbolWithShape(sym, local, len, shape, isDummy);
@@ -1452,7 +1463,7 @@ void Fortran::lower::mapSymbolAttributes(
         // construct constants and populate `bounds`
         for (auto [fst, snd] : llvm::zip(x.lbounds, x.shapes)) {
           lbounds.emplace_back(builder.createIntegerConstant(loc, idxTy, fst));
-          extents.emplace_back(builder.createIntegerConstant(loc, idxTy, snd));
+          extents.emplace_back(genExtentValue(builder, loc, idxTy, snd));
         }
 
         if (isDummy) {
@@ -1501,7 +1512,7 @@ void Fortran::lower::mapSymbolAttributes(
           // if lower bounds are all ones, build simple shaped object
           llvm::SmallVector<mlir::Value> shape;
           for (auto i : x.shapes)
-            shape.push_back(builder.createIntegerConstant(loc, idxTy, i));
+            shape.push_back(genExtentValue(builder, loc, idxTy, i));
           if (isDummy) {
             symMap.addCharSymbolWithShape(sym, addr, len, shape, true);
             return;
@@ -1520,7 +1531,7 @@ void Fortran::lower::mapSymbolAttributes(
         // construct constants and populate `bounds`
         for (auto [fst, snd] : llvm::zip(x.lbounds, x.shapes)) {
           lbounds.emplace_back(builder.createIntegerConstant(loc, idxTy, fst));
-          extents.emplace_back(builder.createIntegerConstant(loc, idxTy, snd));
+          extents.emplace_back(genExtentValue(builder, loc, idxTy, snd));
         }
         if (isDummy) {
           symMap.addCharSymbolWithBounds(sym, addr, len, extents, lbounds,
