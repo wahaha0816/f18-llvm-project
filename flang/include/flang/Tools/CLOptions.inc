@@ -11,6 +11,7 @@
 
 #include "mlir/Conversion/SCFToStandard/SCFToStandard.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
 #include "flang/Optimizer/CodeGen/CodeGen.h"
 #include "flang/Optimizer/Transforms/Passes.h"
@@ -53,6 +54,12 @@ void addNestedPassConditionally(
 
 namespace fir {
 
+static void defaultFlangInlinerOptPipeline(mlir::OpPassManager &pm) {
+  mlir::GreedyRewriteConfig config;
+  config.enableRegionSimplification = false;
+  pm.addPass(mlir::createCanonicalizerPass(config));
+}
+
 inline void addCfgConversionPass(mlir::PassManager &pm) {
   addNestedPassConditionally<mlir::FuncOp>(
       pm, disableCfgConversion, fir::createFirToCfgPass);
@@ -86,17 +93,26 @@ inline void addLLVMDialectToLLVMPass(
 }
 #endif
 
-/// Create a pass pipeline for lowering from MLIR to LLVM IR
+/// Create a pass pipeline for running default optimization passes for
+/// incremental conversion of FIR.
 ///
 /// \param pm - MLIR pass manager that will hold the pipeline definition
 inline void createDefaultFIROptimizerPassPipeline(mlir::PassManager &pm) {
   // simplify the IR
+  mlir::GreedyRewriteConfig config;
+  config.enableRegionSimplification = false;
   fir::addCSE(pm);
   pm.addNestedPass<mlir::FuncOp>(fir::createArrayValueCopyPass());
   pm.addNestedPass<mlir::FuncOp>(fir::createCharacterConversionPass());
-  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCanonicalizerPass(config));
+  pm.addPass(fir::createSimplifyRegionLitePass());
   fir::addCSE(pm);
-  pm.addPass(mlir::createInlinerPass());
+
+  // The default inliner pass adds the canonicalizer pass with the default
+  // configuration. Create the inliner pass with tco config.
+  llvm::StringMap<mlir::OpPassManager> pipelines;
+  pm.addPass(
+      mlir::createInlinerPass(pipelines, defaultFlangInlinerOptPipeline));
   pm.addPass(mlir::createCSEPass());
 
   // convert control flow to CFG form
@@ -104,11 +120,15 @@ inline void createDefaultFIROptimizerPassPipeline(mlir::PassManager &pm) {
   pm.addNestedPass<mlir::FuncOp>(fir::createControlFlowLoweringPass());
   pm.addPass(mlir::createLowerToCFGPass());
 
-  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCanonicalizerPass(config));
+  pm.addPass(fir::createSimplifyRegionLitePass());
   fir::addCSE(pm);
 }
 
 #if !defined(FLANG_EXCLUDE_CODEGEN)
+/// Create a pass pipeline for lowering from MLIR to LLVM IR
+///
+/// \param pm - MLIR pass manager that will hold the pipeline definition
 inline void createMLIRToLLVMPassPipeline(mlir::PassManager &pm) {
   // Add default optimizer pass pipeline.
   fir::createDefaultFIROptimizerPassPipeline(pm);
