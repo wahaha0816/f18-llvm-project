@@ -696,12 +696,14 @@ static bool getAdjustedExtents(mlir::Location loc,
   return copyUsingSlice;
 }
 
-/// Place the extents of the array loaded by an ArrayLoadOp into the result
-/// vector and return a ShapeOp/ShapeShiftOp with the corresponding extents. If
-/// the ArrayLoadOp is loading a fir.box, code will be generated to read the
-/// extents from the fir.box, and a the retunred ShapeOp is built with the read
-/// extents. Otherwise, the extents will be extracted from the
-/// ShapeOp/ShapeShiftOp argument of the ArrayLoadOp that is returned.
+/// Place the extents of the array load, \p arrLoad, into \p result and
+/// return a ShapeOp or ShapeShiftOp with the same extents. If \p arrLoad is
+/// loading a `!fir.box`, code will be generated to read the extents from the
+/// boxed value, and the retunred shape Op will be built with the extents read
+/// from the box. Otherwise, the extents will be extracted from the ShapeOp (or
+/// ShapeShiftOp) argument of \p arrLoad. \p copyUsingSlice will be set to true
+/// if slicing of the output array is to be done in the copy-in/copy-out rather
+/// than in the elemental computation step.
 static mlir::Value getOrReadExtentsAndShapeOp(
     mlir::Location loc, mlir::PatternRewriter &rewriter, ArrayLoadOp arrLoad,
     llvm::SmallVectorImpl<mlir::Value> &result, bool &copyUsingSlice) {

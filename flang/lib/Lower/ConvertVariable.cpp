@@ -1356,9 +1356,8 @@ void Fortran::lower::mapSymbolAttributes(
         if (x.lboundAllOnes()) {
           // if lower bounds are all ones, build simple shaped object
           llvm::SmallVector<mlir::Value> shape;
-          for (auto i : x.shapes) {
+          for (auto i : x.shapes)
             shape.push_back(genExtentValue(builder, loc, idxTy, i));
-          }
           mlir::Value local =
               isDummy ? addr : createNewLocal(converter, loc, var, preAlloc);
           symMap.addSymbolWithShape(sym, local, shape, isDummy);
