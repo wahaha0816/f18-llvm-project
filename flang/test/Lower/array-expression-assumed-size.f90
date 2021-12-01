@@ -139,22 +139,22 @@ end subroutine assumed_size_forall_test
 
 ! PostOpt-LABEL: func @_QPassumed_size_test(
 ! PostOpt-SAME:                             %[[VAL_0:.*]]: !fir.ref<!fir.array<10x?xi32>>) {
-! PostOpt:         %[[VAL_1:.*]] = arith.constant 2 : index
+! PostOpt:         %[[VAL_1:.*]] = arith.constant 10 : index
 ! PostOpt:         %[[VAL_2:.*]] = arith.constant 1 : index
-! PostOpt:         %[[VAL_3:.*]] = arith.constant 0 : index
-! PostOpt:         %[[VAL_4:.*]] = arith.constant 4 : index
+! PostOpt:         %[[VAL_3:.*]] = arith.constant 2 : index
+! PostOpt:         %[[VAL_4:.*]] = arith.constant 0 : index
 ! PostOpt:         %[[VAL_5:.*]] = arith.constant 3 : index
-! PostOpt:         %[[VAL_6:.*]] = arith.constant 10 : index
+! PostOpt:         %[[VAL_6:.*]] = arith.constant 4 : index
 ! PostOpt:         %[[VAL_7:.*]] = fir.undefined index
-! PostOpt:         %[[VAL_8:.*]] = fir.shape %[[VAL_6]], %[[VAL_7]] : (index, index) -> !fir.shape<2>
-! PostOpt:         %[[VAL_9:.*]] = fir.slice %[[VAL_2]], %[[VAL_6]], %[[VAL_2]], %[[VAL_2]], %[[VAL_1]], %[[VAL_2]] : (index, index, index, index, index, index) -> !fir.slice<2>
-! PostOpt:         %[[VAL_10:.*]] = fir.allocmem !fir.array<10x?xi32>, %[[VAL_1]]
-! PostOpt:         br ^bb1(%[[VAL_3]], %[[VAL_1]] : index, index)
+! PostOpt:         %[[VAL_8:.*]] = fir.shape %[[VAL_1]], %[[VAL_7]] : (index, index) -> !fir.shape<2>
+! PostOpt:         %[[VAL_9:.*]] = fir.slice %[[VAL_2]], %[[VAL_1]], %[[VAL_2]], %[[VAL_2]], %[[VAL_3]], %[[VAL_2]] : (index, index, index, index, index, index) -> !fir.slice<2>
+! PostOpt:         %[[VAL_10:.*]] = fir.allocmem !fir.array<10x?xi32>, %[[VAL_3]]
+! PostOpt:         br ^bb1(%[[VAL_4]], %[[VAL_3]] : index, index)
 ! PostOpt:       ^bb1(%[[VAL_11:.*]]: index, %[[VAL_12:.*]]: index):
-! PostOpt:         %[[VAL_13:.*]] = arith.cmpi sgt, %[[VAL_12]], %[[VAL_3]] : index
-! PostOpt:         cond_br %[[VAL_13]], ^bb2(%[[VAL_3]], %[[VAL_6]] : index, index), ^bb5
+! PostOpt:         %[[VAL_13:.*]] = arith.cmpi sgt, %[[VAL_12]], %[[VAL_4]] : index
+! PostOpt:         cond_br %[[VAL_13]], ^bb2(%[[VAL_4]], %[[VAL_1]] : index, index), ^bb5
 ! PostOpt:       ^bb2(%[[VAL_14:.*]]: index, %[[VAL_15:.*]]: index):
-! PostOpt:         %[[VAL_16:.*]] = arith.cmpi sgt, %[[VAL_15]], %[[VAL_3]] : index
+! PostOpt:         %[[VAL_16:.*]] = arith.cmpi sgt, %[[VAL_15]], %[[VAL_4]] : index
 ! PostOpt:         cond_br %[[VAL_16]], ^bb3, ^bb4
 ! PostOpt:       ^bb3:
 ! PostOpt:         %[[VAL_17:.*]] = arith.addi %[[VAL_14]], %[[VAL_2]] : index
@@ -170,13 +170,13 @@ end subroutine assumed_size_forall_test
 ! PostOpt:         %[[VAL_24:.*]] = arith.subi %[[VAL_12]], %[[VAL_2]] : index
 ! PostOpt:         br ^bb1(%[[VAL_23]], %[[VAL_24]] : index, index)
 ! PostOpt:       ^bb5:
-! PostOpt:         %[[VAL_25:.*]] = fir.slice %[[VAL_2]], %[[VAL_6]], %[[VAL_2]], %[[VAL_5]], %[[VAL_4]], %[[VAL_2]] : (index, index, index, index, index, index) -> !fir.slice<2>
-! PostOpt:         br ^bb6(%[[VAL_3]], %[[VAL_1]] : index, index)
+! PostOpt:         %[[VAL_25:.*]] = fir.slice %[[VAL_2]], %[[VAL_1]], %[[VAL_2]], %[[VAL_5]], %[[VAL_6]], %[[VAL_2]] : (index, index, index, index, index, index) -> !fir.slice<2>
+! PostOpt:         br ^bb6(%[[VAL_4]], %[[VAL_3]] : index, index)
 ! PostOpt:       ^bb6(%[[VAL_26:.*]]: index, %[[VAL_27:.*]]: index):
-! PostOpt:         %[[VAL_28:.*]] = arith.cmpi sgt, %[[VAL_27]], %[[VAL_3]] : index
-! PostOpt:         cond_br %[[VAL_28]], ^bb7(%[[VAL_3]], %[[VAL_6]] : index, index), ^bb10(%[[VAL_3]], %[[VAL_1]] : index, index)
+! PostOpt:         %[[VAL_28:.*]] = arith.cmpi sgt, %[[VAL_27]], %[[VAL_4]] : index
+! PostOpt:         cond_br %[[VAL_28]], ^bb7(%[[VAL_4]], %[[VAL_1]] : index, index), ^bb10(%[[VAL_4]], %[[VAL_3]] : index, index)
 ! PostOpt:       ^bb7(%[[VAL_29:.*]]: index, %[[VAL_30:.*]]: index):
-! PostOpt:         %[[VAL_31:.*]] = arith.cmpi sgt, %[[VAL_30]], %[[VAL_3]] : index
+! PostOpt:         %[[VAL_31:.*]] = arith.cmpi sgt, %[[VAL_30]], %[[VAL_4]] : index
 ! PostOpt:         cond_br %[[VAL_31]], ^bb8, ^bb9
 ! PostOpt:       ^bb8:
 ! PostOpt:         %[[VAL_32:.*]] = arith.addi %[[VAL_29]], %[[VAL_2]] : index
@@ -192,10 +192,10 @@ end subroutine assumed_size_forall_test
 ! PostOpt:         %[[VAL_39:.*]] = arith.subi %[[VAL_27]], %[[VAL_2]] : index
 ! PostOpt:         br ^bb6(%[[VAL_38]], %[[VAL_39]] : index, index)
 ! PostOpt:       ^bb10(%[[VAL_40:.*]]: index, %[[VAL_41:.*]]: index):
-! PostOpt:         %[[VAL_42:.*]] = arith.cmpi sgt, %[[VAL_41]], %[[VAL_3]] : index
-! PostOpt:         cond_br %[[VAL_42]], ^bb11(%[[VAL_3]], %[[VAL_6]] : index, index), ^bb14
+! PostOpt:         %[[VAL_42:.*]] = arith.cmpi sgt, %[[VAL_41]], %[[VAL_4]] : index
+! PostOpt:         cond_br %[[VAL_42]], ^bb11(%[[VAL_4]], %[[VAL_1]] : index, index), ^bb14
 ! PostOpt:       ^bb11(%[[VAL_43:.*]]: index, %[[VAL_44:.*]]: index):
-! PostOpt:         %[[VAL_45:.*]] = arith.cmpi sgt, %[[VAL_44]], %[[VAL_3]] : index
+! PostOpt:         %[[VAL_45:.*]] = arith.cmpi sgt, %[[VAL_44]], %[[VAL_4]] : index
 ! PostOpt:         cond_br %[[VAL_45]], ^bb12, ^bb13
 ! PostOpt:       ^bb12:
 ! PostOpt:         %[[VAL_46:.*]] = arith.addi %[[VAL_43]], %[[VAL_2]] : index
@@ -217,81 +217,83 @@ end subroutine assumed_size_forall_test
 
 ! PostOpt-LABEL: func @_QPassumed_size_forall_test(
 ! PostOpt-SAME:                                    %[[VAL_0:.*]]: !fir.ref<!fir.array<10x?xi32>>) {
-! PostOpt:         %[[VAL_1:.*]] = arith.constant 5 : index
-! PostOpt:         %[[VAL_2:.*]] = arith.constant 1 : index
-! PostOpt:         %[[VAL_3:.*]] = arith.constant 0 : index
-! PostOpt:         %[[VAL_4:.*]] = arith.constant 3 : index
-! PostOpt:         %[[VAL_5:.*]] = arith.constant 2 : index
-! PostOpt:         %[[VAL_6:.*]] = arith.constant 10 : index
+! PostOpt:         %[[VAL_1:.*]] = arith.constant 3 : index
+! PostOpt:         %[[VAL_2:.*]] = arith.constant 10 : index
+! PostOpt:         %[[VAL_3:.*]] = arith.constant 2 : index
+! PostOpt:         %[[VAL_4:.*]] = arith.constant 1 : index
+! PostOpt:         %[[VAL_5:.*]] = arith.constant 0 : index
+! PostOpt:         %[[VAL_6:.*]] = arith.constant 5 : index
 ! PostOpt:         %[[VAL_7:.*]] = fir.alloca i32 {adapt.valuebyref, bindc_name = "i"}
 ! PostOpt:         %[[VAL_8:.*]] = fir.undefined index
-! PostOpt:         %[[VAL_9:.*]] = fir.shape %[[VAL_6]], %[[VAL_8]] : (index, index) -> !fir.shape<2>
-! PostOpt:         %[[VAL_10:.*]] = fir.allocmem !fir.array<10x?xi32>, %[[VAL_2]]
-! PostOpt:         br ^bb1(%[[VAL_3]], %[[VAL_2]] : index, index)
+! PostOpt:         %[[VAL_9:.*]] = fir.shape %[[VAL_2]], %[[VAL_8]] : (index, index) -> !fir.shape<2>
+! PostOpt:         %[[VAL_10:.*]] = fir.allocmem !fir.array<10x?xi32>, %[[VAL_4]]
+! PostOpt:         br ^bb1(%[[VAL_5]], %[[VAL_4]] : index, index)
 ! PostOpt:       ^bb1(%[[VAL_11:.*]]: index, %[[VAL_12:.*]]: index):
-! PostOpt:         %[[VAL_13:.*]] = arith.cmpi sgt, %[[VAL_12]], %[[VAL_3]] : index
-! PostOpt:         cond_br %[[VAL_13]], ^bb2(%[[VAL_3]], %[[VAL_6]] : index, index), ^bb5(%[[VAL_5]], %[[VAL_1]] : index, index)
+! PostOpt:         %[[VAL_13:.*]] = arith.cmpi sgt, %[[VAL_12]], %[[VAL_5]] : index
+! PostOpt:         cond_br %[[VAL_13]], ^bb2(%[[VAL_5]], %[[VAL_2]] : index, index), ^bb5
 ! PostOpt:       ^bb2(%[[VAL_14:.*]]: index, %[[VAL_15:.*]]: index):
-! PostOpt:         %[[VAL_16:.*]] = arith.cmpi sgt, %[[VAL_15]], %[[VAL_3]] : index
+! PostOpt:         %[[VAL_16:.*]] = arith.cmpi sgt, %[[VAL_15]], %[[VAL_5]] : index
 ! PostOpt:         cond_br %[[VAL_16]], ^bb3, ^bb4
 ! PostOpt:       ^bb3:
-! PostOpt:         %[[VAL_17:.*]] = arith.addi %[[VAL_14]], %[[VAL_2]] : index
-! PostOpt:         %[[VAL_18:.*]] = arith.addi %[[VAL_11]], %[[VAL_2]] : index
+! PostOpt:         %[[VAL_17:.*]] = arith.addi %[[VAL_14]], %[[VAL_4]] : index
+! PostOpt:         %[[VAL_18:.*]] = arith.addi %[[VAL_11]], %[[VAL_4]] : index
 ! PostOpt:         %[[VAL_19:.*]] = fir.array_coor %[[VAL_0]](%[[VAL_9]]) %[[VAL_17]], %[[VAL_18]] : (!fir.ref<!fir.array<10x?xi32>>, !fir.shape<2>, index, index) -> !fir.ref<i32>
 ! PostOpt:         %[[VAL_20:.*]] = fir.array_coor %[[VAL_10]](%[[VAL_9]]) %[[VAL_17]], %[[VAL_18]] : (!fir.heap<!fir.array<10x?xi32>>, !fir.shape<2>, index, index) -> !fir.ref<i32>
 ! PostOpt:         %[[VAL_21:.*]] = fir.load %[[VAL_19]] : !fir.ref<i32>
 ! PostOpt:         fir.store %[[VAL_21]] to %[[VAL_20]] : !fir.ref<i32>
-! PostOpt:         %[[VAL_22:.*]] = arith.subi %[[VAL_15]], %[[VAL_2]] : index
+! PostOpt:         %[[VAL_22:.*]] = arith.subi %[[VAL_15]], %[[VAL_4]] : index
 ! PostOpt:         br ^bb2(%[[VAL_17]], %[[VAL_22]] : index, index)
 ! PostOpt:       ^bb4:
-! PostOpt:         %[[VAL_23:.*]] = arith.addi %[[VAL_11]], %[[VAL_2]] : index
-! PostOpt:         %[[VAL_24:.*]] = arith.subi %[[VAL_12]], %[[VAL_2]] : index
+! PostOpt:         %[[VAL_23:.*]] = arith.addi %[[VAL_11]], %[[VAL_4]] : index
+! PostOpt:         %[[VAL_24:.*]] = arith.subi %[[VAL_12]], %[[VAL_4]] : index
 ! PostOpt:         br ^bb1(%[[VAL_23]], %[[VAL_24]] : index, index)
-! PostOpt:       ^bb5(%[[VAL_25:.*]]: index, %[[VAL_26:.*]]: index):
-! PostOpt:         %[[VAL_27:.*]] = arith.cmpi sgt, %[[VAL_26]], %[[VAL_3]] : index
-! PostOpt:         cond_br %[[VAL_27]], ^bb6, ^bb10(%[[VAL_3]], %[[VAL_2]] : index, index)
-! PostOpt:       ^bb6:
+! PostOpt:       ^bb5:
+! PostOpt:         br ^bb6(%[[VAL_3]], %[[VAL_6]] : index, index)
+! PostOpt:       ^bb6(%[[VAL_25:.*]]: index, %[[VAL_26:.*]]: index):
+! PostOpt:         %[[VAL_27:.*]] = arith.cmpi sgt, %[[VAL_26]], %[[VAL_5]] : index
+! PostOpt:         cond_br %[[VAL_27]], ^bb7, ^bb11(%[[VAL_5]], %[[VAL_4]] : index, index)
+! PostOpt:       ^bb7:
 ! PostOpt:         %[[VAL_28:.*]] = fir.convert %[[VAL_25]] : (index) -> i32
 ! PostOpt:         fir.store %[[VAL_28]] to %[[VAL_7]] : !fir.ref<i32>
 ! PostOpt:         %[[VAL_29:.*]] = fir.load %[[VAL_7]] : !fir.ref<i32>
 ! PostOpt:         %[[VAL_30:.*]] = fir.convert %[[VAL_29]] : (i32) -> index
-! PostOpt:         br ^bb7(%[[VAL_3]], %[[VAL_5]] : index, index)
-! PostOpt:       ^bb7(%[[VAL_31:.*]]: index, %[[VAL_32:.*]]: index):
-! PostOpt:         %[[VAL_33:.*]] = arith.cmpi sgt, %[[VAL_32]], %[[VAL_3]] : index
-! PostOpt:         cond_br %[[VAL_33]], ^bb8, ^bb9
-! PostOpt:       ^bb8:
-! PostOpt:         %[[VAL_34:.*]] = arith.addi %[[VAL_31]], %[[VAL_4]] : index
+! PostOpt:         br ^bb8(%[[VAL_5]], %[[VAL_3]] : index, index)
+! PostOpt:       ^bb8(%[[VAL_31:.*]]: index, %[[VAL_32:.*]]: index):
+! PostOpt:         %[[VAL_33:.*]] = arith.cmpi sgt, %[[VAL_32]], %[[VAL_5]] : index
+! PostOpt:         cond_br %[[VAL_33]], ^bb9, ^bb10
+! PostOpt:       ^bb9:
+! PostOpt:         %[[VAL_34:.*]] = arith.addi %[[VAL_31]], %[[VAL_1]] : index
 ! PostOpt:         %[[VAL_35:.*]] = fir.array_coor %[[VAL_0]](%[[VAL_9]]) %[[VAL_30]], %[[VAL_34]] : (!fir.ref<!fir.array<10x?xi32>>, !fir.shape<2>, index, index) -> !fir.ref<i32>
 ! PostOpt:         %[[VAL_36:.*]] = fir.load %[[VAL_35]] : !fir.ref<i32>
-! PostOpt:         %[[VAL_37:.*]] = arith.addi %[[VAL_31]], %[[VAL_2]] : index
+! PostOpt:         %[[VAL_37:.*]] = arith.addi %[[VAL_31]], %[[VAL_4]] : index
 ! PostOpt:         %[[VAL_38:.*]] = fir.array_coor %[[VAL_10]](%[[VAL_9]]) %[[VAL_30]], %[[VAL_37]] : (!fir.heap<!fir.array<10x?xi32>>, !fir.shape<2>, index, index) -> !fir.ref<i32>
 ! PostOpt:         fir.store %[[VAL_36]] to %[[VAL_38]] : !fir.ref<i32>
-! PostOpt:         %[[VAL_39:.*]] = arith.subi %[[VAL_32]], %[[VAL_2]] : index
-! PostOpt:         br ^bb7(%[[VAL_37]], %[[VAL_39]] : index, index)
-! PostOpt:       ^bb9:
-! PostOpt:         %[[VAL_40:.*]] = arith.addi %[[VAL_25]], %[[VAL_2]] : index
-! PostOpt:         %[[VAL_41:.*]] = arith.subi %[[VAL_26]], %[[VAL_2]] : index
-! PostOpt:         br ^bb5(%[[VAL_40]], %[[VAL_41]] : index, index)
-! PostOpt:       ^bb10(%[[VAL_42:.*]]: index, %[[VAL_43:.*]]: index):
-! PostOpt:         %[[VAL_44:.*]] = arith.cmpi sgt, %[[VAL_43]], %[[VAL_3]] : index
-! PostOpt:         cond_br %[[VAL_44]], ^bb11(%[[VAL_3]], %[[VAL_6]] : index, index), ^bb14
-! PostOpt:       ^bb11(%[[VAL_45:.*]]: index, %[[VAL_46:.*]]: index):
-! PostOpt:         %[[VAL_47:.*]] = arith.cmpi sgt, %[[VAL_46]], %[[VAL_3]] : index
-! PostOpt:         cond_br %[[VAL_47]], ^bb12, ^bb13
-! PostOpt:       ^bb12:
-! PostOpt:         %[[VAL_48:.*]] = arith.addi %[[VAL_45]], %[[VAL_2]] : index
-! PostOpt:         %[[VAL_49:.*]] = arith.addi %[[VAL_42]], %[[VAL_2]] : index
+! PostOpt:         %[[VAL_39:.*]] = arith.subi %[[VAL_32]], %[[VAL_4]] : index
+! PostOpt:         br ^bb8(%[[VAL_37]], %[[VAL_39]] : index, index)
+! PostOpt:       ^bb10:
+! PostOpt:         %[[VAL_40:.*]] = arith.addi %[[VAL_25]], %[[VAL_4]] : index
+! PostOpt:         %[[VAL_41:.*]] = arith.subi %[[VAL_26]], %[[VAL_4]] : index
+! PostOpt:         br ^bb6(%[[VAL_40]], %[[VAL_41]] : index, index)
+! PostOpt:       ^bb11(%[[VAL_42:.*]]: index, %[[VAL_43:.*]]: index):
+! PostOpt:         %[[VAL_44:.*]] = arith.cmpi sgt, %[[VAL_43]], %[[VAL_5]] : index
+! PostOpt:         cond_br %[[VAL_44]], ^bb12(%[[VAL_5]], %[[VAL_2]] : index, index), ^bb15
+! PostOpt:       ^bb12(%[[VAL_45:.*]]: index, %[[VAL_46:.*]]: index):
+! PostOpt:         %[[VAL_47:.*]] = arith.cmpi sgt, %[[VAL_46]], %[[VAL_5]] : index
+! PostOpt:         cond_br %[[VAL_47]], ^bb13, ^bb14
+! PostOpt:       ^bb13:
+! PostOpt:         %[[VAL_48:.*]] = arith.addi %[[VAL_45]], %[[VAL_4]] : index
+! PostOpt:         %[[VAL_49:.*]] = arith.addi %[[VAL_42]], %[[VAL_4]] : index
 ! PostOpt:         %[[VAL_50:.*]] = fir.array_coor %[[VAL_10]](%[[VAL_9]]) %[[VAL_48]], %[[VAL_49]] : (!fir.heap<!fir.array<10x?xi32>>, !fir.shape<2>, index, index) -> !fir.ref<i32>
 ! PostOpt:         %[[VAL_51:.*]] = fir.array_coor %[[VAL_0]](%[[VAL_9]]) %[[VAL_48]], %[[VAL_49]] : (!fir.ref<!fir.array<10x?xi32>>, !fir.shape<2>, index, index) -> !fir.ref<i32>
 ! PostOpt:         %[[VAL_52:.*]] = fir.load %[[VAL_50]] : !fir.ref<i32>
 ! PostOpt:         fir.store %[[VAL_52]] to %[[VAL_51]] : !fir.ref<i32>
-! PostOpt:         %[[VAL_53:.*]] = arith.subi %[[VAL_46]], %[[VAL_2]] : index
-! PostOpt:         br ^bb11(%[[VAL_48]], %[[VAL_53]] : index, index)
-! PostOpt:       ^bb13:
-! PostOpt:         %[[VAL_54:.*]] = arith.addi %[[VAL_42]], %[[VAL_2]] : index
-! PostOpt:         %[[VAL_55:.*]] = arith.subi %[[VAL_43]], %[[VAL_2]] : index
-! PostOpt:         br ^bb10(%[[VAL_54]], %[[VAL_55]] : index, index)
+! PostOpt:         %[[VAL_53:.*]] = arith.subi %[[VAL_46]], %[[VAL_4]] : index
+! PostOpt:         br ^bb12(%[[VAL_48]], %[[VAL_53]] : index, index)
 ! PostOpt:       ^bb14:
+! PostOpt:         %[[VAL_54:.*]] = arith.addi %[[VAL_42]], %[[VAL_4]] : index
+! PostOpt:         %[[VAL_55:.*]] = arith.subi %[[VAL_43]], %[[VAL_4]] : index
+! PostOpt:         br ^bb11(%[[VAL_54]], %[[VAL_55]] : index, index)
+! PostOpt:       ^bb15:
 ! PostOpt:         fir.freemem %[[VAL_10]] : !fir.heap<!fir.array<10x?xi32>>
 ! PostOpt:         return
 ! PostOpt:       }
