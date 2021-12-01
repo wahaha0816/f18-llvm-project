@@ -23,8 +23,8 @@ public:
 };
 
 class DummyRewriter : public PatternRewriter {
-  public:
-    DummyRewriter(MLIRContext *ctx) : PatternRewriter(ctx) {}
+public:
+  DummyRewriter(MLIRContext *ctx) : PatternRewriter(ctx) {}
 };
 
 } // namespace
