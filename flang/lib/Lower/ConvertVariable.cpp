@@ -468,11 +468,11 @@ static void instantiateGlobal(Fortran::lower::AbstractConverter &converter,
       mlir::StringAttr externalLinkage;
       global = declareGlobal(converter, var, globalName, externalLinkage);
     } else {
-      // Module and common globals are defined elsewhere.
-      // The only globals defined here are the globals owned by procedures
-      // and they do not need to be visible in other compilation unit.
-      auto internalLinkage = builder.createInternalLinkage();
-      global = defineGlobal(converter, var, globalName, internalLinkage);
+      mlir::StringAttr linkage; // external if remains empty.
+      if (!sym.owner().IsModule() &&
+          !Fortran::semantics::FindCommonBlockContaining(sym))
+        linkage = builder.createInternalLinkage();
+      global = defineGlobal(converter, var, globalName, linkage);
     }
   }
   auto addrOf = builder.create<fir::AddrOfOp>(loc, global.resultType(),

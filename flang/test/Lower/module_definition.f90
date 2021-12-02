@@ -49,3 +49,21 @@ end module
 ! CHECK-LABEL: fir.global @_QBnamed2 : tuple<i32> {
   ! CHECK: %[[init:.*]] = fir.insert_value %{{.*}}, %c42{{.*}}, [0 : index] : (tuple<i32>, i32) -> tuple<i32>
   ! CHECK: fir.has_value %[[init]] : tuple<i32>
+
+! Test defining two module variables whose initializers depend on each others
+! addresses.
+module global_init_depending_on_each_other_address
+  type a
+    type(b), pointer :: pb
+  end type
+  type b
+    type(a), pointer :: pa
+  end type
+  type(a), target :: xa
+  type(b), target :: xb
+  data xa, xb/a(xb), b(xa)/
+end module
+! CHECK-LABEL: fir.global @_QMglobal_init_depending_on_each_other_addressExb
+  ! CHECK: fir.address_of(@_QMglobal_init_depending_on_each_other_addressExa)
+! CHECK-LABEL: fir.global @_QMglobal_init_depending_on_each_other_addressExa
+  ! CHECK: fir.address_of(@_QMglobal_init_depending_on_each_other_addressExb)
