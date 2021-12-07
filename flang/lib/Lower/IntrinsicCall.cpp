@@ -3087,8 +3087,12 @@ IntrinsicLibrary::genLbound(mlir::Type resultType,
     mlir::Value lbValue = builder.createConvert(loc, resultType, lb.value());
     builder.create<fir::StoreOp>(loc, lbValue, lbAddr);
   }
-  mlir::Value resAddr = builder.create<fir::CoordinateOp>(
-      loc, lbAddrType, lbArray, fir::getBase(args[1]));
+  mlir::Value dimArg = fir::getBase(args[1]);
+  mlir::Value one = builder.createIntegerConstant(loc, dimArg.getType(), 1);
+  mlir::Value zeroBasedDim =
+      builder.create<mlir::arith::SubIOp>(loc, dimArg, one);
+  mlir::Value resAddr =
+      builder.create<fir::CoordinateOp>(loc, lbAddrType, lbArray, zeroBasedDim);
   return builder.create<fir::LoadOp>(loc, resAddr);
 }
 

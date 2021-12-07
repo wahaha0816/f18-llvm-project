@@ -48,12 +48,14 @@ subroutine ubound_test_2(a, dim, res)
 ! CHECK:         %[[VAL_18:.*]] = fir.coordinate_of %[[VAL_3]], %[[VAL_17]] : (!fir.ref<!fir.array<2xi64>>, index) -> !fir.ref<i64>
 ! CHECK:         %[[VAL_19:.*]] = fir.convert %[[VAL_7]] : (index) -> i64
 ! CHECK:         fir.store %[[VAL_19]] to %[[VAL_18]] : !fir.ref<i64>
-! CHECK:         %[[VAL_20:.*]] = fir.coordinate_of %[[VAL_3]], %[[VAL_8]] : (!fir.ref<!fir.array<2xi64>>, i64) -> !fir.ref<i64>
-! CHECK:         %[[VAL_21:.*]] = fir.load %[[VAL_20]] : !fir.ref<i64>
-! CHECK:         %[[VAL_22:.*]] = arith.constant 1 : i64
-! CHECK:         %[[VAL_23:.*]] = arith.subi %[[VAL_21]], %[[VAL_22]] : i64
-! CHECK:         %[[VAL_24:.*]] = arith.addi %[[VAL_23]], %[[VAL_13]] : i64
-! CHECK:         fir.store %[[VAL_24]] to %[[VAL_2]] : !fir.ref<i64>
+! CHECK:         %[[VAL_20:.*]] = arith.constant 1 : i64
+! CHECK:         %[[VAL_21:.*]] = arith.subi %[[VAL_8]], %[[VAL_20]] : i64
+! CHECK:         %[[VAL_22:.*]] = fir.coordinate_of %[[VAL_3]], %[[VAL_21]] : (!fir.ref<!fir.array<2xi64>>, i64) -> !fir.ref<i64>
+! CHECK:         %[[VAL_23:.*]] = fir.load %[[VAL_22]] : !fir.ref<i64>
+! CHECK:         %[[VAL_24:.*]] = arith.constant 1 : i64
+! CHECK:         %[[VAL_25:.*]] = arith.subi %[[VAL_23]], %[[VAL_24]] : i64
+! CHECK:         %[[VAL_26:.*]] = arith.addi %[[VAL_25]], %[[VAL_13]] : i64
+! CHECK:         fir.store %[[VAL_26]] to %[[VAL_2]] : !fir.ref<i64>
   res = ubound(a, dim, 8)
 end subroutine
 

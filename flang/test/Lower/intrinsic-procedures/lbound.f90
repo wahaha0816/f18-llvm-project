@@ -34,9 +34,11 @@ subroutine lbound_test_2(a, dim, res)
 ! CHECK:         %[[VAL_13:.*]] = fir.coordinate_of %[[VAL_3]], %[[VAL_12]] : (!fir.ref<!fir.array<2xi64>>, index) -> !fir.ref<i64>
 ! CHECK:         %[[VAL_14:.*]] = fir.convert %[[VAL_7]] : (index) -> i64
 ! CHECK:         fir.store %[[VAL_14]] to %[[VAL_13]] : !fir.ref<i64>
-! CHECK:         %[[VAL_15:.*]] = fir.coordinate_of %[[VAL_3]], %[[VAL_8]] : (!fir.ref<!fir.array<2xi64>>, i64) -> !fir.ref<i64>
-! CHECK:         %[[VAL_16:.*]] = fir.load %[[VAL_15]] : !fir.ref<i64>
-! CHECK:         fir.store %[[VAL_16]] to %[[VAL_2]] : !fir.ref<i64>
+! CHECK:         %[[VAL_15:.*]] = arith.constant 1 : i64
+! CHECK:         %[[VAL_16:.*]] = arith.subi %[[VAL_8]], %[[VAL_15]] : i64
+! CHECK:         %[[VAL_17:.*]] = fir.coordinate_of %[[VAL_3]], %[[VAL_16]] : (!fir.ref<!fir.array<2xi64>>, i64) -> !fir.ref<i64>
+! CHECK:         %[[VAL_18:.*]] = fir.load %[[VAL_17]] : !fir.ref<i64>
+! CHECK:         fir.store %[[VAL_18]] to %[[VAL_2]] : !fir.ref<i64>
   res = lbound(a, dim, 8)
 end subroutine
 
@@ -59,8 +61,10 @@ subroutine lbound_test_3(a, dim, res)
 ! CHECK:         %[[VAL_11:.*]] = fir.coordinate_of %[[VAL_3]], %[[VAL_10]] : (!fir.ref<!fir.array<2xi64>>, index) -> !fir.ref<i64>
 ! CHECK:         %[[VAL_12:.*]] = fir.convert %[[VAL_5]] : (index) -> i64
 ! CHECK:         fir.store %[[VAL_12]] to %[[VAL_11]] : !fir.ref<i64>
-! CHECK:         %[[VAL_13:.*]] = fir.coordinate_of %[[VAL_3]], %[[VAL_6]] : (!fir.ref<!fir.array<2xi64>>, i64) -> !fir.ref<i64>
-! CHECK:         %[[VAL_14:.*]] = fir.load %[[VAL_13]] : !fir.ref<i64>
-! CHECK:         fir.store %[[VAL_14]] to %[[VAL_2]] : !fir.ref<i64>
+! CHECK:         %[[VAL_13:.*]] = arith.constant 1 : i64
+! CHECK:         %[[VAL_14:.*]] = arith.subi %[[VAL_6]], %[[VAL_13]] : i64
+! CHECK:         %[[VAL_15:.*]] = fir.coordinate_of %[[VAL_3]], %[[VAL_14]] : (!fir.ref<!fir.array<2xi64>>, i64) -> !fir.ref<i64>
+! CHECK:         %[[VAL_16:.*]] = fir.load %[[VAL_15]] : !fir.ref<i64>
+! CHECK:         fir.store %[[VAL_16]] to %[[VAL_2]] : !fir.ref<i64>
   res = lbound(a, dim, 8)
 end subroutine
