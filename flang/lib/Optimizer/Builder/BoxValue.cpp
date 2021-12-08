@@ -182,13 +182,15 @@ llvm::raw_ostream &fir::operator<<(llvm::raw_ostream &os,
 /// always be called, so it should not have any functional side effects,
 /// the const is here to enforce that.
 bool fir::MutableBoxValue::verify() const {
-  mlir::Type type = fir::dyn_cast_ptrEleTy(getAddr().getType());
+  auto type = fir::dyn_cast_ptrEleTy(getAddr().getType());
   if (!type)
     return false;
   auto box = type.dyn_cast<fir::BoxType>();
   if (!box)
     return false;
-  // A boxed value always takes a memory reference,
+  auto eleTy = box.getEleTy();
+  if (!eleTy.isa<fir::PointerType>() && !eleTy.isa<fir::HeapType>())
+    return false;
 
   auto nParams = lenParams.size();
   if (isCharacter()) {
