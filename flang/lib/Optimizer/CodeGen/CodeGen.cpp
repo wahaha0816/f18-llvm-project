@@ -1482,13 +1482,19 @@ struct XEmboxOpConversion : public EmboxCommonConversion<fir::cg::XEmboxOp> {
         }
       }
       if (!skipNext) {
-        // store lower bound (normally 0)
+        // Lower bound is normalized to 0 for BIND(C) interoperability.
         auto lb = zero;
-        if (eleTy.isa<fir::PointerType>() || eleTy.isa<fir::HeapType>()) {
+        bool isaPointerOrAllocatable =
+            eleTy.isa<fir::PointerType>() || eleTy.isa<fir::HeapType>();
+        // Lower bound is defaults to 1 for POINTER, ALLOCATABLE, and
+        // denormalized descriptors.
+        if (isaPointerOrAllocatable || !normalizedLowerBound(xbox))
           lb = one;
-          if (hasShift)
-            lb = operands[shiftOff];
-        }
+        // If there is a shifted origin and this is not a normalized descriptor
+        // then use the value from the shift op as the lower bound.
+        if (hasShift &&
+            (isaPointerOrAllocatable || !normalizedLowerBound(xbox)))
+          lb = operands[shiftOff];
         dest = insertLowerBound(rewriter, loc, dest, descIdx, lb);
 
         // store extent
@@ -1546,6 +1552,13 @@ struct XEmboxOpConversion : public EmboxCommonConversion<fir::cg::XEmboxOp> {
     auto result = placeInMemoryIfNotGlobalInit(rewriter, loc, dest);
     rewriter.replaceOp(xbox, result);
     return success();
+  }
+
+  /// Return true if `xbox` has a normalized lower bounds attribute. A box value
+  /// that is neither a POINTER nor an ALLOCATABLE should be normalized to a
+  /// zero origin lower bound for interoperability with BIND(C).
+  inline static bool normalizedLowerBound(fir::cg::XEmboxOp xbox) {
+    return xbox->hasAttr(fir::getNormalizedLowerBoundAttrName());
   }
 };
 
