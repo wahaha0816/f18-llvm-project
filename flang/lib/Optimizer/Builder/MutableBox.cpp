@@ -47,8 +47,10 @@ public:
   /// Get base address of allocated/associated entity.
   mlir::Value readBaseAddress() {
     if (irBox) {
-      auto heapOrPtrTy = box.getBoxTy().getEleTy();
-      return builder.create<fir::BoxAddrOp>(loc, heapOrPtrTy, irBox);
+      auto memrefTy = box.getBoxTy().getEleTy();
+      if (!fir::isa_ref_type(memrefTy))
+        memrefTy = builder.getRefType(memrefTy);
+      return builder.create<fir::BoxAddrOp>(loc, memrefTy, irBox);
     }
     auto addrVar = box.getMutableProperties().addr;
     return builder.create<fir::LoadOp>(loc, addrVar);
@@ -242,9 +244,11 @@ private:
         // unknown or constant lengths.
         auto bt = box.getBaseTy();
         auto addrTy = addr.getType();
-        auto type = addrTy.isa<fir::HeapType>()      ? fir::HeapType::get(bt)
-                    : addrTy.isa<fir::PointerType>() ? fir::PointerType::get(bt)
-                                                     : builder.getRefType(bt);
+        auto type = addrTy.isa<fir::HeapType>()
+                        ? fir::HeapType::get(bt)
+                        : addrTy.isa<fir::PointerType>()
+                              ? fir::PointerType::get(bt)
+                              : builder.getRefType(bt);
         cleanedAddr = builder.createConvert(loc, type, addr);
         if (charTy.getLen() == fir::CharacterType::unknownLen())
           cleanedLengths.append(lengths.begin(), lengths.end());

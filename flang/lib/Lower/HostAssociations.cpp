@@ -398,7 +398,10 @@ public:
       // a null base address).
       if (Fortran::semantics::IsOptional(sym)) {
         auto boxTy = box.getType().cast<fir::BoxType>();
-        auto addr = builder.create<fir::BoxAddrOp>(loc, boxTy.getEleTy(), box);
+        auto eleTy = boxTy.getEleTy();
+        if (!fir::isa_ref_type(eleTy))
+           eleTy = builder.getRefType(eleTy);
+        auto addr = builder.create<fir::BoxAddrOp>(loc, eleTy, box);
         mlir::Value isPresent = builder.genIsNotNull(loc, addr);
         auto absentBox = builder.create<fir::AbsentOp>(loc, boxTy);
         box = builder.create<mlir::SelectOp>(loc, isPresent, box, absentBox);
