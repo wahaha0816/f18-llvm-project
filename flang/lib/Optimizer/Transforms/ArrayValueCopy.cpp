@@ -17,6 +17,7 @@
 #include "flang/Optimizer/Dialect/FIROpsSupport.h"
 #include "flang/Optimizer/Support/FIRContext.h"
 #include "flang/Optimizer/Transforms/Passes.h"
+#include "flang/Optimizer/Builder/Runtime/Instrument.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/Support/Debug.h"
@@ -768,6 +769,14 @@ genCoorOp(mlir::PatternRewriter &rewriter, mlir::Location loc, mlir::Type eleTy,
   return result;
 }
 
+static ExtendedValue toExv(fir::FirOpBuilder& builder, mlir::Location loc, mlir::Value array, llvm::ArrayRef<mlir::Value> extents, mlir::OperandRange typeParameters) {
+  if (auto charType = unwrapSequenceType(unwrapPassByRefType(array.getType())).dyn_cast<fir::CharacterType>()) {
+    mlir::Value len = typeParameters.empty() ? builder.createIntegerConstant(loc, builder.getCharacterLengthType(), charType.getLen()) : typeParameters[0];
+    return CharArrayBoxValue(array, len, extents);
+  }
+  return ArrayBoxValue(array, extents);
+}
+
 /// Generate a shallow array copy. This is used for both copy-in and copy-out.
 template <bool CopyIn>
 void genArrayCopy(mlir::Location loc, mlir::PatternRewriter &rewriter,
@@ -779,6 +788,17 @@ void genArrayCopy(mlir::Location loc, mlir::PatternRewriter &rewriter,
   bool copyUsingSlice =
       getAdjustedExtents(loc, rewriter, arrLoad, extents, shapeOp);
   auto idxTy = rewriter.getIndexType();
+  auto typeparams = arrLoad.typeparams();
+
+  // Signal array copy
+  if (CopyIn) {
+    auto module = arrLoad->getParentOfType<mlir::ModuleOp>();
+    FirOpBuilder builder(rewriter, getKindMapping(module));
+    ExtendedValue temp = toExv(builder, loc, dst, extents, typeparams);
+    mlir::Value box = builder.createBox(loc, temp);
+    runtime::genSignalArrayCopy(builder, loc, box);
+  }
+    
   // Build loop nest from column to row.
   for (auto sh : llvm::reverse(extents)) {
     auto ubi = rewriter.create<ConvertOp>(loc, idxTy, sh);
@@ -791,7 +811,6 @@ void genArrayCopy(mlir::Location loc, mlir::PatternRewriter &rewriter,
   }
   // Reverse the indices so they are in column-major order.
   std::reverse(indices.begin(), indices.end());
-  auto typeparams = arrLoad.typeparams();
   auto fromAddr = rewriter.create<ArrayCoorOp>(
       loc, getEleTy(src.getType()), src, shapeOp,
       CopyIn && copyUsingSlice ? sliceOp : mlir::Value{},
