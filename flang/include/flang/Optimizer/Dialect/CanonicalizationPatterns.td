@@ -49,7 +49,8 @@ def CombineConvertOptPattern
 def createConstantOp
     : NativeCodeCall<"$_builder.create<mlir::arith::ConstantOp>"
                      "($_loc, $_builder.getIndexType(), "
-                     "rewriter.getIndexAttr($1.dyn_cast<IntegerAttr>().getInt()))">;
+                     "rewriter.getIndexAttr($1.dyn_cast<IntegerAttr>()"
+                     ".getInt()))">;
 
 def ForwardConstantConvertPattern
     : Pat<(fir_ConvertOp:$res (Arith_ConstantOp:$cnt $attr)),
