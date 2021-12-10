@@ -109,13 +109,7 @@ subroutine range()
 end subroutine range
 
 ! a0 array constructor
-! CHECK: fir.global internal @_QQro.10xi4.{{.*}} constant : !fir.array<10xi32> {
-  ! CHECK-DAG: %[[c1_i32:.*]] = arith.constant 1 : i32
-  ! CHECK-DAG: %[[c2_i32:.*]] = arith.constant 2 : i32
-  ! CHECK-DAG: %[[c3_i32:.*]] = arith.constant 3 : i32
-  ! CHECK: %[[r1:.*]] = fir.insert_value %{{.*}}, %{{.*}}, [0 : index] :
-  ! CHECK: %[[r2:.*]] = fir.insert_value %[[r1]], %{{.*}}, [1 : index] :
-  ! CHECK: %[[r3:.*]] = fir.insert_on_range %[[r2]], %[[c3_i32]], [2 : index, 9 : index] :
+! CHECK: fir.global internal @_QQro.10xi4.{{.*}}(dense<[1, 2, 3, 3, 3, 3, 3, 3, 3, 3]> : tensor<10xi32>) constant : !fir.array<10xi32>
 
 ! a1 array constructor
 ! CHECK: fir.global internal @_QQro.2x3xr4.{{.*}} constant : !fir.array<2x3xf32> {
@@ -138,12 +132,7 @@ end subroutine range
 
 ! CHECK-LABEL rangeGlobal
 subroutine rangeGlobal()
-  ! CHECK-DAG: %[[c1_i32:.*]] = arith.constant 1 : i32
-  ! CHECK-DAG: %[[c2_i32:.*]] = arith.constant 2 : i32
-  ! CHECK-DAG: %[[c3_i32:.*]] = arith.constant 3 : i32
-  ! CHECK: %{{.*}} = fir.insert_on_range %{{.*}}, %[[c1_i32]], [0 : index, 1 : index] :
-  ! CHECK: %{{.*}} = fir.insert_on_range %{{.*}}, %[[c2_i32]], [2 : index, 3 : index] :
-  ! CHECK: %{{.*}} = fir.insert_on_range %{{.*}}, %[[c3_i32]], [4 : index, 5 : index] :
+! CHECK: fir.global internal @_QFrangeglobal{{.*}}(dense<[1, 1, 2, 2, 3, 3]> : tensor<6xi32>) : !fir.array<6xi32>
   integer, dimension(6) :: a0 = (/ 1, 1, 2, 2, 3, 3 /)
 
 end subroutine rangeGlobal

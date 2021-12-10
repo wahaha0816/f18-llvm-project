@@ -386,9 +386,36 @@ static fir::GlobalOp defineGlobal(Fortran::lower::AbstractConverter &converter,
   mlir::Location loc = converter.genLocation(sym.name());
   bool isConst = sym.attrs().test(Fortran::semantics::Attr::PARAMETER);
   fir::GlobalOp global = builder.getNamedGlobal(globalName);
+  mlir::Type symTy = converter.genType(var);
+
   if (global && globalIsInitialized(global))
     return global;
-  mlir::Type symTy = converter.genType(var);
+  // If this is an array, check to see if we can use a dense attribute
+  // with a tensor mlir type.  This optimization currently only supports
+  // rank-1 Fortran arrays of integer, real, or logical. The tensor
+  // type does not support nested structures which are needed for
+  // complex numbers.
+  // To get multidimensional arrays to work, we will have to use column major
+  // array ordering with the tensor type (so it matches column major ordering
+  // with the Fortran fir.array).  By default, tensor types assume row major
+  // ordering. How to create this tensor type is to be determined.
+  if (symTy.isa<fir::SequenceType>() && sym.Rank() == 1 &&
+      !Fortran::semantics::IsAllocatableOrPointer(sym)) {
+    mlir::Type eleTy = symTy.cast<fir::SequenceType>().getEleTy();
+    if (eleTy.isa<mlir::IntegerType, mlir::FloatType, fir::LogicalType>()) {
+      const auto *details =
+          sym.detailsIf<Fortran::semantics::ObjectEntityDetails>();
+      if (details->init()) {
+        global = Fortran::lower::createDenseGlobal(
+            loc, symTy, globalName, linkage, isConst, details->init().value(),
+            converter);
+        if (global) {
+          global.setVisibility(mlir::SymbolTable::Visibility::Public);
+          return global;
+        }
+      }
+    }
+  }
   if (!global)
     global = builder.createGlobal(loc, symTy, globalName, linkage,
                                   mlir::Attribute{}, isConst);
