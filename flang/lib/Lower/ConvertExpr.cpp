@@ -5406,15 +5406,14 @@ private:
 
     mlir::Type eleRefTy = builder.getRefType(eleTy);
 
-    // Cleanups for temps in loop body. Any temps created in the loop body
-    // need to be freed before the end of the loop.
-    Fortran::lower::StatementContext loopCtx;
+    // Any temps created in the loop body must be freed inside the loop body.
+    stmtCtx.pushScope();
     llvm::Optional<mlir::Value> charLen;
     for (const Fortran::evaluate::ArrayConstructorValue<A> &acv : x.values()) {
       auto [exv, copyNeeded] = std::visit(
           [&](const auto &v) {
             return genArrayCtorInitializer(v, resTy, mem, buffPos, buffSize,
-                                           loopCtx);
+                                           stmtCtx);
           },
           acv.u);
       mlir::Value eleSz = computeElementSize(exv, eleTy, resTy);
@@ -5428,7 +5427,7 @@ private:
         builder.create<fir::StoreOp>(loc, castLen, charLen.getValue());
       }
     }
-    loopCtx.finalize();
+    stmtCtx.finalize(/*popScope=*/true);
 
     builder.create<fir::ResultOp>(loc, mem);
     builder.restoreInsertionPoint(insPt);
