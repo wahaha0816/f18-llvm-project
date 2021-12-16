@@ -305,6 +305,16 @@ bool isElementalProcWithArrayArgs(const Fortran::lower::SomeExpr &x) {
   return false;
 }
 
+/// Some auxiliary data for processing initialization in ScalarExprLowering
+/// below. This is currently used for generating dense attributed global
+/// arrays.
+struct InitializerData {
+  explicit InitializerData(bool getRawVals = false) : genRawVals{getRawVals} {}
+  llvm::SmallVector<mlir::Attribute> rawVals; // initialization raw values
+  mlir::Type rawType; // Type of elements processed for rawVals vector.
+  bool genRawVals;    // generate the rawVals vector if set.
+};
+
 namespace {
 
 /// Lowering of Fortran::evaluate::Expr<T> expressions
@@ -316,7 +326,7 @@ public:
                               Fortran::lower::AbstractConverter &converter,
                               Fortran::lower::SymMap &symMap,
                               Fortran::lower::StatementContext &stmtCtx,
-                              bool initializer = false)
+                              InitializerData *initializer = nullptr)
       : location{loc}, converter{converter},
         builder{converter.getFirOpBuilder()}, stmtCtx{stmtCtx}, symMap{symMap},
         inInitializer{initializer} {}
@@ -1046,6 +1056,41 @@ public:
       llvm_unreachable("unhandled constant");
     }
   }
+
+  /// Generate a raw literal value and store it in the rawVals vector.
+  template <Fortran::common::TypeCategory TC, int KIND>
+  void
+  genRawLit(const Fortran::evaluate::Scalar<Fortran::evaluate::Type<TC, KIND>>
+                &value) {
+    mlir::Attribute val;
+    assert(inInitializer != nullptr);
+    if constexpr (TC == Fortran::common::TypeCategory::Integer) {
+      inInitializer->rawType = converter.genType(TC, KIND);
+      val = builder.getIntegerAttr(inInitializer->rawType, value.ToInt64());
+    } else if constexpr (TC == Fortran::common::TypeCategory::Logical) {
+      inInitializer->rawType =
+          converter.genType(Fortran::common::TypeCategory::Integer, KIND);
+      val = builder.getIntegerAttr(inInitializer->rawType, value.IsTrue());
+    } else if constexpr (TC == Fortran::common::TypeCategory::Real) {
+      std::string str = value.DumpHexadecimal();
+      inInitializer->rawType = converter.genType(TC, KIND);
+      llvm::APFloat floatVal{builder.getKindMap().getFloatSemantics(KIND), str};
+      val = builder.getFloatAttr(inInitializer->rawType, floatVal);
+    } else if constexpr (TC == Fortran::common::TypeCategory::Complex) {
+      std::string strReal = value.REAL().DumpHexadecimal();
+      std::string strImg = value.AIMAG().DumpHexadecimal();
+      inInitializer->rawType = converter.genType(TC, KIND);
+      llvm::APFloat realVal{builder.getKindMap().getFloatSemantics(KIND),
+                            strReal};
+      val = builder.getFloatAttr(inInitializer->rawType, realVal);
+      inInitializer->rawVals.push_back(val);
+      llvm::APFloat imgVal{builder.getKindMap().getFloatSemantics(KIND),
+                           strImg};
+      val = builder.getFloatAttr(inInitializer->rawType, imgVal);
+    }
+    inInitializer->rawVals.push_back(val);
+  }
+
   /// Convert a ascii scalar literal CHARACTER to IR. (specialization)
   ExtValue
   genAsciiScalarLit(const Fortran::evaluate::Scalar<Fortran::evaluate::Type<
@@ -1200,6 +1245,8 @@ public:
               builder.getArrayAttr(rangeBounds));
           rangeSize = 0;
         }
+        if (inInitializer && inInitializer->genRawVals)
+          genRawLit<TC, KIND>(con.At(subscripts));
       } while (con.IncrementSubscripts(subscripts));
       return fir::ArrayBoxValue{array, extents, lbounds};
     }
@@ -2638,7 +2685,7 @@ private:
   fir::FirOpBuilder &builder;
   Fortran::lower::StatementContext &stmtCtx;
   Fortran::lower::SymMap &symMap;
-  bool inInitializer;
+  InitializerData *inInitializer = nullptr;
   bool useBoxArg = false; // expression lowered as argument
 };
 } // namespace
@@ -4484,18 +4531,39 @@ private:
     std::string globalName = Fortran::lower::mangle::mangleArrayLiteral(x);
     fir::GlobalOp global = builder.getNamedGlobal(globalName);
     if (!global) {
-      global = builder.createGlobalConstant(
-          loc, arrTy, globalName,
-          [&](fir::FirOpBuilder &builder) {
-            Fortran::lower::StatementContext stmtCtx;
-            fir::ExtendedValue result =
-                Fortran::lower::createSomeInitializerExpression(
-                    loc, converter, toEvExpr(x), symMap, stmtCtx);
-            mlir::Value castTo =
-                builder.createConvert(loc, arrTy, fir::getBase(result));
-            builder.create<fir::HasValueOp>(loc, castTo);
-          },
-          builder.createInternalLinkage());
+      mlir::Type symTy = arrTy;
+      mlir::Type eleTy = symTy.cast<fir::SequenceType>().getEleTy();
+      // If we have a rank-1 array of integer, real, or logical, then we can
+      // create a global array with the dense attribute.
+      //
+      // The mlir tensor type can only handle integer, real, or logical. It
+      // does not currently support nested structures which is required for
+      // complex.
+      //
+      // Also, we currently handle just rank-1 since tensor type assumes
+      // row major array ordering. We will need to reorder the dimensions
+      // in the tensor type to support Fortran's column major array ordering.
+      // How to create this tensor type is to be determined.
+      if (x.Rank() == 1 &&
+          eleTy.isa<fir::LogicalType, mlir::IntegerType, mlir::FloatType>())
+        global = Fortran::lower::createDenseGlobal(
+            loc, arrTy, globalName, builder.createInternalLinkage(), true,
+            toEvExpr(x), converter);
+      // Note: If call to createDenseGlobal() returns 0, then call
+      // createGlobalConstant() below.
+      if (!global)
+        global = builder.createGlobalConstant(
+            loc, arrTy, globalName,
+            [&](fir::FirOpBuilder &builder) {
+              Fortran::lower::StatementContext stmtCtx(/*prohibited=*/true);
+              fir::ExtendedValue result =
+                  Fortran::lower::createSomeInitializerExpression(
+                      loc, converter, toEvExpr(x), symMap, stmtCtx);
+              mlir::Value castTo =
+                  builder.createConvert(loc, arrTy, fir::getBase(result));
+              builder.create<fir::HasValueOp>(loc, castTo);
+            },
+            builder.createInternalLinkage());
     }
     auto addr = builder.create<fir::AddrOfOp>(getLoc(), global.resultType(),
                                               global.getSymbol());
@@ -6143,14 +6211,41 @@ fir::ExtendedValue Fortran::lower::createSomeExtendedExpression(
   LLVM_DEBUG(expr.AsFortran(llvm::dbgs() << "expr: ") << '\n');
   return ScalarExprLowering{loc, converter, symMap, stmtCtx}.genval(expr);
 }
+/// Create a global array symbol with the Dense attribute
+fir::GlobalOp Fortran::lower::createDenseGlobal(
+    mlir::Location loc, mlir::Type symTy, llvm::StringRef globalName,
+    mlir::StringAttr linkage, bool isConst,
+    const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &expr,
+    Fortran::lower::AbstractConverter &converter) {
+
+  Fortran::lower::StatementContext stmtCtx(/*prohibited=*/true);
+  Fortran::lower::SymMap emptyMap;
+  InitializerData initData(/*genRawVals=*/true);
+  auto sel = ScalarExprLowering{loc, converter, emptyMap, stmtCtx,
+                                /*initializer=*/&initData};
+  sel.genval(expr);
+
+  size_t sz = initData.rawVals.size();
+  llvm::ArrayRef<mlir::Attribute> ar{initData.rawVals.data(), sz};
+
+  mlir::RankedTensorType tensorTy;
+  auto &builder = converter.getFirOpBuilder();
+  mlir::Type iTy = initData.rawType;
+  if (!iTy)
+    return 0; // array extent is probably 0 in this case, so just return 0.
+  tensorTy = mlir::RankedTensorType::get(sz, iTy);
+  auto init = mlir::DenseElementsAttr::get(tensorTy, ar);
+  return builder.createGlobal(loc, symTy, globalName, linkage, init, isConst);
+}
 
 fir::ExtendedValue Fortran::lower::createSomeInitializerExpression(
     mlir::Location loc, Fortran::lower::AbstractConverter &converter,
     const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &expr,
     Fortran::lower::SymMap &symMap, Fortran::lower::StatementContext &stmtCtx) {
   LLVM_DEBUG(expr.AsFortran(llvm::dbgs() << "expr: ") << '\n');
+  InitializerData initData; // needed for initializations
   return ScalarExprLowering{loc, converter, symMap, stmtCtx,
-                            /*initializer=*/true}
+                            /*initializer=*/&initData}
       .genval(expr);
 }
 

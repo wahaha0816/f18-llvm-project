@@ -163,13 +163,6 @@ subroutine test6(c, d, e)
   c = (/ d, e /)
 end subroutine test6
 
-! CHECK: fir.global internal @_QQro.3xr4.6e55f044605a4991f15fd4505d83faf4 constant : !fir.array<3xf32>
-! CHECK-DAG: constant 1.0
-! CHECK-DAG: constant 2.0
-! CHECK-DAG: constant 3.0
+! CHECK: fir.global internal @_QQro.3xr4.{{.*}}(dense<[1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<3xf32>) constant : !fir.array<3xf32>
 
-! CHECK: fir.global internal @_QQro.4xi4.6a6af0eea868c84da59807d34f7e1a86 constant : !fir.array<4xi32>
-! CHECK-DAG: constant 6
-! CHECK-DAG: constant 7
-! CHECK-DAG: constant 42
-! CHECK-DAG: constant 9
+! CHECK: fir.global internal @_QQro.4xi4.{{.*}}(dense<[6, 7, 42, 9]> : tensor<4xi32>) constant : !fir.array<4xi32>

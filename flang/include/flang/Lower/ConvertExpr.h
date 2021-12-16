@@ -46,6 +46,12 @@ createSomeExtendedExpression(mlir::Location loc, AbstractConverter &converter,
                              const evaluate::Expr<evaluate::SomeType> &expr,
                              SymMap &symMap, StatementContext &stmtCtx);
 
+fir::GlobalOp createDenseGlobal(
+    mlir::Location loc, mlir::Type symTy, llvm::StringRef globalName,
+    mlir::StringAttr linkage, bool isConst,
+    const Fortran::evaluate::Expr<Fortran::evaluate::SomeType> &expr,
+    Fortran::lower::AbstractConverter &converter);
+
 fir::ExtendedValue
 createSomeInitializerExpression(mlir::Location loc,
                                 AbstractConverter &converter,
