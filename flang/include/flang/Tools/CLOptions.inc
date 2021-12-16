@@ -22,10 +22,28 @@
       llvm::cl::desc("disable " DODescription " pass"), llvm::cl::init(false), \
       llvm::cl::Hidden)
 
+/// Shared option in tools to control whether dynamically sized array
+/// allocations should always be on the heap.
+static llvm::cl::opt<bool> dynamicArrayStackToHeapAllocation(
+    "fdynamic-heap-array",
+    llvm::cl::desc("place all array allocations of dynamic size on the heap"),
+    llvm::cl::init(false), llvm::cl::Hidden);
+
+/// Shared option in tools to set a maximum value for the number of elements in
+/// a compile-time sized array that can be allocated on the stack.
+static llvm::cl::opt<std::size_t> arrayStackAllocationThreshold(
+    "fstack-array-size",
+    llvm::cl::desc(
+        "place all array allocations more than <size> elements on the heap"),
+    llvm::cl::init(~static_cast<std::size_t>(0)), llvm::cl::Hidden);
+
 namespace {
 // Optimizer Passes
 DisableOption(FirCse, "fir-cse", "CSE for FIR dialect");
 DisableOption(CfgConversion, "cfg-conversion", "disable FIR to CFG pass");
+DisableOption(FirAvc, "avc", "array value copy analysis and transformation");
+DisableOption(
+    FirMao, "memory-allocation-opt", "memory allocation optimization");
 
 // CodeGen Passes
 #if !defined(FLANG_EXCLUDE_CODEGEN)
@@ -70,6 +88,18 @@ inline void addCSE(mlir::PassManager &pm) {
       pm, disableFirCse, fir::createCSEPass);
 }
 
+inline void addAVC(mlir::PassManager &pm) {
+  addNestedPassConditionally<mlir::FuncOp>(
+      pm, disableFirAvc, fir::createArrayValueCopyPass);
+}
+
+inline void addMemoryAllocationOpt(mlir::PassManager &pm) {
+  addNestedPassConditionally<mlir::FuncOp>(pm, disableFirMao, [&]() {
+    return fir::createMemoryAllocationPass(
+        dynamicArrayStackToHeapAllocation, arrayStackAllocationThreshold);
+  });
+}
+
 #if !defined(FLANG_EXCLUDE_CODEGEN)
 inline void addCodeGenRewritePass(mlir::PassManager &pm) {
   addPassConditionally(
@@ -102,11 +132,12 @@ inline void createDefaultFIROptimizerPassPipeline(mlir::PassManager &pm) {
   mlir::GreedyRewriteConfig config;
   config.enableRegionSimplification = false;
   fir::addCSE(pm);
-  pm.addNestedPass<mlir::FuncOp>(fir::createArrayValueCopyPass());
+  fir::addAVC(pm);
   pm.addNestedPass<mlir::FuncOp>(fir::createCharacterConversionPass());
   pm.addPass(mlir::createCanonicalizerPass(config));
   pm.addPass(fir::createSimplifyRegionLitePass());
   fir::addCSE(pm);
+  fir::addMemoryAllocationOpt(pm);
 
   // The default inliner pass adds the canonicalizer pass with the default
   // configuration. Create the inliner pass with tco config.
@@ -126,6 +157,13 @@ inline void createDefaultFIROptimizerPassPipeline(mlir::PassManager &pm) {
 }
 
 #if !defined(FLANG_EXCLUDE_CODEGEN)
+inline void createDefaultFIRCodeGenPassPipeline(mlir::PassManager &pm) {
+  pm.addNestedPass<mlir::FuncOp>(fir::createAbstractResultOptPass());
+  fir::addCodeGenRewritePass(pm);
+  fir::addTargetRewritePass(pm);
+  fir::addFIRToLLVMPass(pm);
+}
+
 /// Create a pass pipeline for lowering from MLIR to LLVM IR
 ///
 /// \param pm - MLIR pass manager that will hold the pipeline definition
@@ -134,10 +172,7 @@ inline void createMLIRToLLVMPassPipeline(mlir::PassManager &pm) {
   fir::createDefaultFIROptimizerPassPipeline(pm);
 
   // Add codegen pass pipeline.
-  pm.addNestedPass<mlir::FuncOp>(fir::createAbstractResultOptPass());
-  fir::addCodeGenRewritePass(pm);
-  fir::addTargetRewritePass(pm);
-  fir::addFIRToLLVMPass(pm);
+  fir::createDefaultFIRCodeGenPassPipeline(pm);
 }
 #undef FLANG_EXCLUDE_CODEGEN
 #endif
