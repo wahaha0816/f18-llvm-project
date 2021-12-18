@@ -1180,12 +1180,15 @@ public:
     else
       eleTy = converter.genType(TC, KIND);
     auto arrayTy = fir::SequenceType::get(shape, eleTy);
-    mlir::Value array = builder.create<fir::UndefOp>(loc, arrayTy);
+    mlir::Value array;
     llvm::SmallVector<mlir::Value> lbounds;
     llvm::SmallVector<mlir::Value> extents;
-    for (auto [lb, extent] : llvm::zip(con.lbounds(), shape)) {
-      lbounds.push_back(builder.createIntegerConstant(loc, idxTy, lb - 1));
-      extents.push_back(builder.createIntegerConstant(loc, idxTy, extent));
+    if (!inInitializer || !inInitializer->genRawVals) {
+      array = builder.create<fir::UndefOp>(loc, arrayTy);
+      for (auto [lb, extent] : llvm::zip(con.lbounds(), shape)) {
+        lbounds.push_back(builder.createIntegerConstant(loc, idxTy, lb - 1));
+        extents.push_back(builder.createIntegerConstant(loc, idxTy, extent));
+      }
     }
     if (size == 0) {
       if constexpr (TC == Fortran::common::TypeCategory::Character) {
@@ -1216,6 +1219,10 @@ public:
       llvm::SmallVector<mlir::Attribute> rangeStartIdx;
       uint64_t rangeSize = 0;
       do {
+        if (inInitializer && inInitializer->genRawVals) {
+          genRawLit<TC, KIND>(con.At(subscripts));
+          continue;
+        }
         auto getElementVal = [&]() {
           return builder.createConvert(
               loc, eleTy,
@@ -1245,8 +1252,6 @@ public:
               builder.getArrayAttr(rangeBounds));
           rangeSize = 0;
         }
-        if (inInitializer && inInitializer->genRawVals)
-          genRawLit<TC, KIND>(con.At(subscripts));
       } while (con.IncrementSubscripts(subscripts));
       return fir::ArrayBoxValue{array, extents, lbounds};
     }
