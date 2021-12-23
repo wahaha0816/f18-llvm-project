@@ -1,23 +1,9 @@
-//===----- CGOpenMPRuntimeNVPTX.h - Interface to OpenMP NVPTX Runtimes ----===//
-//
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
-//
-//===----------------------------------------------------------------------===//
-//
-// This provides a class for OpenMP runtime code generation specialized to NVPTX
-// targets.
-//
-//===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CLANG_LIB_CODEGEN_CGOPENMPRUNTIMESPARK_H
-#define LLVM_CLANG_LIB_CODEGEN_CGOPENMPRUNTIMESPARK_H
+
+#define LLVM_FLANG_LIB_CODEGEN_CGOPENMPRUNTIMESPARK_H
 
 #include "CGOpenMPRuntime.h"
 #include "CodeGenFunction.h"
-#include "clang/AST/StmtOpenMP.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/Constant.h"
 
@@ -252,6 +238,6 @@ public:
 };
 
 } // namespace CodeGen
-} // namespace clang
+} // namespace flang
 
-#endif // LLVM_CLANG_LIB_CODEGEN_CGOPENMPRUNTIMESPARK_H
+#endif // LLVM_FLANG_LIB_CODEGEN_CGOPENMPRUNTIMESPARK_H
