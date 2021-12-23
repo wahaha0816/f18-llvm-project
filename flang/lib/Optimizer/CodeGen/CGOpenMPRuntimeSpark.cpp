@@ -1,31 +1,18 @@
-﻿//===---- CGOpenMPRuntimeNVPTX.cpp - Interface to OpenMP NVPTX Runtimes ---===//
-//
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
-//
-//===----------------------------------------------------------------------===//
-//
-// This provides a class for OpenMP runtime code generation specialized to NVPTX
-// targets.
-//
-//===----------------------------------------------------------------------===//
 
 #include "CGOpenMPRuntimeSpark.h"
 #include "CGCleanup.h"
 #include "CGOpenMPRuntime.h"
 #include "CodeGenFunction.h"
-#include "clang/AST/DeclOpenMP.h"
-#include "clang/AST/StmtOpenMP.h"
-#include "clang/AST/StmtVisitor.h"
-#include "clang/Frontend/FrontendDiagnostic.h"
+#include "flang/AST/DeclOpenMP.h
+#include "flang/AST/StmtOpenMP.h"
+#include "flang/AST/StmtVisitor.h"
+#include "flang/Frontend/FrontendDiagnostic.h"
 #include "llvm/ADT/SmallPtrSet.h"
 
-#include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/AST/StmtVisitor.h"
+#include "flang/AST/RecursiveASTVisitor.h"
+#include "flang/AST/StmtVisitor.h"
 
-using namespace clang;
+using namespace flang;
 using namespace CodeGen;
 
 #define VERBOSE 1
